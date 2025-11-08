@@ -31,7 +31,13 @@ demo_emails = [
 
 demo_users = User.objects.filter(email__in=demo_emails)
 if demo_users.exists():
-    print(f"  Removing {demo_users.count()} existing demo users...")
+    print(f"  Removing data for {demo_users.count()} demo users...")
+    user_ids = list(demo_users.values_list('id', flat=True))
+    Service.objects.filter(user_id__in=user_ids).delete()
+    Handshake.objects.filter(Q(requester_id__in=user_ids) | Q(service__user_id__in=user_ids)).delete()
+    Notification.objects.filter(user_id__in=user_ids).delete()
+    ReputationRep.objects.filter(Q(giver_id__in=user_ids) | Q(receiver_id__in=user_ids)).delete()
+    UserBadge.objects.filter(user_id__in=user_ids).delete()
     demo_users.delete()
 
 orphaned_handshakes = Handshake.objects.filter(service__isnull=True)
@@ -71,102 +77,156 @@ tags_data = [
     {'id': 'Q7186', 'name': 'Chess'},
 ]
 
+created_count = 0
 for tag_data in tags_data:
-    Tag.objects.get_or_create(
-        id=tag_data['id'],
-        defaults={'name': tag_data['name']}
-    )
+    try:
+        tag = Tag.objects.get(name=tag_data['name'])
+    except Tag.DoesNotExist:
+        try:
+            tag = Tag.objects.get(id=tag_data['id'])
+        except Tag.DoesNotExist:
+            tag = Tag.objects.create(id=tag_data['id'], name=tag_data['name'])
+            created_count += 1
 
-print(f"  ✅ Created {len(tags_data)} tags")
+print(f"  ✅ Processed {len(tags_data)} tags ({created_count} created)")
 
 # ============================================================================
 # STEP 3: CREATE DEMO USERS
 # ============================================================================
 print("\n[3/4] Creating demo users...")
 
-elif_user = User.objects.create_user(
+elif_user, created = User.objects.get_or_create(
     email='elif@demo.com',
-    password='demo123',
-    first_name='Elif',
-    last_name='Yılmaz',
-    bio='Freelance designer and cooking enthusiast. Love sharing traditional Turkish recipes and learning new skills from neighbors!',
-    timebank_balance=Decimal('5.00'),
-    karma_score=20,
-    role='member',
+    defaults={
+        'password': make_password('demo123'),
+        'first_name': 'Elif',
+        'last_name': 'Yılmaz',
+        'bio': 'Freelance designer and cooking enthusiast. Love sharing traditional Turkish recipes and learning new skills from neighbors!',
+        'timebank_balance': Decimal('5.00'),
+        'karma_score': 20,
+        'role': 'member',
+    }
 )
-print(f"  ✅ Created: {elif_user.email} (Balance: {elif_user.timebank_balance}h)")
+if not created:
+    elif_user.timebank_balance = Decimal('5.00')
+    elif_user.karma_score = 20
+    elif_user.set_password('demo123')
+    elif_user.save()
+print(f"  ✅ {'Created' if created else 'Updated'}: {elif_user.email} (Balance: {elif_user.timebank_balance}h)")
 
-cem = User.objects.create_user(
+cem, created = User.objects.get_or_create(
     email='cem@demo.com',
-    password='demo123',
-    first_name='Cem',
-    last_name='Demir',
-    bio='University student passionate about chess and genealogy. Always happy to teach beginners!',
-    timebank_balance=Decimal('2.00'),
-    karma_score=8,
-    role='member',
+    defaults={
+        'password': make_password('demo123'),
+        'first_name': 'Cem',
+        'last_name': 'Demir',
+        'bio': 'University student passionate about chess and genealogy. Always happy to teach beginners!',
+        'timebank_balance': Decimal('2.00'),
+        'karma_score': 8,
+        'role': 'member',
+    }
 )
-print(f"  ✅ Created: {cem.email} (Balance: {cem.timebank_balance}h)")
+if not created:
+    cem.timebank_balance = Decimal('2.00')
+    cem.karma_score = 8
+    cem.set_password('demo123')
+    cem.save()
+print(f"  ✅ {'Created' if created else 'Updated'}: {cem.email} (Balance: {cem.timebank_balance}h)")
 
-sarah = User.objects.create_user(
+sarah, created = User.objects.get_or_create(
     email='sarah@demo.com',
-    password='demo123',
-    first_name='Sarah',
-    last_name='Chen',
-    bio='Food enthusiast exploring Turkish cuisine. Excited to learn and share cooking skills!',
-    timebank_balance=Decimal('1.00'),
-    karma_score=5,
-    role='member',
+    defaults={
+        'password': make_password('demo123'),
+        'first_name': 'Sarah',
+        'last_name': 'Chen',
+        'bio': 'Food enthusiast exploring Turkish cuisine. Excited to learn and share cooking skills!',
+        'timebank_balance': Decimal('1.00'),
+        'karma_score': 5,
+        'role': 'member',
+    }
 )
-print(f"  ✅ Created: {sarah.email} (Balance: {sarah.timebank_balance}h)")
+if not created:
+    sarah.timebank_balance = Decimal('1.00')
+    sarah.karma_score = 5
+    sarah.set_password('demo123')
+    sarah.save()
+print(f"  ✅ {'Created' if created else 'Updated'}: {sarah.email} (Balance: {sarah.timebank_balance}h)")
 
-marcus = User.objects.create_user(
+marcus, created = User.objects.get_or_create(
     email='marcus@demo.com',
-    password='demo123',
-    first_name='Marcus',
-    last_name='Weber',
-    bio='Tech professional and language learner. Enjoy helping others with technology and learning Turkish.',
-    timebank_balance=Decimal('3.00'),
-    karma_score=12,
-    role='member',
+    defaults={
+        'password': make_password('demo123'),
+        'first_name': 'Marcus',
+        'last_name': 'Weber',
+        'bio': 'Tech professional and language learner. Enjoy helping others with technology and learning Turkish.',
+        'timebank_balance': Decimal('3.00'),
+        'karma_score': 12,
+        'role': 'member',
+    }
 )
-print(f"  ✅ Created: {marcus.email} (Balance: {marcus.timebank_balance}h)")
+if not created:
+    marcus.timebank_balance = Decimal('3.00')
+    marcus.karma_score = 12
+    marcus.set_password('demo123')
+    marcus.save()
+print(f"  ✅ {'Created' if created else 'Updated'}: {marcus.email} (Balance: {marcus.timebank_balance}h)")
 
-alex = User.objects.create_user(
+alex, created = User.objects.get_or_create(
     email='alex@demo.com',
-    password='demo123',
-    first_name='Alex',
-    last_name='Johnson',
-    bio='Chess player and genealogy researcher. Love connecting with people through shared interests!',
-    timebank_balance=Decimal('1.00'),
-    karma_score=6,
-    role='member',
+    defaults={
+        'password': make_password('demo123'),
+        'first_name': 'Alex',
+        'last_name': 'Johnson',
+        'bio': 'Chess player and genealogy researcher. Love connecting with people through shared interests!',
+        'timebank_balance': Decimal('1.00'),
+        'karma_score': 6,
+        'role': 'member',
+    }
 )
-print(f"  ✅ Created: {alex.email} (Balance: {alex.timebank_balance}h)")
+if not created:
+    alex.timebank_balance = Decimal('1.00')
+    alex.karma_score = 6
+    alex.set_password('demo123')
+    alex.save()
+print(f"  ✅ {'Created' if created else 'Updated'}: {alex.email} (Balance: {alex.timebank_balance}h)")
 
-ayse = User.objects.create_user(
+ayse, created = User.objects.get_or_create(
     email='ayse@demo.com',
-    password='demo123',
-    first_name='Ayşe',
-    last_name='Kaya',
-    bio='Gardening enthusiast and community organizer. Passionate about sustainable living and sharing knowledge.',
-    timebank_balance=Decimal('4.00'),
-    karma_score=15,
-    role='member',
+    defaults={
+        'password': make_password('demo123'),
+        'first_name': 'Ayşe',
+        'last_name': 'Kaya',
+        'bio': 'Gardening enthusiast and community organizer. Passionate about sustainable living and sharing knowledge.',
+        'timebank_balance': Decimal('4.00'),
+        'karma_score': 15,
+        'role': 'member',
+    }
 )
-print(f"  ✅ Created: {ayse.email} (Balance: {ayse.timebank_balance}h)")
+if not created:
+    ayse.timebank_balance = Decimal('4.00')
+    ayse.karma_score = 15
+    ayse.set_password('demo123')
+    ayse.save()
+print(f"  ✅ {'Created' if created else 'Updated'}: {ayse.email} (Balance: {ayse.timebank_balance}h)")
 
 # ============================================================================
 # STEP 4: CREATE SERVICES, HANDSHAKES, AND INTERACTIONS
 # ============================================================================
 print("\n[4/4] Creating services and interactions...")
 
-cooking_tag = Tag.objects.get(id='Q8476')
-music_tag = Tag.objects.get(id='Q11424')
-chess_tag = Tag.objects.get(id='Q7186')
-education_tag = Tag.objects.get(id='Q11465')
-technology_tag = Tag.objects.get(id='Q11466')
-gardening_tag = Tag.objects.get(id='Q11467')
+def get_tag_by_id_or_name(tag_id, tag_name):
+    try:
+        return Tag.objects.get(id=tag_id)
+    except Tag.DoesNotExist:
+        return Tag.objects.get(name=tag_name)
+
+cooking_tag = get_tag_by_id_or_name('Q8476', 'Cooking')
+music_tag = get_tag_by_id_or_name('Q11424', 'Music')
+chess_tag = get_tag_by_id_or_name('Q7186', 'Chess')
+education_tag = get_tag_by_id_or_name('Q11465', 'Education')
+technology_tag = get_tag_by_id_or_name('Q11466', 'Technology')
+gardening_tag = get_tag_by_id_or_name('Q11467', 'Gardening')
+language_tag = get_tag_by_id_or_name('Q2013', 'Language')
 
 # Elif's Manti Cooking Offer
 elif_manti = Service.objects.create(
@@ -265,7 +325,7 @@ marcus_turkish = Service.objects.create(
     schedule_details='Every Wednesday at 20:00',
     status='Active',
 )
-marcus_turkish.tags.set([Tag.objects.get(id='Q2013')])
+marcus_turkish.tags.set([language_tag])
 print(f"  ✅ Created: {marcus_turkish.title} by {marcus.first_name}")
 
 # Create handshakes
