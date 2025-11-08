@@ -8,7 +8,7 @@ Run: docker compose run --rm backend python manage.py shell < backend/setup_demo
 from api.models import (
     Badge, ChatMessage, Handshake, Notification, ReputationRep, Service, Tag, User, UserBadge
 )
-from api.badge_utils import assign_badge
+from api.badge_utils import assign_badge, check_and_assign_badges
 from django.contrib.auth.hashers import make_password
 from django.db.models import Q
 from django.utils import timezone
