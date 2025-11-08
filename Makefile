@@ -1,4 +1,4 @@
-.PHONY: start stop down build migrate test-backend test-frontend test-e2e shell
+.PHONY: start stop down build migrate demo test-backend test-frontend test-e2e shell
 
 start:
 	docker compose up --build -d
@@ -14,6 +14,9 @@ build:
 
 migrate:
 	docker compose run --rm backend python manage.py migrate
+
+demo:
+	docker compose run --rm backend python manage.py shell < backend/setup_demo.py
 
 test-backend:
 	docker compose run --rm backend python manage.py test --verbosity=1 --keepdb
