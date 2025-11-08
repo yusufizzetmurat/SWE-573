@@ -1,24 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import { getBadgeMeta } from '../lib/badges';
 import 'leaflet/dist/leaflet.css';
-
-// Dynamic import for react-leaflet to avoid SSR issues
-let MapContainer: any;
-let TileLayer: any;
-let CircleMarker: any;
-let Popup: any;
-let isLeafletLoaded = false;
-
-const loadLeaflet = async () => {
-  if (!isLeafletLoaded) {
-    const leaflet = await import('react-leaflet');
-    MapContainer = leaflet.MapContainer;
-    TileLayer = leaflet.TileLayer;
-    CircleMarker = leaflet.CircleMarker;
-    Popup = leaflet.Popup;
-    isLeafletLoaded = true;
-  }
-};
 
 interface ServiceLocation {
   id: string;
@@ -81,14 +64,6 @@ type MarkerGroup = {
 
 export function HomePageMap({ services = [] }: HomePageMapProps) {
   const [isClient, setIsClient] = useState(false);
-  const [isLeafletReady, setIsLeafletReady] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-    loadLeaflet().then(() => {
-      setIsLeafletReady(true);
-    });
-  }, []);
 
   const markerGroups = useMemo<MarkerGroup[]>(() => {
     if (!services.length) return [];
@@ -159,7 +134,7 @@ export function HomePageMap({ services = [] }: HomePageMapProps) {
     }
   }, [isClient]);
 
-  if (!isClient || !isLeafletReady || !mapReady || !MapContainer) {
+  if (!isClient || !mapReady) {
     return (
       <div className="w-full h-[400px] bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 rounded-lg border border-gray-200 relative overflow-hidden flex items-center justify-center">
         <div className="text-center text-gray-600">
