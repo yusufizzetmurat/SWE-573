@@ -12,6 +12,7 @@ import { PostOfferForm } from './components/PostOfferForm';
 import { PostNeedForm } from './components/PostNeedForm';
 import { ChatPage } from './components/ChatPage';
 import { UserProfile } from './components/UserProfile';
+import { TransactionHistoryPage } from './components/TransactionHistoryPage';
 import { AdminDashboard } from './components/AdminDashboard';
 import { ReportDetail } from './components/ReportDetail';
 import { ForumCategories } from './components/ForumCategories';
@@ -30,6 +31,7 @@ type Page =
   | 'post-need'
   | 'messages'
   | 'profile'
+  | 'transaction-history'
   | 'admin'
   | 'report-detail'
   | 'forum';
@@ -44,6 +46,7 @@ const pageToPath: Record<Page, string> = {
   'post-need': '/post-need',
   messages: '/messages',
   profile: '/profile',
+  'transaction-history': '/transaction-history',
   admin: '/admin',
   'report-detail': '/report-detail',
   forum: '/forum',

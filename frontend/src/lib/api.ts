@@ -303,6 +303,25 @@ export interface Notification {
   created_at: string;
 }
 
+// Transaction History API
+export interface Transaction {
+  id: string;
+  transaction_type: 'provision' | 'transfer' | 'refund' | 'adjustment';
+  transaction_type_display: string;
+  amount: number;
+  balance_after: number;
+  description: string;
+  service_title?: string;
+  created_at: string;
+}
+
+export const transactionAPI = {
+  list: async (): Promise<Transaction[]> => {
+    const response = await apiClient.get('/transactions/');
+    return response.data.results || response.data;
+  },
+};
+
 export const notificationAPI = {
   list: async (): Promise<Notification[]> => {
     const response = await apiClient.get('/notifications/');

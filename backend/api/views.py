@@ -621,6 +621,49 @@ class HandshakeViewSet(viewsets.ModelViewSet):
                     return Response({'error': 'Hours must be greater than 0'}, status=400)
                 if hours_decimal > 24:
                     return Response({'error': 'Hours cannot exceed 24'}, status=400)
+                
+                # If hours changed and handshake was already accepted (provisioned), 
+                # we need to adjust the provisioned amount
+                old_hours = handshake.provisioned_hours
+                if handshake.status == 'accepted' and hours_decimal != old_hours:
+                    # Adjust the escrowed amount
+                    difference = hours_decimal - old_hours
+                    receiver = handshake.requester
+                    with transaction.atomic():
+                        receiver_locked = User.objects.select_for_update().get(id=receiver.id)
+                        if difference > 0:
+                            # Need more hours - check balance and deduct
+                            if receiver_locked.timebank_balance < difference:
+                                return Response({'error': f'Insufficient balance. Need {difference} more hours'}, status=400)
+                            receiver_locked.timebank_balance -= difference
+                            receiver_locked.save(update_fields=["timebank_balance"])
+                            receiver_locked.refresh_from_db(fields=["timebank_balance"])
+                            
+                            # Record adjustment transaction
+                            TransactionHistory.objects.create(
+                                user=receiver_locked,
+                                transaction_type='provision',
+                                amount=-difference,
+                                balance_after=receiver_locked.timebank_balance,
+                                handshake=handshake,
+                                description=f"Additional hours escrowed for '{handshake.service.title}' (adjusted from {old_hours} to {hours_decimal} hours)"
+                            )
+                        else:
+                            # Refund excess hours
+                            receiver_locked.timebank_balance += abs(difference)
+                            receiver_locked.save(update_fields=["timebank_balance"])
+                            receiver_locked.refresh_from_db(fields=["timebank_balance"])
+                            
+                            # Record refund transaction
+                            TransactionHistory.objects.create(
+                                user=receiver_locked,
+                                transaction_type='refund',
+                                amount=abs(difference),
+                                balance_after=receiver_locked.timebank_balance,
+                                handshake=handshake,
+                                description=f"Hours adjusted for '{handshake.service.title}' (refunded {abs(difference)} hours, changed from {old_hours} to {hours_decimal} hours)"
+                            )
+                
                 handshake.provisioned_hours = hours_decimal
             except (ValueError, TypeError):
                 return Response({'error': 'Invalid hours value'}, status=400)

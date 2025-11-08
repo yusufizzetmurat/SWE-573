@@ -18,6 +18,7 @@ import { useAuth } from '../lib/auth-context';
 import { useToast } from './Toast';
 import { getErrorMessage, type ApiError } from '../lib/types';
 import { HandshakeDetailsModal } from './HandshakeDetailsModal';
+import { ProviderDetailsModal } from './ProviderDetailsModal';
 import { useWebSocket } from '../lib/useWebSocket';
 
 interface ChatPageProps {
@@ -37,6 +38,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
   const [messageInput, setMessageInput] = useState('');
   const [showConflictModal, setShowConflictModal] = useState(false);
   const [showHandshakeDetailsModal, setShowHandshakeDetailsModal] = useState(false);
+  const [showProviderDetailsModal, setShowProviderDetailsModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -369,12 +371,12 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
                           if (selectedChat.provider_initiated) {
                             return (
                               <Button 
-                                onClick={handleApproveHandshake}
+                                onClick={() => setShowProviderDetailsModal(true)}
                                 className="bg-green-500 hover:bg-green-600 text-white whitespace-nowrap"
                                 style={{ pointerEvents: 'auto' }}
                               >
                                 <CheckCircle className="w-4 h-4 mr-2" />
-                                Approve Handshake
+                                Review & Approve
                               </Button>
                             );
                           }
@@ -409,13 +411,20 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
                               
                               if (!userHasConfirmed && onConfirmService) {
                                 return (
-                                  <Button 
-                                    onClick={() => onConfirmService(selectedChat.handshake_id)}
-                                    className="bg-amber-500 hover:bg-amber-600 text-white"
-                                  >
-                                    <CheckCircle className="w-4 h-4 mr-2" />
-                                    Confirm Service Completion
-                                  </Button>
+                                  <div className="flex flex-col gap-2">
+                                    {selectedChat.provisioned_hours && (
+                                      <div className="text-xs text-gray-600 px-2">
+                                        Hours: {selectedChat.provisioned_hours} {selectedChat.provisioned_hours === 1 ? 'hour' : 'hours'}
+                                      </div>
+                                    )}
+                                    <Button 
+                                      onClick={() => onConfirmService(selectedChat.handshake_id)}
+                                      className="bg-amber-500 hover:bg-amber-600 text-white"
+                                    >
+                                      <CheckCircle className="w-4 h-4 mr-2" />
+                                      Confirm Service Completion
+                                    </Button>
+                                  </div>
                                 );
                               }
                               
@@ -568,6 +577,20 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
           onClose={() => setShowHandshakeDetailsModal(false)}
           onSubmit={(details) => handleInitiateHandshake(details)}
           serviceTitle={selectedChat.service_title}
+        />
+      )}
+
+      {/* Provider Details Modal - For requester to review before approval */}
+      {showProviderDetailsModal && selectedChat && (
+        <ProviderDetailsModal
+          open={showProviderDetailsModal}
+          onClose={() => setShowProviderDetailsModal(false)}
+          onApprove={handleApproveHandshake}
+          exactLocation={selectedChat.exact_location}
+          exactDuration={selectedChat.exact_duration}
+          scheduledTime={selectedChat.scheduled_time}
+          serviceTitle={selectedChat.service_title}
+          providerName={selectedChat.other_user.name}
         />
       )}
 

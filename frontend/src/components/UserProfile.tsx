@@ -346,11 +346,20 @@ export function UserProfile({
           {/* RIGHT COLUMN - Activity & Balance */}
           <div className="space-y-6">
             {/* TimeBank Balance Card */}
-            <div className={`rounded-xl border p-8 ${ 
+            <div className={`relative rounded-xl border p-8 ${ 
               showBalanceWarning 
                 ? 'bg-red-50 border-red-200' 
                 : 'bg-gradient-to-br from-amber-500 to-orange-500 border-amber-600'
             }`}>
+              {isOwnProfile && (
+                <Button
+                  variant="ghost"
+                  className={`absolute top-4 right-4 ${showBalanceWarning ? 'text-red-800 hover:bg-red-100' : 'text-white hover:bg-white/20'}`}
+                  onClick={() => onNavigate('transaction-history')}
+                >
+                  View History
+                </Button>
+              )}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className={`w-16 h-16 rounded-full flex items-center justify-center ${ 
