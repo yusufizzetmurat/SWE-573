@@ -129,27 +129,22 @@ export function ServiceMap({ locationType, locationArea, locationDetails, locati
     );
   }
 
+  // For In-Person services, always show a map (even if location_area is not specified)
   const district = locationArea ? ISTANBUL_DISTRICTS[locationArea] : null;
-
-  if (!district) {
-    return (
-      <div className="w-full h-64 bg-gradient-to-br from-green-50 to-emerald-100 rounded-lg border border-green-200 flex items-center justify-center">
-        <div className="text-center">
-          <MapPin className="w-12 h-12 text-green-600 mx-auto mb-2" />
-          <p className="text-gray-700 font-medium">Location Area Not Specified</p>
-          <p className="text-sm text-gray-600 mt-1">Exact address will be shared after handshake</p>
-        </div>
-      </div>
-    );
-  }
+  const displayName = district ? district.name : (locationArea || 'Istanbul');
+  const hasSpecificLocation = !!(locationLat && locationLng) || !!district;
 
   return (
     <div className="w-full h-64 rounded-lg border border-green-200 overflow-hidden relative">
       <div ref={mapRef} className="w-full h-full" />
       <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm p-3 border-t border-green-200">
-        <p className="text-sm text-gray-700 font-medium">{district.name}, Istanbul</p>
+        <p className="text-sm text-gray-700 font-medium">
+          {hasSpecificLocation ? `${displayName}, Istanbul` : 'Istanbul Area'}
+        </p>
         <p className="text-xs text-gray-600 mt-1">
-          {locationDetails || 'Exact address will be shared after handshake confirmation'}
+          {locationDetails || (hasSpecificLocation 
+            ? 'Approximate location - exact address will be shared after handshake confirmation'
+            : 'Location area will be specified by the provider - exact address will be shared after handshake confirmation')}
         </p>
       </div>
     </div>

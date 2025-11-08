@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Send, Check, AlertCircle, MessageSquare, CheckCircle } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
@@ -40,24 +40,66 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
   const [isLoading, setIsLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const selectedChatRef = useRef<Conversation | null>(null);
+
+  // Keep selectedChatRef in sync with selectedChat
   useEffect(() => {
-    const fetchConversations = async () => {
-      try {
-        setIsLoading(true);
-        const data = await chatAPI.listConversations();
-        setConversations(data);
-        if (data.length > 0 && !selectedChat) {
-          setSelectedChat(data[0]);
-        }
-      } catch (error) {
-        console.error('Failed to fetch conversations:', error);
-      } finally {
-        setIsLoading(false);
+    selectedChatRef.current = selectedChat;
+  }, [selectedChat]);
+
+  // Define fetchConversations function using useCallback for stability
+  const fetchConversations = useCallback(async () => {
+    try {
+      const data = await chatAPI.listConversations();
+      setConversations(data);
+      
+      // Update selected chat if it still exists, preserving selection
+      const currentSelected = selectedChatRef.current;
+      const updatedChat = data.find(c => c.handshake_id === currentSelected?.handshake_id);
+      if (updatedChat) {
+        setSelectedChat(updatedChat);
+      } else if (data.length > 0 && !currentSelected) {
+        setSelectedChat(data[0]);
       }
+    } catch (error) {
+      console.error('Failed to fetch conversations:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const loadConversations = async () => {
+      setIsLoading(true);
+      await fetchConversations();
+      setIsLoading(false);
     };
 
-    fetchConversations();
-  }, []);
+    loadConversations();
+
+    // Auto-refresh conversations every 5 seconds to catch handshake status changes
+    const refreshInterval = setInterval(() => {
+      fetchConversations();
+    }, 5000);
+
+    // Refresh when page becomes visible
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchConversations();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Refresh on window focus
+    const handleFocus = () => {
+      fetchConversations();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(refreshInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchConversations]);
 
   // WebSocket connection for real-time messages
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -77,14 +119,8 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
         }
         return [...prev, message];
       });
-      // Refresh conversations to update last message
-      chatAPI.listConversations().then(data => {
-        setConversations(data);
-        const updatedChat = data.find(c => c.handshake_id === selectedChat?.handshake_id);
-        if (updatedChat) {
-          setSelectedChat(updatedChat);
-        }
-      }).catch(() => {});
+      // Refresh conversations to update last message and handshake status
+      fetchConversations();
     },
     onError: (error) => {
       console.error('WebSocket error:', error);
@@ -121,12 +157,8 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
     
     try {
       await handshakeAPI.initiate(selectedChat.handshake_id, details);
-      const data = await chatAPI.listConversations();
-      setConversations(data);
-      const updatedChat = data.find(c => c.handshake_id === selectedChat.handshake_id);
-      if (updatedChat) {
-        setSelectedChat(updatedChat);
-      }
+      // Refresh conversations to get updated handshake status
+      await fetchConversations();
       showToast('Service details provided! Waiting for requester approval.', 'success');
       setShowHandshakeDetailsModal(false);
     } catch (error: unknown) {
@@ -135,12 +167,8 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
       if (apiError?.response?.data?.conflict) {
         setShowConflictModal(true);
       } else if (errorMessage.includes('not pending')) {
-        const data = await chatAPI.listConversations();
-        setConversations(data);
-        const updatedChat = data.find(c => c.handshake_id === selectedChat.handshake_id);
-        if (updatedChat) {
-          setSelectedChat(updatedChat);
-        }
+        // Refresh if status changed
+        await fetchConversations();
       } else {
         showToast(errorMessage, 'error');
       }
@@ -154,12 +182,8 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
     
     try {
       await handshakeAPI.approve(selectedChat.handshake_id);
-      const data = await chatAPI.listConversations();
-      setConversations(data);
-      const updatedChat = data.find(c => c.handshake_id === selectedChat.handshake_id);
-      if (updatedChat) {
-        setSelectedChat(updatedChat);
-      }
+      // Refresh conversations to get updated handshake status
+      await fetchConversations();
       showToast('Handshake approved! The handshake is now accepted.', 'success');
     } catch (error: unknown) {
       const errorMessage = getErrorMessage(error);
@@ -205,8 +229,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
       setMessages(prev => prev.map(m => m.id === tempMessage.id ? newMessage : m));
       
       // Refresh conversations to update last message
-      const data = await chatAPI.listConversations();
-      setConversations(data);
+      fetchConversations();
     } catch (error: unknown) {
       // Remove temp message on error
       setMessages(prev => prev.filter(m => m.id !== tempMessage.id));
