@@ -45,22 +45,32 @@ export function ServiceConfirmationModal({
 
   useEffect(() => {
     if (open && handshakeId) {
+      const fetchHandshake = () => {
+        handshakeAPI.get(handshakeId)
+          .then((data) => {
+            setHandshake(data);
+            // Only update hours if user is not currently editing
+            if (!isEditingHours) {
+              setHours(data.provisioned_hours.toString());
+            }
+          })
+          .catch((error) => {
+            console.error('Failed to fetch handshake:', error);
+          });
+      };
+
       setIsLoading(true);
-      handshakeAPI.get(handshakeId)
-        .then((data) => {
-          setHandshake(data);
-          setHours(data.provisioned_hours.toString());
-        })
-        .catch((error) => {
-          console.error('Failed to fetch handshake:', error);
-        })
-        .finally(() => {
-          setIsLoading(false);
-        });
+      fetchHandshake();
+      setIsLoading(false);
+      
+      // Refresh handshake data periodically to catch hour changes from other user
+      const refreshInterval = setInterval(fetchHandshake, 3000);
+      
+      return () => clearInterval(refreshInterval);
     } else if (open && initialDuration) {
       setHours(initialDuration.toString());
     }
-  }, [open, handshakeId, initialDuration]);
+  }, [open, handshakeId, initialDuration, isEditingHours]);
 
   const handleComplete = async () => {
     setIsSubmitting(true);
@@ -163,15 +173,16 @@ export function ServiceConfirmationModal({
                           </Button>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-900">
-                            {formatTimebank(actualDuration)} TimeBank {formatTimebank(actualDuration) === '1' ? 'Hour' : 'Hours'}
-                          </span>
-                          <button
-                            onClick={() => setIsEditingHours(true)}
-                            className="text-amber-600 hover:text-amber-700"
-                            title="Edit hours"
-                          >
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-900">
+                              {formatTimebank(actualDuration)} TimeBank {formatTimebank(actualDuration) === '1' ? 'Hour' : 'Hours'}
+                            </span>
+                            <button
+                              onClick={() => setIsEditingHours(true)}
+                              className="text-amber-600 hover:text-amber-700"
+                              title="Edit hours"
+                            >
                             <Edit2 className="w-4 h-4" />
                           </button>
                         </div>
