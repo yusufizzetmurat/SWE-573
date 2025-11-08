@@ -413,7 +413,8 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
                   </div>
 
                   {/* Messages - Scrollable area that doesn't overlap header */}
-                  <ScrollArea className="flex-1 min-h-0 p-6 bg-gradient-to-b from-gray-50 to-white overflow-auto">
+                  <div className="flex-1 min-h-0 overflow-hidden relative" style={{ zIndex: 1 }}>
+                    <ScrollArea className="h-full p-6 bg-gradient-to-b from-gray-50 to-white">
                     <div className="space-y-4">
                       {messages.length === 0 ? (
                         <div className="flex items-center justify-center h-full py-12">
@@ -487,7 +488,8 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
                         })
                       )}
                     </div>
-                  </ScrollArea>
+                    </ScrollArea>
+                  </div>
                 </>
               )}
 
