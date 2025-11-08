@@ -191,8 +191,13 @@ export const handshakeAPI = {
     return response.data;
   },
 
-  initiate: async (handshakeId: string, data?: { exact_location?: string; exact_duration?: number; scheduled_time?: string }): Promise<Handshake> => {
-    const response = await apiClient.post(`/handshakes/${handshakeId}/initiate/`, data || {});
+  initiate: async (handshakeId: string, data: { exact_location: string; exact_duration: number; scheduled_time: string }): Promise<Handshake> => {
+    const response = await apiClient.post(`/handshakes/${handshakeId}/initiate/`, data);
+    return response.data;
+  },
+
+  approve: async (handshakeId: string): Promise<Handshake> => {
+    const response = await apiClient.post(`/handshakes/${handshakeId}/approve/`, {});
     return response.data;
   },
 
@@ -254,6 +259,8 @@ export interface Conversation {
   provider_confirmed_complete?: boolean;
   receiver_confirmed_complete?: boolean;
   is_provider?: boolean;  // True if current user is the provider
+  provider_initiated?: boolean;
+  requester_initiated?: boolean;
 }
 
 export const chatAPI = {

@@ -114,7 +114,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
     }
   }, [messages]);
 
-  const handleInitiateHandshake = async (details?: { exact_location: string; exact_duration: number; scheduled_time: string }) => {
+  const handleInitiateHandshake = async (details: { exact_location: string; exact_duration: number; scheduled_time: string }) => {
     if (!selectedChat || selectedChat.status !== 'pending') {
       return;
     }
@@ -127,26 +127,12 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
       if (updatedChat) {
         setSelectedChat(updatedChat);
       }
-      const hasInitiated = selectedChat.is_provider 
-        ? selectedChat.provider_initiated 
-        : selectedChat.requester_initiated;
-      const otherInitiated = selectedChat.is_provider 
-        ? selectedChat.requester_initiated 
-        : selectedChat.provider_initiated;
-      
-      if (otherInitiated && details) {
-        showToast('Handshake initiated! Both parties have confirmed. Handshake accepted!', 'success');
-      } else if (otherInitiated && !details) {
-        setShowHandshakeDetailsModal(true);
-      } else {
-        showToast('Your initiation received! Waiting for your partner to initiate.', 'info');
-      }
+      showToast('Service details provided! Waiting for requester approval.', 'success');
+      setShowHandshakeDetailsModal(false);
     } catch (error: unknown) {
       const errorMessage = getErrorMessage(error);
-      const apiError = error as { response?: { data?: { requires_details?: boolean } } };
-      if (errorMessage.includes('requires_details') || apiError?.response?.data?.requires_details) {
-        setShowHandshakeDetailsModal(true);
-      } else if (errorMessage.includes('conflict')) {
+      const apiError = error as { response?: { data?: { conflict?: boolean; conflict_details?: any } } };
+      if (apiError?.response?.data?.conflict) {
         setShowConflictModal(true);
       } else if (errorMessage.includes('not pending')) {
         const data = await chatAPI.listConversations();
@@ -158,6 +144,26 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
       } else {
         showToast(errorMessage, 'error');
       }
+    }
+  };
+
+  const handleApproveHandshake = async () => {
+    if (!selectedChat || selectedChat.status !== 'pending') {
+      return;
+    }
+    
+    try {
+      await handshakeAPI.approve(selectedChat.handshake_id);
+      const data = await chatAPI.listConversations();
+      setConversations(data);
+      const updatedChat = data.find(c => c.handshake_id === selectedChat.handshake_id);
+      if (updatedChat) {
+        setSelectedChat(updatedChat);
+      }
+      showToast('Handshake approved! The handshake is now accepted.', 'success');
+    } catch (error: unknown) {
+      const errorMessage = getErrorMessage(error);
+      showToast(errorMessage, 'error');
     }
   };
 
@@ -311,38 +317,45 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
                       </div>
                       {selectedChat.status === 'pending' && user && (() => {
                         const isProvider = selectedChat.is_provider ?? false;
-                        const userHasInitiated = isProvider 
-                          ? selectedChat.provider_initiated 
-                          : selectedChat.requester_initiated;
-                        const otherHasInitiated = isProvider 
-                          ? selectedChat.requester_initiated 
-                          : selectedChat.provider_initiated;
                         
-                        if (userHasInitiated && !otherHasInitiated) {
+                        // Provider flow: can initiate with details
+                        if (isProvider) {
+                          if (selectedChat.provider_initiated) {
+                            return (
+                              <div className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-md text-sm font-medium">
+                                Waiting for {selectedChat.other_user.name} to approve
+                              </div>
+                            );
+                          }
+                          
                           return (
-                            <div className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-md text-sm font-medium">
-                              Waiting for {selectedChat.other_user.name} to initiate
-                            </div>
+                            <Button 
+                              onClick={() => setShowHandshakeDetailsModal(true)}
+                              className="bg-green-500 hover:bg-green-600 text-white"
+                            >
+                              <Check className="w-4 h-4 mr-2" />
+                              Initiate Handshake
+                            </Button>
                           );
                         }
                         
-                        if (userHasInitiated && otherHasInitiated) {
+                        // Requester flow: can approve after provider initiates
+                        if (selectedChat.provider_initiated) {
                           return (
-                            <div className="px-3 py-1.5 bg-green-100 text-green-700 rounded-md text-sm font-medium">
-                              Both parties initiated - Handshake accepted!
-                            </div>
+                            <Button 
+                              onClick={handleApproveHandshake}
+                              className="bg-green-500 hover:bg-green-600 text-white"
+                            >
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              Approve Handshake
+                            </Button>
                           );
                         }
                         
                         return (
-                          <Button 
-                            onClick={() => handleInitiateHandshake()}
-                            className="bg-green-500 hover:bg-green-600 text-white"
-                            disabled={selectedChat.status !== 'pending'}
-                          >
-                            <Check className="w-4 h-4 mr-2" />
-                            Initiate Handshake
-                          </Button>
+                          <div className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-md text-sm font-medium">
+                            Waiting for {selectedChat.other_user.name} to provide service details
+                          </div>
                         );
                       })()}
                       {showHandshakeDetailsModal && selectedChat && (

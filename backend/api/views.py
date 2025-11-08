@@ -324,128 +324,189 @@ class HandshakeViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='initiate')
     def initiate_handshake(self, request, pk=None):
+        """
+        Provider initiates handshake with details (location, duration, scheduled_time).
+        Only the service provider can initiate. After initiation, requester can approve.
+        """
         handshake = self.get_object()
         user = request.user
         
-        is_provider = handshake.service.user == user
-        is_requester = handshake.requester == user
-        
-        if not (is_provider or is_requester):
-            return Response({'error': 'Not authorized'}, status=403)
+        # Only provider can initiate
+        if handshake.service.user != user:
+            return Response({'error': 'Only the service provider can initiate the handshake'}, status=403)
 
         if handshake.status != 'pending':
             return Response({'error': 'Handshake is not pending'}, status=400)
 
-        exact_location = request.data.get('exact_location')
+        # Provider has already initiated
+        if handshake.provider_initiated:
+            return Response({'error': 'You have already initiated this handshake'}, status=400)
+
+        # Require all details from provider
+        exact_location = request.data.get('exact_location', '').strip()
         exact_duration = request.data.get('exact_duration')
         scheduled_time = request.data.get('scheduled_time')
 
-        if is_provider:
-            handshake.provider_initiated = True
-        else:
-            handshake.requester_initiated = True
-
-        if exact_location:
-            handshake.exact_location = exact_location
-        if exact_duration:
-            handshake.exact_duration = Decimal(str(exact_duration))
-        if scheduled_time:
-            from django.utils.dateparse import parse_datetime
-            parsed_time = parse_datetime(scheduled_time)
-            if parsed_time:
-                handshake.scheduled_time = parsed_time
-                
-                # Check for schedule conflicts
-                from .schedule_utils import check_schedule_conflict
-                duration_hours = float(exact_duration or handshake.provisioned_hours)
-                conflicts = check_schedule_conflict(user, parsed_time, duration_hours, exclude_handshake=handshake)
-                
-                if conflicts:
-                    conflict_info = conflicts[0]  # Get first conflict
-                    other_user_name = f"{conflict_info['other_user'].first_name} {conflict_info['other_user'].last_name}".strip()
-                    conflict_time = conflict_info['scheduled_time'].strftime('%Y-%m-%d %H:%M')
-                    return Response({
-                        'error': f'Schedule conflict detected',
-                        'conflict': True,
-                        'conflict_details': {
-                            'service_title': conflict_info['service_title'],
-                            'scheduled_time': conflict_time,
-                            'other_user': other_user_name
-                        }
-                    }, status=400)
-
-        both_initiated = handshake.provider_initiated and handshake.requester_initiated
+        if not exact_location:
+            return Response({'error': 'Exact location is required'}, status=400)
         
-        if both_initiated:
-            if not handshake.exact_location or not handshake.exact_duration or not handshake.scheduled_time:
-                return Response({
-                    'error': 'Both parties must provide exact location, duration, and scheduled time before handshake can be accepted',
-                    'requires_details': True
-                }, status=400)
-            
-            try:
-                provision_timebank(handshake)
-            except ValueError as e:
-                return Response({'error': str(e)}, status=400)
-            handshake.status = 'accepted'
-            
+        if not exact_duration:
+            return Response({'error': 'Exact duration is required'}, status=400)
+        
+        if not scheduled_time:
+            return Response({'error': 'Scheduled time is required'}, status=400)
+
+        # Parse and validate scheduled time
+        from django.utils.dateparse import parse_datetime
+        from django.utils import timezone
+        parsed_time = parse_datetime(scheduled_time)
+        
+        if not parsed_time:
+            return Response({'error': 'Invalid scheduled time format'}, status=400)
+        
+        if parsed_time <= timezone.now():
+            return Response({'error': 'Scheduled time must be in the future'}, status=400)
+
+        # Validate duration
+        try:
+            exact_duration_decimal = Decimal(str(exact_duration))
+            if exact_duration_decimal <= 0:
+                return Response({'error': 'Duration must be greater than 0'}, status=400)
+        except (ValueError, TypeError):
+            return Response({'error': 'Invalid duration format'}, status=400)
+
+        # Check for schedule conflicts
+        from .schedule_utils import check_schedule_conflict
+        duration_hours = float(exact_duration_decimal)
+        conflicts = check_schedule_conflict(user, parsed_time, duration_hours, exclude_handshake=handshake)
+        
+        if conflicts:
+            conflict_info = conflicts[0]
+            other_user_name = f"{conflict_info['other_user'].first_name} {conflict_info['other_user'].last_name}".strip()
+            conflict_time = conflict_info['scheduled_time'].strftime('%Y-%m-%d %H:%M')
+            return Response({
+                'error': 'Schedule conflict detected',
+                'conflict': True,
+                'conflict_details': {
+                    'service_title': conflict_info['service_title'],
+                    'scheduled_time': conflict_time,
+                    'other_user': other_user_name
+                }
+            }, status=400)
+
+        # Set handshake details
+        handshake.provider_initiated = True
+        handshake.exact_location = exact_location
+        handshake.exact_duration = exact_duration_decimal
+        handshake.scheduled_time = parsed_time
+        handshake.save()
+
+        # Notify requester that provider has initiated
+        create_notification(
+            user=handshake.requester,
+            notification_type='handshake_request',
+            title='Service Details Provided',
+            message=f"{user.first_name} has provided service details for '{handshake.service.title}'. Please review and approve.",
+            handshake=handshake,
+            service=handshake.service
+        )
+
+        serializer = self.get_serializer(handshake)
+        return Response(serializer.data, status=200)
+
+    @action(detail=True, methods=['post'], url_path='approve')
+    def approve_handshake(self, request, pk=None):
+        """
+        Requester approves the handshake after provider has initiated with details.
+        Once approved, handshake is accepted and TimeBank is provisioned.
+        """
+        handshake = self.get_object()
+        user = request.user
+        
+        # Only requester can approve
+        if handshake.requester != user:
+            return Response({'error': 'Only the requester can approve the handshake'}, status=403)
+
+        if handshake.status != 'pending':
+            return Response({'error': 'Handshake is not pending'}, status=400)
+
+        # Provider must have initiated first
+        if not handshake.provider_initiated:
+            return Response({'error': 'Provider must initiate the handshake first'}, status=400)
+
+        # Require all details to be set
+        if not handshake.exact_location or not handshake.exact_duration or not handshake.scheduled_time:
+            return Response({
+                'error': 'Provider must provide exact location, duration, and scheduled time before approval',
+                'requires_details': True
+            }, status=400)
+
+        # Provision TimeBank and accept handshake
+        try:
+            provision_timebank(handshake)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=400)
+        
+        handshake.status = 'accepted'
+        handshake.requester_initiated = True  # Mark requester as having approved
+        handshake.save()
+
+        # Notify provider that handshake was approved
+        create_notification(
+            user=handshake.service.user,
+            notification_type='handshake_accepted',
+            title='Handshake Approved',
+            message=f"{user.first_name} has approved the handshake for '{handshake.service.title}'. The handshake is now accepted.",
+            handshake=handshake,
+            service=handshake.service
+        )
+        
+        # Schedule reminders
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        service_time = handshake.scheduled_time
+        duration_hours = float(handshake.exact_duration)
+        completion_time = service_time + timedelta(hours=duration_hours)
+        
+        if service_time > timezone.now():
             create_notification(
-                user=handshake.requester if is_provider else handshake.service.user,
-                notification_type='handshake_accepted',
-                title='Handshake Accepted',
-                message=f"Both parties have initiated! The handshake for '{handshake.service.title}' is now accepted.",
+                user=handshake.service.user,
+                notification_type='service_reminder',
+                title='Service Reminder',
+                message=f"Your service '{handshake.service.title}' is scheduled for {service_time.strftime('%Y-%m-%d %H:%M')}",
                 handshake=handshake,
                 service=handshake.service
             )
-            
-            from django.utils import timezone
-            from datetime import timedelta
-            
-            if handshake.scheduled_time:
-                service_time = handshake.scheduled_time
-                duration_hours = float(handshake.exact_duration or handshake.provisioned_hours)
-                completion_time = service_time + timedelta(hours=duration_hours)
-                
-                if service_time > timezone.now():
-                    create_notification(
-                        user=handshake.service.user,
-                        notification_type='service_reminder',
-                        title='Service Reminder',
-                        message=f"Your service '{handshake.service.title}' is scheduled for {service_time.strftime('%Y-%m-%d %H:%M')}",
-                        handshake=handshake,
-                        service=handshake.service
-                    )
-                    create_notification(
-                        user=handshake.requester,
-                        notification_type='service_reminder',
-                        title='Service Reminder',
-                        message=f"Your service '{handshake.service.title}' is scheduled for {service_time.strftime('%Y-%m-%d %H:%M')}",
-                        handshake=handshake,
-                        service=handshake.service
-                    )
-                
-                if completion_time > timezone.now():
-                    create_notification(
-                        user=handshake.service.user,
-                        notification_type='service_confirmation',
-                        title='Service Completion Reminder',
-                        message=f"Please confirm completion of '{handshake.service.title}' after {completion_time.strftime('%Y-%m-%d %H:%M')}",
-                        handshake=handshake,
-                        service=handshake.service
-                    )
-                    create_notification(
-                        user=handshake.requester,
-                        notification_type='service_confirmation',
-                        title='Service Completion Reminder',
-                        message=f"Please confirm completion of '{handshake.service.title}' after {completion_time.strftime('%Y-%m-%d %H:%M')}",
-                        handshake=handshake,
-                        service=handshake.service
-                    )
-
-        handshake.save()
-
+            create_notification(
+                user=handshake.requester,
+                notification_type='service_reminder',
+                title='Service Reminder',
+                message=f"Your service '{handshake.service.title}' is scheduled for {service_time.strftime('%Y-%m-%d %H:%M')}",
+                handshake=handshake,
+                service=handshake.service
+            )
+        
+        if completion_time > timezone.now():
+            create_notification(
+                user=handshake.service.user,
+                notification_type='service_confirmation',
+                title='Service Completion Reminder',
+                message=f"Please confirm completion of '{handshake.service.title}' after {completion_time.strftime('%Y-%m-%d %H:%M')}",
+                handshake=handshake,
+                service=handshake.service
+            )
+            create_notification(
+                user=handshake.requester,
+                notification_type='service_confirmation',
+                title='Service Completion Reminder',
+                message=f"Please confirm completion of '{handshake.service.title}' after {completion_time.strftime('%Y-%m-%d %H:%M')}",
+                handshake=handshake,
+                service=handshake.service
+            )
+        
         serializer = self.get_serializer(handshake)
-        return Response(serializer.data)
+        return Response(serializer.data, status=200)
 
     @action(detail=True, methods=['post'], url_path='accept')
     @track_performance
