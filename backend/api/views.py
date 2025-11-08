@@ -359,10 +359,19 @@ class HandshakeViewSet(viewsets.ModelViewSet):
         # Parse and validate scheduled time
         from django.utils.dateparse import parse_datetime
         from django.utils import timezone
+        from django.utils.timezone import get_current_timezone, make_aware
+        
         parsed_time = parse_datetime(scheduled_time)
         
         if not parsed_time:
             return Response({'error': 'Invalid scheduled time format'}, status=400)
+        
+        # Make timezone-aware if naive (frontend sends naive datetime without timezone)
+        # Django's timezone.now() returns timezone-aware datetime, so we need to make parsed_time aware too
+        if timezone.is_naive(parsed_time):
+            # Use the current timezone (from settings.TIME_ZONE, which is UTC)
+            current_tz = get_current_timezone()
+            parsed_time = make_aware(parsed_time, current_tz)
         
         if parsed_time <= timezone.now():
             return Response({'error': 'Scheduled time must be in the future'}, status=400)
