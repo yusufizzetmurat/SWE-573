@@ -134,7 +134,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
         <div className="mb-8">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-gray-900">Map View</h3>
+              <h3 className="text-gray-900 font-semibold">Map View</h3>
               <div className="flex gap-4">
                 <div className="flex items-center gap-2 text-sm">
                   <div className="w-3 h-3 rounded-full bg-green-500"></div>
@@ -148,16 +148,18 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
             </div>
             
             {/* Interactive Map */}
-            <HomePageMap services={services.map(service => ({
-              id: service.id,
-              title: service.title,
-              location_area: service.location_area,
-              location_type: service.location_type,
-              location_lat: service.location_lat,
-              location_lng: service.location_lng,
-              type: service.type,
-              user: service.user,
-            }))} />
+            <div className="w-full" style={{ minHeight: '400px' }}>
+              <HomePageMap services={services.map(service => ({
+                id: service.id,
+                title: service.title,
+                location_area: service.location_area,
+                location_type: service.location_type,
+                location_lat: service.location_lat,
+                location_lng: service.location_lng,
+                type: service.type,
+                user: service.user,
+              }))} />
+            </div>
           </div>
         </div>
 

@@ -1,6 +1,24 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { getBadgeMeta } from '../lib/badges';
+import 'leaflet/dist/leaflet.css';
+
+// Dynamic import for react-leaflet to avoid SSR issues
+let MapContainer: any;
+let TileLayer: any;
+let CircleMarker: any;
+let Popup: any;
+let isLeafletLoaded = false;
+
+const loadLeaflet = async () => {
+  if (!isLeafletLoaded) {
+    const leaflet = await import('react-leaflet');
+    MapContainer = leaflet.MapContainer;
+    TileLayer = leaflet.TileLayer;
+    CircleMarker = leaflet.CircleMarker;
+    Popup = leaflet.Popup;
+    isLeafletLoaded = true;
+  }
+};
 
 interface ServiceLocation {
   id: string;
@@ -63,9 +81,13 @@ type MarkerGroup = {
 
 export function HomePageMap({ services = [] }: HomePageMapProps) {
   const [isClient, setIsClient] = useState(false);
+  const [isLeafletReady, setIsLeafletReady] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
+    loadLeaflet().then(() => {
+      setIsLeafletReady(true);
+    });
   }, []);
 
   const markerGroups = useMemo<MarkerGroup[]>(() => {
@@ -124,35 +146,58 @@ export function HomePageMap({ services = [] }: HomePageMapProps) {
     return Array.from(groups.values());
   }, [services]);
 
-  if (!isClient) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const [mapReady, setMapReady] = useState(false);
+
+  useEffect(() => {
+    if (isClient) {
+      // Small delay to ensure DOM is ready and container has dimensions
+      const timer = setTimeout(() => {
+        setMapReady(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isClient]);
+
+  if (!isClient || !isLeafletReady || !mapReady || !MapContainer) {
     return (
-      <div className="w-full h-96 bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 rounded-2xl border-2 border-green-200 relative overflow-hidden shadow-xl flex items-center justify-center">
+      <div className="w-full h-[400px] bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 rounded-lg border border-gray-200 relative overflow-hidden flex items-center justify-center">
         <div className="text-center text-gray-600">
-          Loading map…
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-2"></div>
+          <p>Loading map…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full h-96 rounded-2xl border-2 border-green-200 overflow-hidden shadow-xl">
-      <MapContainer center={ISTANBUL_CENTER} zoom={11} style={{ height: '100%', width: '100%' }} scrollWheelZoom={false}>
+    <div ref={mapRef} className="w-full h-[400px] rounded-lg border border-gray-200 overflow-hidden" style={{ minHeight: '400px', position: 'relative', zIndex: 0 }}>
+      <MapContainer
+        center={ISTANBUL_CENTER}
+        zoom={11}
+        style={{ height: '100%', width: '100%', minHeight: '400px' }}
+        scrollWheelZoom={true}
+        zoomControl={true}
+        attributionControl={true}
+        key="homepage-map"
+      >
         <TileLayer
-          attribution="© OpenStreetMap contributors"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxZoom={19}
         />
-        {markerGroups.map((group, index) => {
+        {markerGroups.length > 0 && markerGroups.map((group, index) => {
           const color = circleColors[group.type];
           const radius = 12 + Math.min(group.services.length * 2, 12);
           return (
             <CircleMarker
-              key={`${group.label}-${index}`}
+              key={`${group.label}-${index}-${group.position[0]}-${group.position[1]}`}
               center={group.position}
               radius={radius}
               pathOptions={{ color, fillColor: color, fillOpacity: 0.7, weight: 2 }}
             >
               <Popup>
-                <div className="space-y-2">
+                <div className="space-y-2 min-w-[200px]">
                   <div className="font-semibold text-gray-900">{group.label}</div>
                   <div className="text-xs text-gray-500">
                     {group.services.length} {group.services.length === 1 ? 'service' : 'services'} nearby
