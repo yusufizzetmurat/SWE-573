@@ -10,19 +10,27 @@ https://docs.djangoproject.com/en/5.2/howto/deployment/asgi/
 import os
 from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.auth import AuthMiddlewareStack
 from channels.security.websocket import AllowedHostsOriginValidator
+from django.conf import settings
 import api.routing
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hive_project.settings')
 
 django_asgi_app = get_asgi_application()
 
-application = ProtocolTypeRouter({
-    "http": django_asgi_app,
-    "websocket": AllowedHostsOriginValidator(
-        AuthMiddlewareStack(
-            URLRouter(api.routing.websocket_urlpatterns)
-        )
-    ),
-})
+# WebSocket routing - we don't use AuthMiddlewareStack because we handle
+# authentication manually in the consumer via JWT token in query string
+websocket_router = URLRouter(api.routing.websocket_urlpatterns)
+
+# In development, allow all origins for WebSocket connections
+# In production, use AllowedHostsOriginValidator
+if settings.DEBUG:
+    application = ProtocolTypeRouter({
+        "http": django_asgi_app,
+        "websocket": websocket_router,
+    })
+else:
+    application = ProtocolTypeRouter({
+        "http": django_asgi_app,
+        "websocket": AllowedHostsOriginValidator(websocket_router),
+    })

@@ -43,13 +43,14 @@ export function useWebSocket({
   }, [onMessage, onError, onOpen, onClose]);
 
   const connect = useCallback(() => {
-    if (!enabled || !token) {
+    if (!enabled || !token || !url) {
       return;
     }
 
     // Close existing connection
     if (wsRef.current) {
       wsRef.current.close();
+      wsRef.current = null;
     }
 
     // Build WebSocket URL with token
@@ -73,7 +74,7 @@ export function useWebSocket({
           if (data.type === 'chat_message' && data.message) {
             onMessageRef.current?.(data.message);
           } else if (data.type === 'error') {
-            console.error('WebSocket error:', data.error);
+            console.error('WebSocket error message:', data.error);
             onErrorRef.current?.(event);
           }
         } catch (error) {
@@ -82,27 +83,34 @@ export function useWebSocket({
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('WebSocket connection error:', error);
         onErrorRef.current?.(error);
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         setIsConnected(false);
         onCloseRef.current?.();
 
-        // Attempt to reconnect with exponential backoff
-        if (enabled && reconnectAttempts < 5) {
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-          reconnectTimeoutRef.current = setTimeout(() => {
-            setReconnectAttempts((prev) => prev + 1);
-            connect();
-          }, delay);
+        // Only attempt to reconnect if it wasn't a manual close (code 1000)
+        // and if we haven't exceeded max attempts
+        if (event.code !== 1000 && enabled) {
+          setReconnectAttempts((prev) => {
+            if (prev < 5) {
+              const delay = Math.min(1000 * Math.pow(2, prev), 30000);
+              reconnectTimeoutRef.current = setTimeout(() => {
+                connect();
+              }, delay);
+              return prev + 1;
+            }
+            return prev;
+          });
         }
       };
     } catch (error) {
       console.error('Failed to create WebSocket:', error);
+      onErrorRef.current?.(error as Event);
     }
-  }, [url, token, enabled, reconnectAttempts]);
+  }, [url, token, enabled]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -110,10 +118,12 @@ export function useWebSocket({
       reconnectTimeoutRef.current = null;
     }
     if (wsRef.current) {
-      wsRef.current.close();
+      // Close with code 1000 (normal closure) to prevent reconnection
+      wsRef.current.close(1000);
       wsRef.current = null;
     }
     setIsConnected(false);
+    setReconnectAttempts(0);
   }, []);
 
   const sendMessage = useCallback((message: any) => {
@@ -128,7 +138,7 @@ export function useWebSocket({
   }, []);
 
   useEffect(() => {
-    if (enabled && token) {
+    if (enabled && token && url) {
       connect();
     } else {
       disconnect();
@@ -137,7 +147,8 @@ export function useWebSocket({
     return () => {
       disconnect();
     };
-  }, [enabled, token, connect, disconnect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, token, url]); // connect and disconnect are stable, url changes trigger reconnect
 
   return {
     isConnected,
