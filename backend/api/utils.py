@@ -6,7 +6,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import F
 
-from .models import Handshake, Notification, Service, User
+from .models import Handshake, Notification, Service, User, TransactionHistory
 
 
 def can_user_post_offer(user: User) -> bool:
@@ -23,9 +23,21 @@ def provision_timebank(handshake: Handshake) -> bool:
         if receiver.timebank_balance < hours:
             raise ValueError("Insufficient TimeBank balance")
 
+        old_balance = receiver.timebank_balance
         receiver.timebank_balance = F("timebank_balance") - hours
         receiver.save(update_fields=["timebank_balance"])
         receiver.refresh_from_db(fields=["timebank_balance"])
+        
+        # Record transaction history
+        TransactionHistory.objects.create(
+            user=receiver,
+            transaction_type='provision',
+            amount=-hours,  # Negative for debit
+            balance_after=receiver.timebank_balance,
+            handshake=handshake,
+            description=f"Hours escrowed for service '{handshake.service.title}' (provisioned {hours} hours)"
+        )
+        
         return True
 
 def complete_timebank_transfer(handshake: Handshake) -> bool:
@@ -33,8 +45,21 @@ def complete_timebank_transfer(handshake: Handshake) -> bool:
     with transaction.atomic():
         provider = handshake.service.user
         hours = handshake.provisioned_hours
+        old_balance = provider.timebank_balance
         provider.timebank_balance += hours
         provider.save(update_fields=["timebank_balance"])
+        provider.refresh_from_db(fields=["timebank_balance"])
+        
+        # Record transaction history
+        TransactionHistory.objects.create(
+            user=provider,
+            transaction_type='transfer',
+            amount=hours,  # Positive for credit
+            balance_after=provider.timebank_balance,
+            handshake=handshake,
+            description=f"Service completed: '{handshake.service.title}' ({hours} hours transferred)"
+        )
+        
         handshake.status = "completed"
         handshake.save(update_fields=["status"])
         return True
@@ -46,8 +71,20 @@ def cancel_timebank_transfer(handshake: Handshake) -> bool:
         if handshake.status == "accepted":
             receiver = handshake.requester
             hours = handshake.provisioned_hours
+            old_balance = receiver.timebank_balance
             receiver.timebank_balance += hours
             receiver.save(update_fields=["timebank_balance"])
+            receiver.refresh_from_db(fields=["timebank_balance"])
+            
+            # Record transaction history
+            TransactionHistory.objects.create(
+                user=receiver,
+                transaction_type='refund',
+                amount=hours,  # Positive for refund
+                balance_after=receiver.timebank_balance,
+                handshake=handshake,
+                description=f"Refund for cancelled service '{handshake.service.title}' ({hours} hours refunded)"
+            )
 
         handshake.status = "cancelled"
         handshake.save(update_fields=["status"])

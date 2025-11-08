@@ -265,6 +265,10 @@ export interface Conversation {
   is_provider?: boolean;  // True if current user is the provider
   provider_initiated?: boolean;
   requester_initiated?: boolean;
+  exact_location?: string;
+  exact_duration?: number;
+  scheduled_time?: string;
+  provisioned_hours?: number;
 }
 
 export const chatAPI = {

@@ -1,69 +1,65 @@
 from django.db import models
-from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.contrib.auth.models import AbstractUser
+from decimal import Decimal
 import uuid
 
-class UserManager(BaseUserManager):
-    def _create_user(self, email, password, **extra_fields):
-        if not email:
-            raise ValueError('The Email must be set')
-        email = self.normalize_email(email)
-        user = self.model(email=email, **extra_fields)
-        user.set_password(password)
-        user.save(using=self._db)
-        return user
-
-    def create_user(self, email, password=None, **extra_fields):
-        extra_fields.setdefault('is_staff', False)
-        extra_fields.setdefault('is_superuser', False)
-        return self._create_user(email, password, **extra_fields)
-
-    def create_superuser(self, email, password=None, **extra_fields):
-        extra_fields.setdefault('is_staff', True)
-        extra_fields.setdefault('is_superuser', True)
-
-        if extra_fields.get('is_staff') is not True:
-            raise ValueError('Superuser must have is_staff=True.')
-        if extra_fields.get('is_superuser') is not True:
-            raise ValueError('Superuser must have is_superuser=True.')
-        extra_fields.setdefault('first_name', 'Admin')
-        extra_fields.setdefault('last_name', 'User')
-
-        return self._create_user(email, password, **extra_fields)
-
-
-
 class User(AbstractUser):
-    username = None
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)
+    username = None  # Disable username, use email instead
+    first_name = models.CharField(max_length=150)
+    last_name = models.CharField(max_length=150)
+    bio = models.TextField(blank=True, null=True)
+    avatar_url = models.URLField(blank=True, null=True)
+    banner_url = models.URLField(blank=True, null=True)
+    timebank_balance = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    karma_score = models.IntegerField(default=0)
+    role = models.CharField(max_length=20, choices=[('member', 'Member'), ('admin', 'Admin')], default='member')
+    date_joined = models.DateTimeField(auto_now_add=True)
 
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['first_name', 'last_name'] 
-
-    # Custom fields
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    bio = models.TextField(null=True, blank=True)
-    avatar_url = models.CharField(max_length=255, null=True, blank=True)
-    banner_url = models.CharField(max_length=255, null=True, blank=True)
-    timebank_balance = models.DecimalField(max_digits=10, decimal_places=2, default=1.00)
-    karma_score = models.IntegerField(default=0)
-    
-    ROLE_CHOICES = (
-        ('member', 'Member'),
-        ('admin', 'Admin'),
-    )
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='member')
-
-    objects = UserManager()
+    REQUIRED_FIELDS = ['first_name', 'last_name']
 
     def __str__(self):
         return self.email
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['email']),
+            models.Index(fields=['timebank_balance']),
+        ]
+
 class Tag(models.Model):
-    id = models.CharField(max_length=255, primary_key=True) # Wikidata ID (e.g., "Q8476")
-    name = models.CharField(max_length=255, unique=True)    # Human-readable name (e.g., "Cooking")
+    id = models.CharField(primary_key=True, max_length=200)
+    name = models.CharField(max_length=100, unique=True)
 
     def __str__(self):
         return self.name
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['name']),
+        ]
+
+class Badge(models.Model):
+    id = models.CharField(primary_key=True, max_length=200)
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    icon_url = models.URLField(blank=True, null=True)
+
+    def __str__(self):
+        return self.name
+
+class UserBadge(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='badges')
+    badge = models.ForeignKey(Badge, on_delete=models.CASCADE)
+    earned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['user', 'badge']
+        indexes = [
+            models.Index(fields=['user', 'badge']),
+        ]
 
 class Service(models.Model):
     TYPE_CHOICES = (
@@ -86,7 +82,7 @@ class Service(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='services')
-    title = models.CharField(max_length=255)
+    title = models.CharField(max_length=200)
     description = models.TextField()
     type = models.CharField(max_length=10, choices=TYPE_CHOICES)
     duration = models.DecimalField(max_digits=5, decimal_places=2)
@@ -97,14 +93,21 @@ class Service(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Active')
     max_participants = models.IntegerField(default=1)
     schedule_type = models.CharField(max_length=10, choices=SCHEDULE_CHOICES)
-    schedule_details = models.CharField(max_length=255, null=True, blank=True)
+    schedule_details = models.TextField(blank=True, null=True)
+    tags = models.ManyToManyField(Tag, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-
-    # The Many-to-Many link to Tags
-    tags = models.ManyToManyField(Tag, related_name='services', blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.title
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['type', 'status']),
+            models.Index(fields=['status', 'created_at']),
+            models.Index(fields=['location_type', 'location_area']),
+        ]
 
 class Handshake(models.Model):
     STATUS_CHOICES = (
@@ -156,80 +159,77 @@ class ChatMessage(models.Model):
             models.Index(fields=['handshake', 'created_at']),
         ]
 
-# 6. The Notification Model
 class Notification(models.Model):
-    TYPE_CHOICES = (
-        ('handshake_request', 'Handshake Request'),
-        ('handshake_accepted', 'Handshake Accepted'),
-        ('handshake_denied', 'Handshake Denied'),
-        ('handshake_cancelled', 'Handshake Cancelled'),
-        ('chat_message', 'Chat Message'),
-        ('service_confirmation', 'Service Confirmation'),
-        ('positive_rep', 'Positive Rep'),
-        ('admin_warning', 'Admin Warning'),
-        ('service_reminder', 'Service Reminder'),
-    )
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
-    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
-    title = models.CharField(max_length=255)
+    type = models.CharField(max_length=50)
+    title = models.CharField(max_length=200)
     message = models.TextField()
     is_read = models.BooleanField(default=False)
     related_handshake = models.ForeignKey(Handshake, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
     related_service = models.ForeignKey(Service, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        return f"{self.user.email}: {self.title}"
-
     class Meta:
         indexes = [
             models.Index(fields=['user', 'is_read', 'created_at']),
         ]
+        ordering = ['-created_at']
 
 class ReputationRep(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    handshake = models.ForeignKey(Handshake, on_delete=models.CASCADE, related_name='reputation_reps')
+    handshake = models.ForeignKey(Handshake, on_delete=models.CASCADE, related_name='reps')
     giver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='given_reps')
     receiver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_reps')
     is_punctual = models.BooleanField(default=False)
     is_helpful = models.BooleanField(default=False)
     is_kind = models.BooleanField(default=False)
+    comment = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        return f"{self.giver.email} -> {self.receiver.email}"
+    class Meta:
+        indexes = [
+            models.Index(fields=['receiver', 'created_at']),
+            models.Index(fields=['giver', 'created_at']),
+        ]
 
-class Badge(models.Model):
-    id = models.CharField(max_length=50, primary_key=True)  # e.g., "FIRST_SERVICE"
-    name = models.CharField(max_length=255)
-    description = models.TextField()
-    icon_url = models.CharField(max_length=255)
+class TransactionHistory(models.Model):
+    """Track all TimeBank transactions for audit and user visibility"""
+    TRANSACTION_TYPES = (
+        ('provision', 'Provision'),  # Hours escrowed when handshake accepted
+        ('transfer', 'Transfer'),    # Hours transferred when service completed
+        ('refund', 'Refund'),        # Hours refunded when handshake cancelled
+        ('adjustment', 'Adjustment'), # Manual adjustment (admin only)
+    )
 
-    def __str__(self):
-        return self.name
-
-class UserBadge(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='badges')
-    badge = models.ForeignKey(Badge, on_delete=models.CASCADE, related_name='users')
-    earned_at = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transactions')
+    transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPES)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, help_text='Positive for credits, negative for debits')
+    balance_after = models.DecimalField(max_digits=10, decimal_places=2, help_text='User balance after this transaction')
+    handshake = models.ForeignKey(Handshake, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
+    description = models.TextField(help_text='Human-readable description of the transaction')
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('user', 'badge')
+        indexes = [
+            models.Index(fields=['user', 'created_at']),
+            models.Index(fields=['transaction_type', 'created_at']),
+            models.Index(fields=['handshake']),
+        ]
+        ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.user.email} - {self.badge.name}"
+        return f"{self.user.email} - {self.transaction_type} - {self.amount} hours"
 
 class Report(models.Model):
+    """Reports for issues with services or users"""
     TYPE_CHOICES = (
         ('no_show', 'No-Show Dispute'),
         ('inappropriate_content', 'Inappropriate Content'),
         ('service_issue', 'Service Issue'),
         ('spam', 'Spam'),
     )
-
     STATUS_CHOICES = (
         ('pending', 'Pending'),
         ('resolved', 'Resolved'),
@@ -238,13 +238,13 @@ class Report(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     reporter = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reports_made')
-    reported_user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reports_received', null=True, blank=True)
-    reported_service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='reports', null=True, blank=True)
-    related_handshake = models.ForeignKey(Handshake, on_delete=models.CASCADE, related_name='reports', null=True, blank=True)
+    reported_user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='reports_received')
+    reported_service = models.ForeignKey(Service, on_delete=models.CASCADE, null=True, blank=True, related_name='reports')
+    related_handshake = models.ForeignKey(Handshake, on_delete=models.CASCADE, null=True, blank=True, related_name='reports')
     type = models.CharField(max_length=25, choices=TYPE_CHOICES)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     description = models.TextField()
-    admin_notes = models.TextField(null=True, blank=True)
+    admin_notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
     resolved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='resolved_reports')

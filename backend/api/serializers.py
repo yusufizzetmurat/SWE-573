@@ -304,3 +304,21 @@ class ReportSerializer(serializers.ModelSerializer):
         if obj.reported_user:
             return f"{obj.reported_user.first_name} {obj.reported_user.last_name}".strip()
         return None
+
+# Transaction History Serializer
+class TransactionHistorySerializer(serializers.ModelSerializer):
+    transaction_type_display = serializers.CharField(source='get_transaction_type_display', read_only=True)
+    service_title = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TransactionHistory
+        fields = [
+            'id', 'transaction_type', 'transaction_type_display', 'amount',
+            'balance_after', 'description', 'service_title', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def get_service_title(self, obj):
+        if obj.handshake and obj.handshake.service:
+            return obj.handshake.service.title
+        return None

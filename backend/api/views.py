@@ -14,7 +14,7 @@ import bleach
 
 from .models import (
     User, Service, Tag, Handshake, ChatMessage,
-    Notification, ReputationRep, Badge, Report, UserBadge
+    Notification, ReputationRep, Badge, Report, UserBadge, TransactionHistory
 )
 from .serializers import (
     UserRegistrationSerializer, 
@@ -25,7 +25,8 @@ from .serializers import (
     ChatMessageSerializer,
     NotificationSerializer,
     ReputationRepSerializer,
-    ReportSerializer
+    ReportSerializer,
+    TransactionHistorySerializer
 )
 from .utils import (
     can_user_post_offer, provision_timebank, complete_timebank_transfer,
@@ -669,7 +670,7 @@ class HandshakeViewSet(viewsets.ModelViewSet):
             reporter=user,
             reported_user=reported_user,
             related_handshake=handshake,
-            related_service=handshake.service,
+            reported_service=handshake.service,
             type='no_show' if issue_type == 'no_show' else 'service_issue',
             description=request.data.get('description', 'No-show reported')
         )
@@ -723,7 +724,11 @@ class ChatViewSet(viewsets.ViewSet):
                 'receiver_confirmed_complete': handshake.receiver_confirmed_complete,
                 'is_provider': is_provider,
                 'provider_initiated': handshake.provider_initiated,
-                'requester_initiated': handshake.requester_initiated
+                'requester_initiated': handshake.requester_initiated,
+                'exact_location': handshake.exact_location,
+                'exact_duration': float(handshake.exact_duration) if handshake.exact_duration else None,
+                'scheduled_time': handshake.scheduled_time.isoformat() if handshake.scheduled_time else None,
+                'provisioned_hours': float(handshake.provisioned_hours) if handshake.provisioned_hours else None,
             })
 
         paginator = self.pagination_class()
@@ -1019,3 +1024,12 @@ class AdminUserViewSet(viewsets.ViewSet):
             'new_karma': user.karma_score,
             'message': f'Karma adjusted by {adjustment}'
         })
+
+class TransactionHistoryViewSet(viewsets.ReadOnlyModelViewSet):
+    """View transaction history for the current user"""
+    serializer_class = TransactionHistorySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        return TransactionHistory.objects.filter(user=self.request.user).order_by('-created_at')

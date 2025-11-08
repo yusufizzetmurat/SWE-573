@@ -17,7 +17,8 @@ from .views import (
     ReputationViewSet,
     AdminReportViewSet,
     AdminUserViewSet,
-    ExpressInterestView
+    ExpressInterestView,
+    TransactionHistoryViewSet
 )
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .views import CustomTokenRefreshView
@@ -32,6 +33,7 @@ router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'reputation', ReputationViewSet, basename='reputation')
 router.register(r'admin/reports', AdminReportViewSet, basename='admin-report')
 router.register(r'admin/users', AdminUserViewSet, basename='admin-user')
+router.register(r'transactions', TransactionHistoryViewSet, basename='transaction')
 
 def health_check(request):
     return JsonResponse({'status': 'healthy', 'service': 'the-hive-api'})
