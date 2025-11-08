@@ -175,7 +175,7 @@ export function ServiceConfirmationModal({
                       ) : (
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2">
-                            <span className="text-gray-900">
+                            <span className="text-gray-900 font-medium">
                               {formatTimebank(actualDuration)} TimeBank {formatTimebank(actualDuration) === '1' ? 'Hour' : 'Hours'}
                             </span>
                             <button
@@ -183,8 +183,14 @@ export function ServiceConfirmationModal({
                               className="text-amber-600 hover:text-amber-700"
                               title="Edit hours"
                             >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          {handshake && (
+                            <p className="text-xs text-gray-500">
+                              Hours can be adjusted before both parties confirm
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
