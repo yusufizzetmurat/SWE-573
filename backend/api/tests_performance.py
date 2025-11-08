@@ -15,7 +15,7 @@ class PerformanceTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.user = User.objects.create_user(
-            email='perf@test.com',
+            'perf@test.com',
             password='testpass123',
             first_name='Performance',
             last_name='Test'

@@ -3,11 +3,12 @@
 from rest_framework import serializers
 from .models import (
     User, Service, Tag, Handshake, ChatMessage, 
-    Notification, ReputationRep, Badge, UserBadge, Report
+    Notification, ReputationRep, Badge, UserBadge, Report, TransactionHistory
 )
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from decimal import Decimal
 import bleach
 
 class TagSerializer(serializers.ModelSerializer):
@@ -166,6 +167,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data['password'] = make_password(validated_data['password'])
+        validated_data.setdefault('timebank_balance', Decimal('1.00'))
         return super().create(validated_data)
 
 class UserProfileSerializer(serializers.ModelSerializer):

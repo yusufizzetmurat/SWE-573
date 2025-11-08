@@ -43,7 +43,7 @@ def provision_timebank(handshake: Handshake) -> bool:
 def complete_timebank_transfer(handshake: Handshake) -> bool:
     """Credit the provider once both parties confirm completion."""
     with transaction.atomic():
-        provider = handshake.service.user
+        provider = User.objects.select_for_update().get(id=handshake.service.user_id)
         hours = handshake.provisioned_hours
         old_balance = provider.timebank_balance
         provider.timebank_balance += hours
@@ -69,7 +69,7 @@ def cancel_timebank_transfer(handshake: Handshake) -> bool:
     """Refund escrowed hours when a handshake is cancelled."""
     with transaction.atomic():
         if handshake.status == "accepted":
-            receiver = handshake.requester
+            receiver = User.objects.select_for_update().get(id=handshake.requester_id)
             hours = handshake.provisioned_hours
             old_balance = receiver.timebank_balance
             receiver.timebank_balance += hours

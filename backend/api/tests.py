@@ -22,7 +22,7 @@ class BaseTestCase(TestCase):
         
         # Create test users
         self.user1 = User.objects.create_user(
-            email='user1@test.com',
+            'user1@test.com',
             password='testpass123',
             first_name='John',
             last_name='Doe',
@@ -31,7 +31,7 @@ class BaseTestCase(TestCase):
         )
         
         self.user2 = User.objects.create_user(
-            email='user2@test.com',
+            'user2@test.com',
             password='testpass123',
             first_name='Jane',
             last_name='Smith',
@@ -40,7 +40,7 @@ class BaseTestCase(TestCase):
         )
         
         self.admin = User.objects.create_user(
-            email='admin@test.com',
+            'admin@test.com',
             password='adminpass123',
             first_name='Admin',
             last_name='User',
@@ -706,10 +706,6 @@ class CriticalBugFixTests(BaseTestCase):
         # Verify balance still correct (2.00 remaining)
         self.user1.refresh_from_db()
         self.assertEqual(self.user1.timebank_balance, initial_balance - Decimal('3.00'))
-        
-        # Note: select_for_update() is implemented in provision_timebank() to prevent
-        # race conditions in production. In test environment, the transaction isolation
-        # and F() expressions ensure atomicity without needing actual concurrent threads.
     
     def test_input_length_validation(self):
         """Test that input length validation works"""

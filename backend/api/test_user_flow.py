@@ -23,7 +23,7 @@ class CompleteUserFlowTests(TestCase):
         self.client = APIClient()
         
         self.provider = User.objects.create_user(
-            email='provider@test.com',
+            'provider@test.com',
             password='testpass123',
             first_name='Provider',
             last_name='User',
@@ -32,7 +32,7 @@ class CompleteUserFlowTests(TestCase):
         )
         
         self.requester = User.objects.create_user(
-            email='requester@test.com',
+            'requester@test.com',
             password='testpass123',
             first_name='Requester',
             last_name='User',
@@ -251,7 +251,7 @@ class CompleteUserFlowTests(TestCase):
         """Test flow with multiple requesters for same service"""
         
         requester2 = User.objects.create_user(
-            email='requester2@test.com',
+            'requester2@test.com',
             password='testpass123',
             timebank_balance=Decimal('2.00')
         )

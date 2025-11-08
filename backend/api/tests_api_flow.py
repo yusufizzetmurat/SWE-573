@@ -13,7 +13,7 @@ class RegistrationHandshakeChatFlowTests(APITestCase):
 
     def setUp(self):
         self.existing_user = User.objects.create_user(
-            email="mentor@test.com",
+            "mentor@test.com",
             password="mentorpass",
             first_name="Mentor",
             last_name="User",
