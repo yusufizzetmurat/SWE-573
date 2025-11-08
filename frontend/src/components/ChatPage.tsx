@@ -104,7 +104,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
   }, [fetchConversations]);
 
   // WebSocket connection for real-time messages
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+  const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000/api';
   const wsBaseUrl = API_BASE_URL.replace('/api', '').replace('http://', 'ws://').replace('https://', 'wss://');
   const token = localStorage.getItem('access_token');
   

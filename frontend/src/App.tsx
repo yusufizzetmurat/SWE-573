@@ -411,6 +411,26 @@ function AppContent() {
         </div>
       )}
 
+      {currentPage === 'transaction-history' && isAuthenticated && (
+        <TransactionHistoryPage 
+          onNavigate={handleNavigate}
+          userBalance={userBalance}
+          unreadNotifications={unreadNotifications}
+          onLogout={handleLogout}
+        />
+      )}
+
+      {currentPage === 'transaction-history' && !isAuthenticated && (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-gray-600 mb-4">Please log in to view your transaction history</p>
+            <Button onClick={() => handleNavigate('login')} className="bg-orange-500 hover:bg-orange-600">
+              Log In
+            </Button>
+          </div>
+        </div>
+      )}
+
       {currentPage === 'admin' && (
         <AdminDashboard 
           onNavigate={handleNavigate}
