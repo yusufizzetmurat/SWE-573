@@ -2,6 +2,7 @@ from rest_framework import generics, viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.views import APIView
+from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle, ScopedRateThrottle
 from rest_framework.pagination import PageNumberPagination
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -194,6 +195,7 @@ class ExpressInterestView(APIView):
     """Standalone view for expressing interest in a service"""
     permission_classes = [permissions.IsAuthenticated]
     throttle_classes = [UserRateThrottle]
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
 
     @track_performance
     def post(self, request, service_id):

@@ -177,7 +177,7 @@ export interface Handshake {
 
 export const handshakeAPI = {
   expressInterest: async (serviceId: string): Promise<Handshake> => {
-    const response = await apiClient.post(`/services/${serviceId}/interest/`);
+    const response = await apiClient.post(`/services/${serviceId}/interest/`, {});
     return response.data;
   },
 
