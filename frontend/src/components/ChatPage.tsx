@@ -227,19 +227,20 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
         isAuthenticated={true}
       />
 
-      <div className="max-w-[1440px] mx-auto px-8 py-8">
-        {/* Back Button */}
+      <div className="max-w-[1440px] mx-auto px-8 py-8 relative" style={{ zIndex: 1 }}>
+        {/* Back Button - Ensure it's always accessible */}
         <Button 
           variant="ghost" 
           onClick={() => onNavigate('dashboard')}
-          className="mb-6"
+          className="mb-6 relative z-10"
+          style={{ pointerEvents: 'auto' }}
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Dashboard
         </Button>
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden" style={{ height: 'calc(100vh - 240px)' }}>
-          <div className="grid grid-cols-[380px_1fr] h-full">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden" style={{ height: 'calc(100vh - 240px)', maxHeight: 'calc(100vh - 240px)' }}>
+          <div className="grid grid-cols-[380px_1fr] h-full overflow-hidden relative">
             {/* Left Panel - Conversations List */}
             <div className="border-r border-gray-200">
               <div className="p-6 border-b border-gray-200">
@@ -305,118 +306,114 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
             </div>
 
             {/* Right Panel - Active Chat */}
-            <div className="flex flex-col">
-              {/* Chat Header */}
+            <div className="flex flex-col h-full overflow-hidden">
+              {/* Chat Header - Fixed position to always be accessible */}
               {selectedChat && (
                 <>
-                  <div className="p-6 border-b border-gray-200 bg-white">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-gray-900 mb-1">{selectedChat.other_user.name}</h3>
-                        <p className="text-sm text-gray-600">{selectedChat.service_title}</p>
+                  <div className="flex-shrink-0 p-6 border-b border-gray-200 bg-white relative" style={{ zIndex: 30, pointerEvents: 'auto' }}>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-gray-900 mb-1 truncate">{selectedChat.other_user.name}</h3>
+                        <p className="text-sm text-gray-600 truncate">{selectedChat.service_title}</p>
                       </div>
-                      {selectedChat.status === 'pending' && user && (() => {
-                        const isProvider = selectedChat.is_provider ?? false;
-                        
-                        // Provider flow: can initiate with details
-                        if (isProvider) {
+                      <div className="flex-shrink-0" style={{ pointerEvents: 'auto', position: 'relative', zIndex: 31 }}>
+                        {selectedChat.status === 'pending' && user && (() => {
+                          const isProvider = selectedChat.is_provider ?? false;
+                          
+                          // Provider flow: can initiate with details
+                          if (isProvider) {
+                            if (selectedChat.provider_initiated) {
+                              return (
+                                <div className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-md text-sm font-medium whitespace-nowrap">
+                                  Waiting for {selectedChat.other_user.name} to approve
+                                </div>
+                              );
+                            }
+                            
+                            return (
+                              <Button 
+                                onClick={() => setShowHandshakeDetailsModal(true)}
+                                className="bg-green-500 hover:bg-green-600 text-white whitespace-nowrap"
+                                style={{ pointerEvents: 'auto' }}
+                              >
+                                <Check className="w-4 h-4 mr-2" />
+                                Initiate Handshake
+                              </Button>
+                            );
+                          }
+                          
+                          // Requester flow: can approve after provider initiates
                           if (selectedChat.provider_initiated) {
                             return (
-                              <div className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-md text-sm font-medium">
-                                Waiting for {selectedChat.other_user.name} to approve
-                              </div>
+                              <Button 
+                                onClick={handleApproveHandshake}
+                                className="bg-green-500 hover:bg-green-600 text-white whitespace-nowrap"
+                                style={{ pointerEvents: 'auto' }}
+                              >
+                                <CheckCircle className="w-4 h-4 mr-2" />
+                                Approve Handshake
+                              </Button>
                             );
                           }
                           
                           return (
-                            <Button 
-                              onClick={() => setShowHandshakeDetailsModal(true)}
-                              className="bg-green-500 hover:bg-green-600 text-white"
-                            >
-                              <Check className="w-4 h-4 mr-2" />
-                              Initiate Handshake
-                            </Button>
+                            <div className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-md text-sm font-medium whitespace-nowrap">
+                              Waiting for {selectedChat.other_user.name} to provide service details
+                            </div>
                           );
-                        }
-                        
-                        // Requester flow: can approve after provider initiates
-                        if (selectedChat.provider_initiated) {
-                          return (
-                            <Button 
-                              onClick={handleApproveHandshake}
-                              className="bg-green-500 hover:bg-green-600 text-white"
-                            >
-                              <CheckCircle className="w-4 h-4 mr-2" />
-                              Approve Handshake
-                            </Button>
-                          );
-                        }
-                        
-                        return (
-                          <div className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-md text-sm font-medium">
-                            Waiting for {selectedChat.other_user.name} to provide service details
+                        })()}
+                        {selectedChat.status === 'accepted' && (
+                          <div className="flex items-center gap-3">
+                            <div className="px-3 py-1.5 bg-green-100 text-green-700 rounded-md text-sm font-medium">
+                              Handshake Accepted
+                            </div>
+                            {/* Check if user needs to confirm completion */}
+                            {(() => {
+                              if (!user || !selectedChat) return null;
+                              const isProvider = selectedChat.is_provider ?? false;
+                              const userHasConfirmed = isProvider 
+                                ? selectedChat.provider_confirmed_complete 
+                                : selectedChat.receiver_confirmed_complete;
+                              const bothConfirmed = selectedChat.provider_confirmed_complete && selectedChat.receiver_confirmed_complete;
+                              
+                              if (bothConfirmed) {
+                                return (
+                                  <div className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-md text-sm font-medium">
+                                    Service Completed
+                                  </div>
+                                );
+                              }
+                              
+                              if (!userHasConfirmed && onConfirmService) {
+                                return (
+                                  <Button 
+                                    onClick={() => onConfirmService(selectedChat.handshake_id)}
+                                    className="bg-amber-500 hover:bg-amber-600 text-white"
+                                  >
+                                    <CheckCircle className="w-4 h-4 mr-2" />
+                                    Confirm Service Completion
+                                  </Button>
+                                );
+                              }
+                              
+                              if (userHasConfirmed) {
+                                return (
+                                  <div className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md text-sm font-medium">
+                                    Waiting for partner confirmation
+                                  </div>
+                                );
+                              }
+                              
+                              return null;
+                            })()}
                           </div>
-                        );
-                      })()}
-                      {showHandshakeDetailsModal && selectedChat && (
-                        <HandshakeDetailsModal
-                          open={showHandshakeDetailsModal}
-                          onClose={() => setShowHandshakeDetailsModal(false)}
-                          onSubmit={(details) => handleInitiateHandshake(details)}
-                          serviceTitle={selectedChat.service_title}
-                        />
-                      )}
-                      {selectedChat.status === 'accepted' && (
-                        <div className="flex items-center gap-3">
-                          <div className="px-3 py-1.5 bg-green-100 text-green-700 rounded-md text-sm font-medium">
-                            Handshake Accepted
-                          </div>
-                          {/* Check if user needs to confirm completion */}
-                          {(() => {
-                            if (!user || !selectedChat) return null;
-                            const isProvider = selectedChat.is_provider ?? false;
-                            const userHasConfirmed = isProvider 
-                              ? selectedChat.provider_confirmed_complete 
-                              : selectedChat.receiver_confirmed_complete;
-                            const bothConfirmed = selectedChat.provider_confirmed_complete && selectedChat.receiver_confirmed_complete;
-                            
-                            if (bothConfirmed) {
-                              return (
-                                <div className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-md text-sm font-medium">
-                                  Service Completed
-                                </div>
-                              );
-                            }
-                            
-                            if (!userHasConfirmed && onConfirmService) {
-                              return (
-                                <Button 
-                                  onClick={() => onConfirmService(selectedChat.handshake_id)}
-                                  className="bg-amber-500 hover:bg-amber-600 text-white"
-                                >
-                                  <CheckCircle className="w-4 h-4 mr-2" />
-                                  Confirm Service Completion
-                                </Button>
-                              );
-                            }
-                            
-                            if (userHasConfirmed) {
-                              return (
-                                <div className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md text-sm font-medium">
-                                  Waiting for partner confirmation
-                                </div>
-                              );
-                            }
-                            
-                            return null;
-                          })()}
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Messages */}
-                  <ScrollArea className="flex-1 p-6 bg-gradient-to-b from-gray-50 to-white">
+                  {/* Messages - Scrollable area that doesn't overlap header */}
+                  <ScrollArea className="flex-1 min-h-0 p-6 bg-gradient-to-b from-gray-50 to-white overflow-auto">
                     <div className="space-y-4">
                       {messages.length === 0 ? (
                         <div className="flex items-center justify-center h-full py-12">
@@ -505,9 +502,9 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
                 </div>
               )}
 
-              {/* Message Input */}
+              {/* Message Input - Fixed at bottom, always accessible */}
               {selectedChat && (
-                <div className="p-6 border-t border-gray-200 bg-gradient-to-r from-white to-gray-50">
+                <div className="flex-shrink-0 p-6 border-t border-gray-200 bg-gradient-to-r from-white to-gray-50 z-10 relative">
                   <p className="text-xs text-gray-500 mb-2">
                     💬 You can share the exact address here after handshake confirmation
                   </p>
@@ -538,6 +535,16 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
           </div>
         </div>
       </div>
+
+      {/* Handshake Details Modal - Rendered outside header to prevent z-index issues */}
+      {showHandshakeDetailsModal && selectedChat && (
+        <HandshakeDetailsModal
+          open={showHandshakeDetailsModal}
+          onClose={() => setShowHandshakeDetailsModal(false)}
+          onSubmit={(details) => handleInitiateHandshake(details)}
+          serviceTitle={selectedChat.service_title}
+        />
+      )}
 
       {/* Conflict Modal */}
       <Dialog open={showConflictModal} onOpenChange={setShowConflictModal}>
