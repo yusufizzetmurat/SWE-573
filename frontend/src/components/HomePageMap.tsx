@@ -64,6 +64,22 @@ type MarkerGroup = {
 
 export function HomePageMap({ services = [] }: HomePageMapProps) {
   const [isClient, setIsClient] = useState(false);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const [mapReady, setMapReady] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    if (isClient) {
+      // Small delay to ensure DOM is ready and container has dimensions
+      const timer = setTimeout(() => {
+        setMapReady(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isClient]);
 
   const markerGroups = useMemo<MarkerGroup[]>(() => {
     if (!services.length) return [];
@@ -120,19 +136,6 @@ export function HomePageMap({ services = [] }: HomePageMapProps) {
 
     return Array.from(groups.values());
   }, [services]);
-
-  const mapRef = useRef<HTMLDivElement>(null);
-  const [mapReady, setMapReady] = useState(false);
-
-  useEffect(() => {
-    if (isClient) {
-      // Small delay to ensure DOM is ready and container has dimensions
-      const timer = setTimeout(() => {
-        setMapReady(true);
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isClient]);
 
   if (!isClient || !mapReady) {
     return (
