@@ -7,6 +7,8 @@ interface ServiceLocation {
   title: string;
   location_area?: string;
   location_type: 'In-Person' | 'Online';
+  location_lat?: number | string;
+  location_lng?: number | string;
   type: 'Offer' | 'Need';
   user?: {
     badges?: string[];
@@ -75,7 +77,18 @@ export function HomePageMap({ services = [] }: HomePageMapProps) {
       let position: [number, number] | undefined;
       let label = 'Istanbul';
 
-      if (service.location_type === 'In-Person' && service.location_area) {
+      // Priority 1: Use exact coordinates if provided
+      if (service.location_lat && service.location_lng) {
+        const lat = typeof service.location_lat === 'string' ? parseFloat(service.location_lat) : service.location_lat;
+        const lng = typeof service.location_lng === 'string' ? parseFloat(service.location_lng) : service.location_lng;
+        if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+          position = [lat, lng];
+          label = service.location_area || 'Istanbul';
+        }
+      }
+
+      // Priority 2: Use district lookup if coordinates not available
+      if (!position && service.location_type === 'In-Person' && service.location_area) {
         const normalized = normalizeArea(service.location_area);
         const district = DISTRICT_COORDS[normalized];
         if (district) {
@@ -84,6 +97,7 @@ export function HomePageMap({ services = [] }: HomePageMapProps) {
         }
       }
 
+      // Priority 3: Fallback to clustering online or unmapped services
       if (!position) {
         // cluster online or unmapped services near the golden horn with slight offsets
         const offset = (index % 6) * 0.01;

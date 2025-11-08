@@ -48,7 +48,7 @@ class ServiceSerializer(serializers.ModelSerializer):
         model = Service
         fields = [
             'id', 'user', 'title', 'description', 'type', 'duration',
-            'location_type', 'location_area', 'status', 'max_participants', 'schedule_type',
+            'location_type', 'location_area', 'location_lat', 'location_lng', 'status', 'max_participants', 'schedule_type',
             'schedule_details', 'created_at', 'tags', 'tag_ids', 'tag_names'
         ]
         read_only_fields = ['user']
@@ -84,6 +84,23 @@ class ServiceSerializer(serializers.ModelSerializer):
         # Extract tag_ids and tag_names if provided
         tag_ids = validated_data.pop('tag_ids', [])
         tag_names = validated_data.pop('tag_names', [])
+        
+        # Handle location coordinates if provided (convert from string to Decimal)
+        if 'location_lat' in validated_data and validated_data['location_lat']:
+            if isinstance(validated_data['location_lat'], str):
+                from decimal import Decimal
+                try:
+                    validated_data['location_lat'] = Decimal(validated_data['location_lat'])
+                except (ValueError, TypeError):
+                    validated_data.pop('location_lat', None)
+        
+        if 'location_lng' in validated_data and validated_data['location_lng']:
+            if isinstance(validated_data['location_lng'], str):
+                from decimal import Decimal
+                try:
+                    validated_data['location_lng'] = Decimal(validated_data['location_lng'])
+                except (ValueError, TypeError):
+                    validated_data.pop('location_lng', None)
         
         # The user will be passed in from the View
         validated_data['user'] = self.context['request'].user

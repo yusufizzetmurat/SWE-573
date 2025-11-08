@@ -325,6 +325,8 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
         duration: parseFloat(formData.duration),
         location_type: formData.location_type as 'In-Person' | 'Online',
         location_area: formData.location_type === 'In-Person' ? formData.location_area : undefined,
+        location_lat: formData.location_type === 'In-Person' && selectedLocation ? selectedLocation.lat : undefined,
+        location_lng: formData.location_type === 'In-Person' && selectedLocation ? selectedLocation.lng : undefined,
         max_participants: parseInt(formData.max_participants),
         schedule_type: scheduleType === 'one-time' ? 'One-Time' : 'Recurrent',
         schedule_details: scheduleDetails,

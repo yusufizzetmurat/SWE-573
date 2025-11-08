@@ -92,6 +92,8 @@ class Service(models.Model):
     duration = models.DecimalField(max_digits=5, decimal_places=2)
     location_type = models.CharField(max_length=10, choices=LOCATION_CHOICES)
     location_area = models.CharField(max_length=100, null=True, blank=True, help_text='General area for in-person services (e.g., Besiktas, Kadikoy)')
+    location_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text='Latitude for approximate location')
+    location_lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text='Longitude for approximate location')
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Active')
     max_participants = models.IntegerField(default=1)
     schedule_type = models.CharField(max_length=10, choices=SCHEDULE_CHOICES)

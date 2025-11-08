@@ -9,6 +9,7 @@ import { serviceAPI, Service } from '../lib/api';
 import { formatTimebank } from '../lib/utils';
 import { getErrorMessage, type NavigateData, type ApiError } from '../lib/types';
 import { getBadgeMeta } from '../lib/badges';
+import { HomePageMap } from './HomePageMap';
 
 interface DashboardProps {
   onNavigate: (page: string, data?: NavigateData) => void;
@@ -107,13 +108,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
       try {
         setIsLoading(true);
         setError(null);
-        const params: { location_type?: string } = {};
-        
-        if (activeFilter === 'online') {
-          params.location_type = 'Online';
-        }
-        
-        const data = await serviceAPI.list(params);
+        const data = await serviceAPI.list();
         
         // Remove duplicates by service ID (fix for recurrent events showing multiple times)
         const uniqueServices = Array.from(
@@ -123,7 +118,9 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
         // Apply client-side filtering
         let filteredData = uniqueServices;
         
-        if (activeFilter === 'weekend') {
+        if (activeFilter === 'online') {
+          filteredData = filteredData.filter(service => service.location_type === 'Online');
+        } else if (activeFilter === 'weekend') {
           const now = new Date();
           const dayOfWeek = now.getDay();
           const daysUntilSaturday = (6 - dayOfWeek) % 7 || 7;
@@ -133,7 +130,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
           const sunday = new Date(saturday);
           sunday.setDate(saturday.getDate() + 1);
           
-          filteredData = data.filter(service => {
+          filteredData = filteredData.filter(service => {
             if (!service.schedule_details) return false;
             const scheduleLower = service.schedule_details.toLowerCase();
             if (scheduleLower.includes('saturday') || scheduleLower.includes('sunday') || scheduleLower.includes('weekend')) {
@@ -151,9 +148,9 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
             return false;
           });
         } else if (activeFilter === 'recurrent') {
-          filteredData = data.filter(service => service.schedule_type === 'Recurrent');
+          filteredData = filteredData.filter(service => service.schedule_type === 'Recurrent');
         } else if (activeFilter === 'newest') {
-          filteredData = [...data].sort((a, b) => {
+          filteredData = [...filteredData].sort((a, b) => {
             const dateA = new Date(a.created_at).getTime();
             const dateB = new Date(b.created_at).getTime();
             return dateB - dateA;
@@ -228,34 +225,17 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
               </div>
             </div>
             
-            {/* Map Placeholder */}
-            <div className="h-[400px] rounded-lg bg-gray-100 relative overflow-hidden">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                  <p className="text-gray-500 text-sm">Interactive Map View</p>
-                  <p className="text-gray-400 text-xs mt-1">
-                    Services pinned by general location
-                  </p>
-                </div>
-              </div>
-              
-              {/* Mock Map Pins */}
-              {mockServices.map((service, index) => (
-                <div
-                  key={service.id}
-                  className={`absolute w-8 h-8 rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform ${
-                    service.type === 'offer' ? 'bg-green-500' : 'bg-blue-500'
-                  }`}
-                  style={{
-                    top: `${20 + index * 15}%`,
-                    left: `${15 + index * 18}%`,
-                  }}
-                >
-                  <MapPin className="w-5 h-5 text-white" />
-                </div>
-              ))}
-            </div>
+            {/* Interactive Map */}
+            <HomePageMap services={services.map(service => ({
+              id: service.id,
+              title: service.title,
+              location_area: service.location_area,
+              location_type: service.location_type,
+              location_lat: service.location_lat,
+              location_lng: service.location_lng,
+              type: service.type,
+              user: service.user,
+            }))} />
           </div>
         </div>
 

@@ -283,6 +283,8 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
           <ServiceMap 
             locationType={service.location_type}
             locationArea={service.location_area}
+            locationLat={service.location_lat}
+            locationLng={service.location_lng}
             locationDetails={service.location_type === 'In-Person' ? 'Location will be shared after handshake' : undefined}
           />
         </div>

@@ -30,6 +30,8 @@ export interface Service {
   duration: number;
   location_type: 'In-Person' | 'Online';
   location_area?: string;
+  location_lat?: number | string;
+  location_lng?: number | string;
   status: 'Active' | 'Completed' | 'Cancelled';
   max_participants: number;
   schedule_type: 'One-Time' | 'Recurrent';
@@ -68,6 +70,8 @@ export interface CreateServiceData {
   duration: number;
   location_type: 'In-Person' | 'Online';
   location_area?: string;
+  location_lat?: number | string;
+  location_lng?: number | string;
   max_participants: number;
   schedule_type: 'One-Time' | 'Recurrent';
   schedule_details?: string;
