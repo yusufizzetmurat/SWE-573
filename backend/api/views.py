@@ -1,6 +1,7 @@
 from rest_framework import generics, viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework.views import APIView
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle, ScopedRateThrottle
 from rest_framework.pagination import PageNumberPagination
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -189,6 +190,62 @@ class TagViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(name__icontains=search)
         return queryset
 
+class ExpressInterestView(APIView):
+    """Standalone view for expressing interest in a service"""
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [UserRateThrottle]
+
+    @track_performance
+    def post(self, request, service_id):
+        try:
+            service = Service.objects.get(id=service_id, status='Active')
+        except Service.DoesNotExist:
+            return Response({'error': 'Service not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if service.user == request.user:
+            return Response({'error': 'Cannot express interest in your own service'}, status=status.HTTP_400_BAD_REQUEST)
+
+        existing = Handshake.objects.filter(
+            service=service,
+            requester=request.user,
+            status__in=['pending', 'accepted']
+        ).first()
+
+        if existing:
+            return Response({'error': 'You have already expressed interest'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if request.user.timebank_balance < service.duration:
+            return Response(
+                {'error': f'Insufficient TimeBank balance. Need {service.duration} hours, have {request.user.timebank_balance}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        handshake = Handshake.objects.create(
+            service=service,
+            requester=request.user,
+            provisioned_hours=service.duration,
+            status='pending'
+        )
+
+        create_notification(
+            user=service.user,
+            notification_type='handshake_request',
+            title='New Interest in Your Service',
+            message=f"{request.user.first_name} expressed interest in '{service.title}'",
+            handshake=handshake,
+            service=service
+        )
+
+        ChatMessage.objects.create(
+            handshake=handshake,
+            sender=request.user,
+            body=f"Hi! I'm interested in your service: {service.title}"
+        )
+
+        serializer = HandshakeSerializer(handshake)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
 class HandshakeViewSet(viewsets.ModelViewSet):
     serializer_class = HandshakeSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -208,7 +265,6 @@ class HandshakeViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        from django.db.models import Q
         return Handshake.objects.filter(
             Q(requester=user) | Q(service__user=user)
         ).select_related('service', 'requester', 'service__user')

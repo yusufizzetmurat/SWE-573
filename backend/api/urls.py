@@ -16,7 +16,8 @@ from .views import (
     NotificationViewSet,
     ReputationViewSet,
     AdminReportViewSet,
-    AdminUserViewSet
+    AdminUserViewSet,
+    ExpressInterestView
 )
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .views import CustomTokenRefreshView
@@ -43,7 +44,7 @@ urlpatterns = [
     path('users/me/', UserProfileView.as_view(), name='user-profile'),
     path('users/<uuid:id>/', UserProfileView.as_view(), name='user-detail'),
     path('services/<uuid:service_id>/interest/', 
-         HandshakeViewSet.as_view({'post': 'express_interest'}),
+         ExpressInterestView.as_view(),
          name='express-interest'),
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
     path('docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
