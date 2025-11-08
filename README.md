@@ -1,6 +1,6 @@
 # The Hive
 
-The Hive is a small timebank marketplace where neighbours trade hours instead of money. This repo contains:
+The Hive is a small timebank marketplace where community members trade hours instead of money. This repo contains:
 
 - **backend/** – Django REST API with PostgreSQL and Redis support.
 - **frontend/** – React + Vite single-page app.
@@ -28,7 +28,5 @@ By default the frontend runs on `http://localhost:5173` and the API on `http://l
 
 Use `docker-compose.prod.yml` with environment variables set in `.env` (populate from `env.example`). The production compose file builds the frontend, runs the Django API with Daphne, and adds Redis and Postgres services.
 
----
-
-Happy building! Let the maintainers know if you add new services so the stack stays in sync.
+--
 
