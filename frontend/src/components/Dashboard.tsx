@@ -101,6 +101,31 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
     };
 
     fetchServices();
+
+    // Auto-refresh services every 10 seconds to catch status changes
+    const refreshInterval = setInterval(() => {
+      fetchServices();
+    }, 10000);
+
+    // Refresh when page becomes visible
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchServices();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Refresh on window focus
+    const handleFocus = () => {
+      fetchServices();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(refreshInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [activeFilter, searchQuery]);
 
   const filters = [

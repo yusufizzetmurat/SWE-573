@@ -99,6 +99,15 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
     };
 
     checkInterest();
+
+    // Auto-refresh handshake status every 3 seconds if service is loaded
+    if (service?.id) {
+      const refreshInterval = setInterval(() => {
+        checkInterest();
+      }, 3000);
+
+      return () => clearInterval(refreshInterval);
+    }
   }, [isAuthenticated, user, service]);
 
   if (isLoading) {
