@@ -14,7 +14,7 @@ import { useToast } from './Toast';
 import { BADGE_CONFIG, getBadgeMeta } from '../lib/badges';
 
 interface UserProfileProps {
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, data?: any) => void;
   userBalance?: number;
   karma?: number;
   positiveReps?: {
@@ -114,37 +114,88 @@ export function UserProfile({
   const { showToast } = useToast();
 
   useEffect(() => {
+    if (!isOwnProfile || !user) {
+      setIsLoading(false);
+      return;
+    }
+    
+    let isMounted = true;
+    let abortController = new AbortController();
+    
     const fetchUserData = async () => {
-      if (!user) return;
-      
       try {
         setIsLoading(true);
-        // Fetch user's services
-        const allServices = await serviceAPI.list();
-        const userServices = allServices.filter(s => 
-          typeof s.user === 'object' ? s.user?.id === user.id : s.user === user.id
-        );
         
-        const offers = userServices.filter(s => s.type === 'Offer' && s.status === 'Active');
-        const needs = userServices.filter(s => s.type === 'Need' && s.status === 'Active');
-        
-        setActiveOffers(offers);
-        setActiveNeeds(needs);
+        // Use services from user object if available (from cached profile)
+        if (user.services && Array.isArray(user.services) && user.services.length > 0) {
+          const userServices = user.services;
+          const offers = userServices.filter((s: Service) => s.type === 'Offer' && s.status === 'Active');
+          const needs = userServices.filter((s: Service) => s.type === 'Need' && s.status === 'Active');
+          
+          if (isMounted && !abortController.signal.aborted) {
+            setActiveOffers(offers);
+            setActiveNeeds(needs);
+          }
+        } else {
+          // Fallback: Fetch all services and filter (slower)
+          const allServices = await serviceAPI.list({}, abortController.signal);
+          if (!isMounted || abortController.signal.aborted) {
+            setIsLoading(false);
+            return;
+          }
+          
+          const userServices = allServices.filter(s => 
+            typeof s.user === 'object' ? s.user?.id === user.id : s.user === user.id
+          );
+          
+          const offers = userServices.filter(s => s.type === 'Offer' && s.status === 'Active');
+          const needs = userServices.filter(s => s.type === 'Need' && s.status === 'Active');
+          
+          if (isMounted && !abortController.signal.aborted) {
+            setActiveOffers(offers);
+            setActiveNeeds(needs);
+          }
+        }
         
         // Fetch completed handshakes
-        const handshakes = await handshakeAPI.list();
+        if (!isMounted || abortController.signal.aborted) {
+          setIsLoading(false);
+          return;
+        }
+        
+        const handshakes = await handshakeAPI.list(abortController.signal);
+        if (!isMounted || abortController.signal.aborted) {
+          setIsLoading(false);
+          return;
+        }
+        
         const completed = handshakes.filter(h => h.status === 'completed');
-        setCompletedHandshakes(completed);
-      } catch (error) {
+        if (isMounted && !abortController.signal.aborted) {
+          setCompletedHandshakes(completed);
+        }
+      } catch (error: any) {
+        if (!isMounted) return;
+        
+        // Ignore cancellation errors (expected when component unmounts or new requests cancel old ones)
+        if (error?.name === 'AbortError' || error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+          setIsLoading(false);
+          return;
+        }
+        
         console.error('Failed to fetch user data:', error);
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
-    if (isOwnProfile) {
-      fetchUserData();
-    }
+    fetchUserData();
+    
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
   }, [user, isOwnProfile]);
 
   // Show balance warning if over 10 hours
@@ -287,7 +338,7 @@ export function UserProfile({
 
             {/* Positive Reps */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h3 className="text-gray-900 mb-4">Positive Reps</h3>
+              <h3 className="text-gray-900 mb-4">Reps</h3>
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                   <div className="flex items-center gap-3">

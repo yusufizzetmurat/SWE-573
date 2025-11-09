@@ -328,124 +328,11 @@ marcus_turkish = Service.objects.create(
 marcus_turkish.tags.set([language_tag])
 print(f"  ✅ Created: {marcus_turkish.title} by {marcus.first_name}")
 
-# Create handshakes
-print("\n  Creating handshakes...")
+# No handshakes or chat messages in demo - users will create these through normal flow
+print("\n  Skipping handshakes and chat messages (users will create these through normal flow)")
 
-# Sarah expresses interest in Manti (pending)
-handshake1 = Handshake.objects.create(
-    service=elif_manti,
-    requester=sarah,
-    status='pending',
-    provisioned_hours=Decimal('0.00'),
-    provider_confirmed_complete=False,
-    receiver_confirmed_complete=False,
-)
-print(f"  ✅ {sarah.first_name} → {elif_manti.title} (pending)")
-
-# Marcus completes Manti service (completed)
-handshake2 = Handshake.objects.create(
-    service=elif_manti,
-    requester=marcus,
-    status='completed',
-    provisioned_hours=Decimal('3.00'),
-    provider_confirmed_complete=True,
-    receiver_confirmed_complete=True,
-    scheduled_time=timezone.now() - timedelta(days=5),
-)
-print(f"  ✅ {marcus.first_name} → {elif_manti.title} (completed)")
-
-# Alex completes Chess service (completed)
-handshake3 = Handshake.objects.create(
-    service=cem_chess,
-    requester=alex,
-    status='completed',
-    provisioned_hours=Decimal('1.00'),
-    provider_confirmed_complete=True,
-    receiver_confirmed_complete=True,
-    scheduled_time=timezone.now() - timedelta(days=7),
-)
-print(f"  ✅ {alex.first_name} → {cem_chess.title} (completed)")
-
-# Alex completes Genealogy service (completed)
-handshake4 = Handshake.objects.create(
-    service=cem_genealogy,
-    requester=alex,
-    status='completed',
-    provisioned_hours=Decimal('1.50'),
-    provider_confirmed_complete=True,
-    receiver_confirmed_complete=True,
-    scheduled_time=timezone.now() - timedelta(days=10),
-)
-print(f"  ✅ {alex.first_name} → {cem_genealogy.title} (completed)")
-
-# Create chat messages
-print("\n  Creating chat messages...")
-
-ChatMessage.objects.create(
-    handshake=handshake2,
-    sender=marcus,
-    body='Hi Elif! I\'d love to learn how to make manti. Your offer sounds perfect!',
-    created_at=timezone.now() - timedelta(days=6),
-)
-ChatMessage.objects.create(
-    handshake=handshake2,
-    sender=elif_user,
-    body='Hi Marcus! Great to hear you\'re interested. Tuesday at 7 PM works for you?',
-    created_at=timezone.now() - timedelta(days=6, hours=2),
-)
-ChatMessage.objects.create(
-    handshake=handshake2,
-    sender=marcus,
-    body='Perfect! Looking forward to it!',
-    created_at=timezone.now() - timedelta(days=5),
-)
-
-ChatMessage.objects.create(
-    handshake=handshake3,
-    sender=alex,
-    body='Hi Cem! I saw your post about chess. I\'d be happy to play with you!',
-    created_at=timezone.now() - timedelta(days=8),
-)
-ChatMessage.objects.create(
-    handshake=handshake3,
-    sender=cem,
-    body='That would be great! I\'m still learning, so I hope that\'s okay.',
-    created_at=timezone.now() - timedelta(days=8, hours=1),
-)
-
-print(f"  ✅ Created chat messages")
-
-# Create reputation data
-print("\n  Creating reputation data...")
-
-ReputationRep.objects.create(
-    handshake=handshake2,
-    giver=marcus,
-    receiver=elif_user,
-    is_punctual=True,
-    is_helpful=True,
-    is_kind=True,
-)
-
-ReputationRep.objects.create(
-    handshake=handshake3,
-    giver=alex,
-    receiver=cem,
-    is_punctual=True,
-    is_helpful=True,
-    is_kind=False,
-)
-
-ReputationRep.objects.create(
-    handshake=handshake4,
-    giver=alex,
-    receiver=cem,
-    is_punctual=True,
-    is_helpful=True,
-    is_kind=True,
-)
-
-print(f"  ✅ Created reputation records")
+# No reputation data in demo - users will create these through normal flow
+print("\n  Skipping reputation data (users will create these through normal flow)")
 
 # Assign badges based on stats
 print("\n  Assigning badges...")
@@ -454,30 +341,8 @@ check_and_assign_badges(cem)
 check_and_assign_badges(marcus)
 print(f"  ✅ Badges assigned")
 
-# Create notifications
-print("\n  Creating notifications...")
-
-Notification.objects.create(
-    user=elif_user,
-    type='handshake_request',
-    title='New Interest in Your Offer',
-    message=f'{sarah.first_name} {sarah.last_name} expressed interest in "Manti Cooking Lesson"',
-    related_handshake=handshake1,
-    related_service=elif_manti,
-    is_read=False,
-)
-
-Notification.objects.create(
-    user=cem,
-    type='handshake_accepted',
-    title='Handshake Accepted',
-    message=f'{alex.first_name} {alex.last_name} accepted your chess partner request',
-    related_handshake=handshake3,
-    related_service=cem_chess,
-    is_read=True,
-)
-
-print(f"  ✅ Created notifications")
+# No notifications in demo - users will create these through normal flow
+print("\n  Skipping notifications (users will create these through normal flow)")
 
 # ============================================================================
 # SUMMARY

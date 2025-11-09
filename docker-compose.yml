@@ -7,8 +7,10 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
     environment:
       - DB_NAME=the_hive_db
       - DB_USER=your_postgres_user

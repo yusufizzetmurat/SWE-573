@@ -59,10 +59,8 @@ export function PositiveRepModal({
           <DialogTitle className="text-center text-2xl">
             Great! Would you like to recommend {userName}?
           </DialogTitle>
-          <DialogDescription className="text-center pt-4">
-            <p className="text-gray-600">
-              Help build community trust by highlighting what went well. (This is optional and always positive)
-            </p>
+          <DialogDescription className="text-center pt-4 text-gray-600">
+            Help build community trust by highlighting what went well. (This is optional and always positive)
           </DialogDescription>
         </DialogHeader>
 

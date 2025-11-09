@@ -49,6 +49,12 @@ class User(AbstractUser):
             models.Index(fields=['email']),
             models.Index(fields=['timebank_balance']),
         ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(timebank_balance__gte=-10.00),
+                name='timebank_balance_minimum',
+            ),
+        ]
 
 class Tag(models.Model):
     id = models.CharField(primary_key=True, max_length=200)
@@ -72,6 +78,7 @@ class Badge(models.Model):
         return self.name
 
 class UserBadge(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='badges')
     badge = models.ForeignKey(Badge, on_delete=models.CASCADE)
     earned_at = models.DateTimeField(auto_now_add=True)
@@ -127,7 +134,18 @@ class Service(models.Model):
             models.Index(fields=['user', 'status']),
             models.Index(fields=['type', 'status']),
             models.Index(fields=['status', 'created_at']),
+            models.Index(fields=['status', 'type', 'created_at']),
             models.Index(fields=['location_type', 'location_area']),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(duration__gt=0),
+                name='service_duration_positive',
+            ),
+            models.CheckConstraint(
+                check=models.Q(max_participants__gt=0),
+                name='service_max_participants_positive',
+            ),
         ]
 
 class Handshake(models.Model):
@@ -164,6 +182,12 @@ class Handshake(models.Model):
             models.Index(fields=['requester', 'status']),
             models.Index(fields=['status', 'scheduled_time']),
         ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(provisioned_hours__gt=0),
+                name='handshake_provisioned_hours_positive',
+            ),
+        ]
 
 class ChatMessage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -178,6 +202,7 @@ class ChatMessage(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=['handshake', 'created_at']),
+            models.Index(fields=['sender']),
         ]
 
 class Notification(models.Model):
@@ -194,6 +219,8 @@ class Notification(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=['user', 'is_read', 'created_at']),
+            models.Index(fields=['related_handshake']),
+            models.Index(fields=['related_service']),
         ]
         ordering = ['-created_at']
 
@@ -212,6 +239,13 @@ class ReputationRep(models.Model):
         indexes = [
             models.Index(fields=['receiver', 'created_at']),
             models.Index(fields=['giver', 'created_at']),
+            models.Index(fields=['handshake']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['handshake', 'giver'],
+                name='unique_reputation_per_handshake_giver',
+            ),
         ]
 
 class TransactionHistory(models.Model):
@@ -236,6 +270,7 @@ class TransactionHistory(models.Model):
         indexes = [
             models.Index(fields=['user', 'created_at']),
             models.Index(fields=['transaction_type', 'created_at']),
+            models.Index(fields=['user', 'transaction_type', 'created_at']),
             models.Index(fields=['handshake']),
         ]
         ordering = ['-created_at']
@@ -272,3 +307,13 @@ class Report(models.Model):
 
     def __str__(self):
         return f"{self.type} - {self.status}"
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['reporter']),
+            models.Index(fields=['reported_user']),
+            models.Index(fields=['reported_service']),
+            models.Index(fields=['related_handshake']),
+            models.Index(fields=['resolved_by']),
+            models.Index(fields=['status', 'created_at']),
+        ]

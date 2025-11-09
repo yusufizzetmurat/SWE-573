@@ -113,10 +113,8 @@ export function ServiceConfirmationModal({
               <DialogTitle className="text-center text-2xl">
                 Confirm Service Outcome
               </DialogTitle>
-              <DialogDescription className="text-center pt-4">
-                <p className="text-gray-600">
-                  Please confirm the outcome of this service
-                </p>
+              <DialogDescription className="text-center pt-4 text-gray-600">
+                Please confirm the outcome of this service
               </DialogDescription>
             </DialogHeader>
 
@@ -231,10 +229,8 @@ export function ServiceConfirmationModal({
               <DialogTitle className="text-center text-2xl">
                 Report an Issue
               </DialogTitle>
-              <DialogDescription className="text-center pt-4">
-                <p className="text-gray-600">
-                  Please select the issue you experienced
-                </p>
+              <DialogDescription className="text-center pt-4 text-gray-600">
+                Please select the issue you experienced
               </DialogDescription>
             </DialogHeader>
 

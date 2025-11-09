@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin, Clock, Calendar, X } from 'lucide-react';
+import { MapPin, Clock, Calendar, X, AlertTriangle, RefreshCw } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,8 @@ interface ProviderDetailsModalProps {
   open: boolean;
   onClose: () => void;
   onApprove: () => void;
+  onRequestChanges?: () => void;
+  onDecline?: () => void;
   exactLocation?: string;
   exactDuration?: number;
   scheduledTime?: string;
@@ -24,6 +26,8 @@ export function ProviderDetailsModal({
   open, 
   onClose,
   onApprove,
+  onRequestChanges,
+  onDecline,
   exactLocation,
   exactDuration,
   scheduledTime,
@@ -54,10 +58,8 @@ export function ProviderDetailsModal({
           <DialogTitle className="text-center text-2xl">
             Review Service Details
           </DialogTitle>
-          <DialogDescription className="text-center pt-4">
-            <p className="text-gray-600">
-              {providerName} has provided the following details for "{serviceTitle}". Please review before approving.
-            </p>
+          <DialogDescription className="text-center pt-4 text-gray-600">
+            {providerName} has provided the following details for "{serviceTitle}". Please review before approving.
           </DialogDescription>
         </DialogHeader>
 
@@ -95,21 +97,44 @@ export function ProviderDetailsModal({
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="space-y-2">
           <Button 
             onClick={onApprove}
-            className="flex-1 bg-green-500 hover:bg-green-600 text-white"
+            className="w-full bg-green-500 hover:bg-green-600 text-white"
             disabled={!exactLocation || !exactDuration || !scheduledTime}
           >
             Approve & Confirm
           </Button>
+          
+          <div className="flex gap-2">
+            {onRequestChanges && (
+              <Button 
+                onClick={onRequestChanges}
+                variant="outline"
+                className="flex-1 border-orange-300 text-orange-600 hover:bg-orange-50"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Request Changes
+              </Button>
+            )}
+            {onDecline && (
+              <Button 
+                onClick={onDecline}
+                variant="outline"
+                className="flex-1 border-red-300 text-red-600 hover:bg-red-50"
+              >
+                <AlertTriangle className="w-4 h-4 mr-2" />
+                Decline
+              </Button>
+            )}
+          </div>
+          
           <Button 
             onClick={onClose}
-            variant="outline"
-            className="flex-1"
+            variant="ghost"
+            className="w-full"
           >
-            <X className="w-4 h-4 mr-2" />
-            Cancel
+            Close
           </Button>
         </div>
       </DialogContent>

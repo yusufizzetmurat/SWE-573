@@ -34,7 +34,7 @@ export function WelcomeModal({ open, onClose, userName, onNavigate }: WelcomeMod
           <DialogTitle className="text-center text-2xl">
             Welcome to The Hive, {userName}!
           </DialogTitle>
-          <DialogDescription className="text-center pt-4">
+          <div className="text-center pt-4">
             <div className="bg-amber-50 rounded-lg p-6 border border-amber-100">
               <div className="flex items-center justify-center gap-3 mb-2">
                 <Clock className="w-6 h-6 text-amber-600" />
@@ -48,7 +48,7 @@ export function WelcomeModal({ open, onClose, userName, onNavigate }: WelcomeMod
               You're all set to start sharing time and skills with your community. 
               Browse available services or post your first offer to get started!
             </div>
-          </DialogDescription>
+          </div>
         </DialogHeader>
         <div className="flex gap-3 mt-2">
           <Button 

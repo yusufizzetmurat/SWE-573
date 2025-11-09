@@ -81,36 +81,36 @@ export interface CreateServiceData {
 
 // Auth API
 export const authAPI = {
-  register: async (data: RegisterData): Promise<AuthResponse> => {
-    const response = await apiClient.post('/auth/register/', data);
+  register: async (data: RegisterData, signal?: AbortSignal): Promise<AuthResponse> => {
+    const response = await apiClient.post('/auth/register/', data, { signal });
     return response.data;
   },
 
-  login: async (data: LoginData): Promise<AuthResponse> => {
-    const response = await apiClient.post('/auth/login/', data);
+  login: async (data: LoginData, signal?: AbortSignal): Promise<AuthResponse> => {
+    const response = await apiClient.post('/auth/login/', data, { signal });
     return response.data;
   },
 
-  refreshToken: async (refresh: string): Promise<{ access: string }> => {
-    const response = await apiClient.post('/auth/refresh/', { refresh });
+  refreshToken: async (refresh: string, signal?: AbortSignal): Promise<{ access: string }> => {
+    const response = await apiClient.post('/auth/refresh/', { refresh }, { signal });
     return response.data;
   },
 };
 
 // User API
 export const userAPI = {
-  getMe: async (): Promise<User> => {
-    const response = await apiClient.get('/users/me/');
+  getMe: async (signal?: AbortSignal): Promise<User> => {
+    const response = await apiClient.get('/users/me/', { signal });
     return response.data;
   },
 
-  updateMe: async (data: Partial<User>): Promise<User> => {
-    const response = await apiClient.put('/users/me/', data);
+  updateMe: async (data: Partial<User>, signal?: AbortSignal): Promise<User> => {
+    const response = await apiClient.patch('/users/me/', data, { signal });
     return response.data;
   },
 
-  getUser: async (id: string): Promise<User> => {
-    const response = await apiClient.get(`/users/${id}/`);
+  getUser: async (id: string, signal?: AbortSignal): Promise<User> => {
+    const response = await apiClient.get(`/users/${id}/`, { signal });
     return response.data;
   },
 };
@@ -121,39 +121,47 @@ export const serviceAPI = {
     type?: 'Offer' | 'Need';
     tag?: string;
     search?: string;
-  }): Promise<Service[]> => {
-    const response = await apiClient.get('/services/', { params });
+    page?: number;
+    page_size?: number;
+  }, signal?: AbortSignal): Promise<Service[]> => {
+    const response = await apiClient.get('/services/', { 
+      params: { ...params, page_size: params?.page_size || 100 },
+      signal 
+    });
+    if (response.data.results) {
+      return response.data.results;
+    }
     return response.data;
   },
 
-  get: async (id: string): Promise<Service> => {
-    const response = await apiClient.get(`/services/${id}/`);
+  get: async (id: string, signal?: AbortSignal): Promise<Service> => {
+    const response = await apiClient.get(`/services/${id}/`, { signal });
     return response.data;
   },
 
-  create: async (data: CreateServiceData): Promise<Service> => {
-    const response = await apiClient.post('/services/', data);
+  create: async (data: CreateServiceData, signal?: AbortSignal): Promise<Service> => {
+    const response = await apiClient.post('/services/', data, { signal });
     return response.data;
   },
 
-  update: async (id: string, data: Partial<CreateServiceData>): Promise<Service> => {
-    const response = await apiClient.put(`/services/${id}/`, data);
+  update: async (id: string, data: Partial<CreateServiceData>, signal?: AbortSignal): Promise<Service> => {
+    const response = await apiClient.put(`/services/${id}/`, data, { signal });
     return response.data;
   },
 
-  delete: async (id: string): Promise<void> => {
-    await apiClient.delete(`/services/${id}/`);
+  delete: async (id: string, signal?: AbortSignal): Promise<void> => {
+    await apiClient.delete(`/services/${id}/`, { signal });
   },
 };
 
 // Tag API
 export const tagAPI = {
-  list: async (): Promise<Tag[]> => {
-    const response = await apiClient.get('/tags/');
+  list: async (signal?: AbortSignal): Promise<Tag[]> => {
+    const response = await apiClient.get('/tags/', { signal });
     return response.data;
   },
-  create: async (name: string): Promise<Tag> => {
-    const response = await apiClient.post('/tags/', { name });
+  create: async (name: string, signal?: AbortSignal): Promise<Tag> => {
+    const response = await apiClient.post('/tags/', { name }, { signal });
     return response.data;
   },
 };
@@ -180,60 +188,70 @@ export interface Handshake {
 }
 
 export const handshakeAPI = {
-  expressInterest: async (serviceId: string): Promise<Handshake> => {
-    const response = await apiClient.post(`/services/${serviceId}/interest/`, {});
+  expressInterest: async (serviceId: string, signal?: AbortSignal): Promise<Handshake> => {
+    const response = await apiClient.post(`/services/${serviceId}/interest/`, {}, { signal });
     return response.data;
   },
 
-  list: async (): Promise<Handshake[]> => {
-    const response = await apiClient.get('/handshakes/');
+  list: async (signal?: AbortSignal): Promise<Handshake[]> => {
+    const response = await apiClient.get('/handshakes/', { signal });
     return response.data;
   },
 
-  accept: async (handshakeId: string): Promise<Handshake> => {
-    const response = await apiClient.post(`/handshakes/${handshakeId}/accept/`);
+  accept: async (handshakeId: string, signal?: AbortSignal): Promise<Handshake> => {
+    const response = await apiClient.post(`/handshakes/${handshakeId}/accept/`, {}, { signal });
     return response.data;
   },
 
-  initiate: async (handshakeId: string, data: { exact_location: string; exact_duration: number; scheduled_time: string }): Promise<Handshake> => {
-    const response = await apiClient.post(`/handshakes/${handshakeId}/initiate/`, data);
+  initiate: async (handshakeId: string, data: { exact_location: string; exact_duration: number; scheduled_time: string }, signal?: AbortSignal): Promise<Handshake> => {
+    const response = await apiClient.post(`/handshakes/${handshakeId}/initiate/`, data, { signal });
     return response.data;
   },
 
-  approve: async (handshakeId: string): Promise<Handshake> => {
-    const response = await apiClient.post(`/handshakes/${handshakeId}/approve/`, {});
+  approve: async (handshakeId: string, signal?: AbortSignal): Promise<Handshake> => {
+    const response = await apiClient.post(`/handshakes/${handshakeId}/approve/`, {}, { signal });
+    return response.data;
+  },
+  
+  requestChanges: async (handshakeId: string, signal?: AbortSignal): Promise<Handshake> => {
+    const response = await apiClient.post(`/handshakes/${handshakeId}/request-changes/`, {}, { signal });
+    return response.data;
+  },
+  
+  decline: async (handshakeId: string, signal?: AbortSignal): Promise<Handshake> => {
+    const response = await apiClient.post(`/handshakes/${handshakeId}/decline/`, {}, { signal });
     return response.data;
   },
 
-  deny: async (handshakeId: string): Promise<Handshake> => {
-    const response = await apiClient.post(`/handshakes/${handshakeId}/deny/`);
+  deny: async (handshakeId: string, signal?: AbortSignal): Promise<Handshake> => {
+    const response = await apiClient.post(`/handshakes/${handshakeId}/deny/`, {}, { signal });
     return response.data;
   },
 
-  cancel: async (handshakeId: string): Promise<Handshake> => {
-    const response = await apiClient.post(`/handshakes/${handshakeId}/cancel/`);
+  cancel: async (handshakeId: string, signal?: AbortSignal): Promise<Handshake> => {
+    const response = await apiClient.post(`/handshakes/${handshakeId}/cancel/`, {}, { signal });
     return response.data;
   },
 
-  get: async (handshakeId: string): Promise<Handshake> => {
-    const response = await apiClient.get(`/handshakes/${handshakeId}/`);
+  get: async (handshakeId: string, signal?: AbortSignal): Promise<Handshake> => {
+    const response = await apiClient.get(`/handshakes/${handshakeId}/`, { signal });
     return response.data;
   },
 
-  confirm: async (handshakeId: string, hours?: number): Promise<Handshake> => {
+  confirm: async (handshakeId: string, hours?: number, signal?: AbortSignal): Promise<Handshake> => {
     const payload: any = {};
     if (hours !== undefined) {
       payload.hours = hours;
     }
-    const response = await apiClient.post(`/handshakes/${handshakeId}/confirm/`, payload);
+    const response = await apiClient.post(`/handshakes/${handshakeId}/confirm/`, payload, { signal });
     return response.data;
   },
 
-  report: async (handshakeId: string, issueType: string, description?: string): Promise<{status: string, report_id: string}> => {
+  report: async (handshakeId: string, issueType: string, description?: string, signal?: AbortSignal): Promise<{status: string, report_id: string}> => {
     const response = await apiClient.post(`/handshakes/${handshakeId}/report/`, {
       issue_type: issueType,
       description
-    });
+    }, { signal });
     return response.data;
   },
 };
@@ -269,24 +287,35 @@ export interface Conversation {
   exact_duration?: number;
   scheduled_time?: string;
   provisioned_hours?: number;
+  user_has_reviewed?: boolean;  // True if current user has already left reputation
+}
+
+export interface PaginatedResponse<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
 }
 
 export const chatAPI = {
-  listConversations: async (): Promise<Conversation[]> => {
-    const response = await apiClient.get('/chats/');
+  listConversations: async (signal?: AbortSignal, forceRefresh?: boolean): Promise<Conversation[]> => {
+    // Add cache-busting query param to force fresh data from server
+    const params = forceRefresh ? { _t: Date.now() } : {};
+    const response = await apiClient.get('/chats/', { params, signal });
+    return response.data.results || response.data;
+  },
+
+  getMessages: async (handshakeId: string, page?: number, signal?: AbortSignal): Promise<PaginatedResponse<ChatMessage>> => {
+    const params = page ? { page } : {};
+    const response = await apiClient.get(`/chats/${handshakeId}/`, { params, signal });
     return response.data;
   },
 
-  getMessages: async (handshakeId: string): Promise<ChatMessage[]> => {
-    const response = await apiClient.get(`/chats/${handshakeId}/`);
-    return response.data;
-  },
-
-  sendMessage: async (handshakeId: string, body: string): Promise<ChatMessage> => {
+  sendMessage: async (handshakeId: string, body: string, signal?: AbortSignal): Promise<ChatMessage> => {
     const response = await apiClient.post('/chats/', {
       handshake_id: handshakeId,
       body
-    });
+    }, { signal });
     return response.data;
   },
 };
@@ -316,20 +345,20 @@ export interface Transaction {
 }
 
 export const transactionAPI = {
-  list: async (): Promise<Transaction[]> => {
-    const response = await apiClient.get('/transactions/');
+  list: async (signal?: AbortSignal): Promise<Transaction[]> => {
+    const response = await apiClient.get('/transactions/', { signal });
     return response.data.results || response.data;
   },
 };
 
 export const notificationAPI = {
-  list: async (): Promise<Notification[]> => {
-    const response = await apiClient.get('/notifications/');
+  list: async (signal?: AbortSignal): Promise<Notification[]> => {
+    const response = await apiClient.get('/notifications/', { signal });
     return response.data;
   },
 
-  markAllRead: async (): Promise<void> => {
-    await apiClient.post('/notifications/read/');
+  markAllRead: async (signal?: AbortSignal): Promise<void> => {
+    await apiClient.post('/notifications/read/', {}, { signal });
   },
 };
 
@@ -348,13 +377,13 @@ export interface ReputationRep {
 }
 
 export const reputationAPI = {
-  submit: async (handshakeId: string, reps: {punctual: boolean, helpful: boolean, kindness: boolean}): Promise<ReputationRep> => {
+  submit: async (handshakeId: string, reps: {punctual: boolean, helpful: boolean, kindness: boolean}, signal?: AbortSignal): Promise<ReputationRep> => {
     const response = await apiClient.post('/reputation/', {
       handshake_id: handshakeId,
       punctual: reps.punctual,
       helpful: reps.helpful,
       kindness: reps.kindness
-    });
+    }, { signal });
     return response.data;
   },
 };
@@ -378,31 +407,31 @@ export interface Report {
 }
 
 export const adminAPI = {
-  getReports: async (): Promise<Report[]> => {
-    const response = await apiClient.get('/admin/reports/');
+  getReports: async (signal?: AbortSignal): Promise<Report[]> => {
+    const response = await apiClient.get('/admin/reports/', { signal });
     return response.data;
   },
 
-  resolveReport: async (reportId: string, action: string, adminNotes?: string): Promise<Report> => {
+  resolveReport: async (reportId: string, action: string, adminNotes?: string, signal?: AbortSignal): Promise<Report> => {
     const response = await apiClient.post(`/admin/reports/${reportId}/resolve/`, {
       action,
       admin_notes: adminNotes
-    });
+    }, { signal });
     return response.data;
   },
 
-  warnUser: async (userId: string, message: string): Promise<{status: string, message: string}> => {
-    const response = await apiClient.post(`/admin/users/${userId}/warn/`, { message });
+  warnUser: async (userId: string, message: string, signal?: AbortSignal): Promise<{status: string, message: string}> => {
+    const response = await apiClient.post(`/admin/users/${userId}/warn/`, { message }, { signal });
     return response.data;
   },
 
-  banUser: async (userId: string): Promise<{status: string, message: string}> => {
-    const response = await apiClient.post(`/admin/users/${userId}/ban/`);
+  banUser: async (userId: string, signal?: AbortSignal): Promise<{status: string, message: string}> => {
+    const response = await apiClient.post(`/admin/users/${userId}/ban/`, {}, { signal });
     return response.data;
   },
 
-  adjustKarma: async (userId: string, adjustment: number): Promise<{status: string, new_karma: number, message: string}> => {
-    const response = await apiClient.post(`/admin/users/${userId}/adjust-karma/`, { adjustment });
+  adjustKarma: async (userId: string, adjustment: number, signal?: AbortSignal): Promise<{status: string, new_karma: number, message: string}> => {
+    const response = await apiClient.post(`/admin/users/${userId}/adjust-karma/`, { adjustment }, { signal });
     return response.data;
   },
 };

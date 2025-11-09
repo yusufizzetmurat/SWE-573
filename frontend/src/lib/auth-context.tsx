@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import { authAPI, userAPI, User } from './api';
 
 interface AuthContextType {
@@ -9,6 +9,7 @@ interface AuthContextType {
   register: (data: { email: string; password: string; first_name: string; last_name: string }) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  updateUserOptimistically: (updates: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -27,8 +28,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return null;
   };
 
-  const [user, setUser] = useState<User | null>(getStoredUser());
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return getStoredUser();
+  });
+  const [isLoading, setIsLoading] = useState(false);
 
   // Helper to save user to localStorage
   const saveUser = (userData: User | null) => {
@@ -44,79 +48,54 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     let isMounted = true;
     
     const checkAuth = async () => {
+      if (typeof window === 'undefined') return;
+      
       const token = localStorage.getItem('access_token');
       const refreshToken = localStorage.getItem('refresh_token');
       
-      if (!token) {
-        // No token - clear any stored user data
-        if (isMounted) {
-          saveUser(null);
-          setIsLoading(false);
-        }
-        return;
-      }
-      
-      // If we have stored user data, use it immediately (optimistic)
-      const storedUser = getStoredUser();
-      if (storedUser && isMounted) {
-        setUser(storedUser); // Set immediately for fast UI, will be updated by saveUser below
-      }
+      if (!token) return;
       
       try {
         const userData = await userAPI.getMe();
         if (isMounted) {
           saveUser(userData);
-          setIsLoading(false);
         }
       } catch (error: unknown) {
-        // If token expired (401), try to refresh
         const apiError = error as { response?: { status?: number } };
+        
         if (apiError.response?.status === 401 && refreshToken) {
           try {
             const response = await authAPI.refreshToken(refreshToken);
-            if (response.access) {
+            if (response.access && isMounted) {
               localStorage.setItem('access_token', response.access);
-              const userData = await userAPI.getMe();
-              if (isMounted) {
-                saveUser(userData);
-                setIsLoading(false);
+              try {
+                const userData = await userAPI.getMe();
+                if (isMounted) {
+                  saveUser(userData);
+                }
+              } catch {
+                // Silent fail
               }
             }
           } catch (refreshError: unknown) {
-            const refreshApiError = refreshError as { response?: { status?: number; data?: unknown } };
-            console.error('Token refresh failed:', refreshApiError.response?.status, refreshApiError.response?.data);
-            // Only clear tokens if refresh token is invalid (401/400)
+            const refreshApiError = refreshError as { response?: { status?: number } };
             if (refreshApiError.response?.status === 401 || refreshApiError.response?.status === 400) {
               if (isMounted) {
                 localStorage.removeItem('access_token');
                 localStorage.removeItem('refresh_token');
                 saveUser(null);
-                setIsLoading(false);
-              }
-            } else {
-              // Network error - keep tokens and stored user data
-              if (isMounted) {
-                setIsLoading(false);
               }
             }
           }
-        } else if (apiError.response?.status === 401 && !refreshToken) {
-          // 401 but no refresh token - clear tokens
+        } else if (apiError.response?.status === 401) {
           if (isMounted) {
             localStorage.removeItem('access_token');
             saveUser(null);
-            setIsLoading(false);
-          }
-        } else {
-          // Network error or other non-auth error - keep tokens and user data
-          // User stays logged in with stored data
-          if (isMounted) {
-            setIsLoading(false);
           }
         }
       }
     };
-
+    
     checkAuth();
     
     return () => {
@@ -124,7 +103,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string) => {
     try {
       const response = await authAPI.login({ email, password });
       if (response.access) {
@@ -134,15 +113,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       }
       
-      const userData = await userAPI.getMe();
-      saveUser(userData);
+      if (response.user) {
+        saveUser(response.user);
+        userAPI.getMe()
+          .then(saveUser)
+          .catch((error) => {
+            console.error('Failed to fetch full user profile after login:', error);
+          });
+      } else {
+        userAPI.getMe()
+          .then(saveUser)
+          .catch((error) => {
+            console.error('Failed to fetch user data after login:', error);
+          });
+      }
     } catch (error: unknown) {
       console.error('Login error:', error);
       throw error;
     }
-  };
+  }, [saveUser]);
 
-  const register = async (data: { email: string; password: string; first_name: string; last_name: string }) => {
+  const register = useCallback(async (data: { email: string; password: string; first_name: string; last_name: string }) => {
     const response = await authAPI.register(data);
     if (response.access) {
       localStorage.setItem('access_token', response.access);
@@ -155,35 +146,47 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const userData = await userAPI.getMe();
       saveUser(userData);
     }
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     saveUser(null);
-  };
+  }, []);
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     try {
       const userData = await userAPI.getMe();
       saveUser(userData);
     } catch (error) {
       console.error('Failed to refresh user data:', error);
     }
-  };
+  }, []);
+
+  const updateUserOptimistically = useCallback((updates: Partial<User>) => {
+    if (user) {
+      const updatedUser = { ...user, ...updates };
+      saveUser(updatedUser);
+    }
+  }, [user]);
+
+  // Memoize context value to prevent unnecessary re-renders
+  const contextValue = useMemo(
+    () => ({
+      user,
+      isAuthenticated: !!user,
+      isLoading,
+      login,
+      register,
+      logout,
+      refreshUser,
+      updateUserOptimistically,
+    }),
+    [user, isLoading, login, register, logout, refreshUser, updateUserOptimistically]
+  );
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isAuthenticated: !!user,
-        isLoading,
-        login,
-        register,
-        logout,
-        refreshUser,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

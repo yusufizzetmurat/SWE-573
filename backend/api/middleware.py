@@ -1,6 +1,3 @@
-"""
-Custom middleware for request validation and logging
-"""
 import logging
 import time
 from django.utils.deprecation import MiddlewareMixin
@@ -69,6 +66,11 @@ class RequestValidationMiddleware(MiddlewareMixin):
                 'user': getattr(request.user, 'email', 'anonymous') if hasattr(request, 'user') else 'anonymous',
             }
             
+            # Define thresholds for query performance warnings
+            SLOW_REQUEST_THRESHOLD = 0.5  # seconds
+            HIGH_QUERY_COUNT_THRESHOLD = 10
+            EXCESSIVE_QUERY_COUNT_THRESHOLD = 20
+            
             # Log based on status code
             if response.status_code >= 500:
                 logger.error(f"Request error: {log_data}")
@@ -76,14 +78,19 @@ class RequestValidationMiddleware(MiddlewareMixin):
                 logger.warning(f"Request warning: {log_data}")
             elif duration > 1.0:  # Log slow requests
                 logger.warning(f"Slow request: {log_data}")
-            elif query_count > 10:  # Log high query count
+            elif query_count > EXCESSIVE_QUERY_COUNT_THRESHOLD:
+                # Log excessive query count with detailed query info
+                logger.warning(f"Excessive query count: {log_data}")
+                log_query_performance()
+            elif query_count > HIGH_QUERY_COUNT_THRESHOLD:
+                # Log high query count
                 logger.warning(f"High query count: {log_data}")
+            elif duration > SLOW_REQUEST_THRESHOLD:
+                # Log slow requests with query details
+                logger.warning(f"Slow request: {log_data}")
+                log_query_performance()
             else:
                 logger.info(f"Request: {log_data}")
-            
-            # Log query performance for slow requests
-            if duration > 0.5:
-                log_query_performance()
         
         return response
 

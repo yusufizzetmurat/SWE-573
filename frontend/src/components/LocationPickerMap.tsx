@@ -45,7 +45,6 @@ export function LocationPickerMap({ onLocationSelect, initialLocation, required 
     // Ensure container has dimensions before initializing
     const container = mapRef.current;
     if (!container || container.offsetWidth === 0 || container.offsetHeight === 0) {
-      console.warn('Map container has no dimensions, retrying...');
       const retryTimer = setTimeout(() => {
         if (container && container.offsetWidth > 0 && container.offsetHeight > 0) {
           // Retry initialization

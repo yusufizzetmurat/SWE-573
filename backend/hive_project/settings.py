@@ -200,6 +200,7 @@ REST_FRAMEWORK = {
         'confirm': '10/hour',     # Limit confirmations
     },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'EXCEPTION_HANDLER': 'api.exceptions.custom_exception_handler',
 }
 
 # Simple JWT Configuration

@@ -1,25 +1,40 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy, startTransition } from 'react';
 import { AuthProvider, useAuth } from './lib/auth-context';
 import { ToastProvider, useToast } from './components/Toast';
 import { getErrorMessage, POLLING_INTERVALS, type NavigateData, type RegisterFormData, type ApiError } from './lib/types';
 import type { Service } from './lib/api';
+import { Button } from './components/ui/button';
+import { ErrorBoundary } from './components/ErrorBoundary';
+
+// Eager load critical components
 import { HomePage } from './components/HomePage';
 import { RegistrationPage } from './components/RegistrationPage';
 import { LoginPage } from './components/LoginPage';
-import { Dashboard } from './components/Dashboard';
-import { ServiceDetail } from './components/ServiceDetail';
-import { PostOfferForm } from './components/PostOfferForm';
-import { PostNeedForm } from './components/PostNeedForm';
-import { ChatPage } from './components/ChatPage';
-import { UserProfile } from './components/UserProfile';
-import { TransactionHistoryPage } from './components/TransactionHistoryPage';
-import { AdminDashboard } from './components/AdminDashboard';
-import { ReportDetail } from './components/ReportDetail';
-import { ForumCategories } from './components/ForumCategories';
-import { WelcomeModal } from './components/WelcomeModal';
-import { ServiceConfirmationModal } from './components/ServiceConfirmationModal';
-import { PositiveRepModal } from './components/PositiveRepModal';
-import { Button } from './components/ui/button';
+
+// Lazy load heavy components for code splitting
+const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
+const ServiceDetail = lazy(() => import('./components/ServiceDetail').then(m => ({ default: m.ServiceDetail })));
+const PostOfferForm = lazy(() => import('./components/PostOfferForm').then(m => ({ default: m.PostOfferForm })));
+const PostNeedForm = lazy(() => import('./components/PostNeedForm').then(m => ({ default: m.PostNeedForm })));
+const ChatPage = lazy(() => import('./components/ChatPage').then(m => ({ default: m.ChatPage })));
+const UserProfile = lazy(() => import('./components/UserProfile').then(m => ({ default: m.UserProfile })));
+const TransactionHistoryPage = lazy(() => import('./components/TransactionHistoryPage').then(m => ({ default: m.TransactionHistoryPage })));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const ReportDetail = lazy(() => import('./components/ReportDetail').then(m => ({ default: m.ReportDetail })));
+const ForumCategories = lazy(() => import('./components/ForumCategories').then(m => ({ default: m.ForumCategories })));
+const WelcomeModal = lazy(() => import('./components/WelcomeModal').then(m => ({ default: m.WelcomeModal })));
+const ServiceConfirmationModal = lazy(() => import('./components/ServiceConfirmationModal').then(m => ({ default: m.ServiceConfirmationModal })));
+const PositiveRepModal = lazy(() => import('./components/PositiveRepModal').then(m => ({ default: m.PositiveRepModal })));
+
+// Loading component for Suspense fallback
+const LoadingFallback = () => (
+  <div className="flex items-center justify-center min-h-screen">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
+      <p className="mt-4 text-gray-600">Loading...</p>
+    </div>
+  </div>
+);
 
 type Page = 
   | 'home' 
@@ -58,7 +73,7 @@ const resolvePageFromPath = (path: string): Page => {
 };
 
 function AppContent() {
-  const { user, isAuthenticated, isLoading, register, login, logout, refreshUser } = useAuth();
+  const { user, isAuthenticated, isLoading, register, login, logout, refreshUser, updateUserOptimistically } = useAuth();
   const { showToast } = useToast();
   const [currentPage, setCurrentPage] = useState<Page>(() => {
     if (typeof window === 'undefined') {
@@ -73,6 +88,7 @@ function AppContent() {
   const [currentHandshakeId, setCurrentHandshakeId] = useState<string | null>(null);
   const [positiveRepPartnerName, setPositiveRepPartnerName] = useState<string>('');
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [chatPageRefreshKey, setChatPageRefreshKey] = useState(0);
   
   // Fetch notifications count
   React.useEffect(() => {
@@ -82,9 +98,17 @@ function AppContent() {
     }
     
     let isMounted = true;
+    let timeoutId: NodeJS.Timeout | null = null;
+    let intervalId: NodeJS.Timeout | null = null;
     
     const fetchNotifications = async () => {
       if (!isMounted) return;
+      
+      // Check if we have tokens before making the request
+      const accessToken = localStorage.getItem('access_token');
+      if (!accessToken) {
+        return;
+      }
       
       try {
         const { notificationAPI } = await import('./lib/api');
@@ -93,33 +117,50 @@ function AppContent() {
           const unread = notifications.filter(n => !n.is_read).length;
           setUnreadNotifications(unread);
         }
-      } catch (error) {
-        if (isMounted) {
+      } catch (error: any) {
+        // Silently handle auth errors - they're expected if tokens aren't ready yet
+        if (error?.response?.status === 401 || error?.message?.includes('refresh token')) {
+          return;
+        }
+        if (isMounted && error?.response?.status !== 401) {
           console.error('Failed to fetch notifications:', error);
+        }
+        if (isMounted) {
           setUnreadNotifications(0);
         }
       }
     };
     
-    fetchNotifications();
-    // Refresh notifications periodically
-    const interval = setInterval(fetchNotifications, POLLING_INTERVALS.NOTIFICATIONS);
+    // Wait a bit after authentication to ensure tokens are set
+    timeoutId = setTimeout(() => {
+      fetchNotifications();
+      // Refresh notifications periodically
+      intervalId = setInterval(fetchNotifications, POLLING_INTERVALS.NOTIFICATIONS);
+    }, 500);
     
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
     };
   }, [isAuthenticated]);
 
   const handleNavigate = (page: Page | string, data?: NavigateData) => {
     const resolvedPage = page as Page;
     const targetPath = pageToPath[resolvedPage] ?? '/';
-    if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
-      window.history.pushState({ page: resolvedPage }, '', targetPath);
-    }
-    setCurrentPage(resolvedPage);
-    setPageData(data || null);
-    window.scrollTo(0, 0);
+    
+    startTransition(() => {
+      if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+        window.history.pushState({ page: resolvedPage }, '', targetPath);
+      }
+      setCurrentPage(resolvedPage);
+      setPageData(data || null);
+      window.scrollTo(0, 0);
+    });
   };
 
   const handleRegister = async (data: RegisterFormData) => {
@@ -185,33 +226,41 @@ function AppContent() {
 
 
   const handleServiceComplete = async (handshakeId: string, hours?: number) => {
+    // Store original balance for rollback
+    const originalBalance = user?.timebank_balance ?? 0;
+    
     try {
       const { handshakeAPI } = await import('./lib/api');
+      
+      // Optimistically update balance (assuming hours will be transferred)
+      if (hours && user) {
+        // Provider loses hours, requester gains hours
+        // We'll update after getting the actual handshake data
+        updateUserOptimistically({ timebank_balance: originalBalance });
+      }
+      
       const handshake = await handshakeAPI.confirm(handshakeId, hours);
       
       // Check if both parties have confirmed (REQ-TB-008)
       const bothConfirmed = handshake.provider_confirmed_complete && handshake.receiver_confirmed_complete;
       
       if (bothConfirmed) {
-        // Both parties confirmed - service is completed (REQ-REP-001: reputation only after both confirm)
-        // Get partner name for reputation modal
-        const handshakeDetails = await handshakeAPI.get(handshakeId);
-        // Determine partner name - if user is provider, show requester name, else show provider name
-        const partnerName = handshakeDetails.requester_name || handshakeDetails.provider_name || 'Your Partner';
-        setPositiveRepPartnerName(partnerName);
-        
-        setTimeout(() => {
-          setShowPositiveRep(true);
-          setCurrentHandshakeId(handshakeId);
-        }, 500);
-        showToast('Service completed! Both parties confirmed. You can now leave feedback.', 'success');
+        // Service completed - reputation modal is now only accessible through ChatPage for receivers
+        showToast('Service completed! Both parties confirmed.', 'success');
       } else {
         showToast('Your confirmation received! Waiting for your partner to confirm.', 'info');
       }
       
-      refreshUser();
+      // Sync with server to get actual balance
+      await refreshUser();
       setShowServiceConfirmation(false);
+      // Force ChatPage to refresh its conversations
+      setChatPageRefreshKey(prev => prev + 1);
     } catch (error: unknown) {
+      // Rollback optimistic update on error
+      if (user) {
+        updateUserOptimistically({ timebank_balance: originalBalance });
+      }
       const errorMessage = getErrorMessage(error, 'Failed to confirm service');
       showToast(errorMessage, 'error');
     }
@@ -237,6 +286,8 @@ function AppContent() {
       refreshUser();
       setShowPositiveRep(false);
       showToast('Reputation submitted successfully!', 'success');
+      // Force ChatPage to refresh conversations to update user_has_reviewed flag
+      setChatPageRefreshKey(prev => prev + 1);
     } catch (error: unknown) {
       const errorMessage = getErrorMessage(error, 'Failed to submit reputation');
       showToast(errorMessage, 'error');
@@ -260,15 +311,15 @@ function AppContent() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
+  
+  const handleOpenReputationModal = (handshakeId: string, partnerName: string) => {
+    setCurrentHandshakeId(handshakeId);
+    setPositiveRepPartnerName(partnerName);
+    setTimeout(() => {
+      setShowPositiveRep(true);
+    }, 100);
+  };
 
-  // Show loading state while checking auth
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
-      </div>
-    );
-  }
 
   const userBalance = user?.timebank_balance || 0;
   const userName = user ? `${user.first_name} ${user.last_name}`.trim() || user.email : 'Guest';
@@ -281,226 +332,270 @@ function AppContent() {
 
   return (
     <div className="min-h-screen">
-      {currentPage === 'home' && (
-        <HomePage onNavigate={handleNavigate} />
-      )}
+      <ErrorBoundary>
+        {currentPage === 'home' && (
+          <HomePage onNavigate={handleNavigate} />
+        )}
 
-      {currentPage === 'register' && (
-        <RegistrationPage 
-          onNavigate={handleNavigate}
-          onRegister={handleRegister}
-        />
-      )}
+        {currentPage === 'register' && (
+          <RegistrationPage 
+            onNavigate={handleNavigate}
+            onRegister={handleRegister}
+          />
+        )}
 
-      {currentPage === 'login' && (
-        <LoginPage 
-          onNavigate={handleNavigate}
-        />
-      )}
+        {currentPage === 'login' && (
+          <LoginPage 
+            onNavigate={handleNavigate}
+          />
+        )}
+      </ErrorBoundary>
 
-      {currentPage === 'dashboard' && isAuthenticated && (
-        <Dashboard 
-          onNavigate={handleNavigate}
-          userBalance={userBalance}
-          unreadNotifications={unreadNotifications}
-          onLogout={handleLogout}
-        />
-      )}
+      <ErrorBoundary>
+        {currentPage === 'dashboard' && isAuthenticated && (
+          <Suspense fallback={<LoadingFallback />}>
+            <Dashboard 
+              onNavigate={handleNavigate}
+              userBalance={userBalance}
+              unreadNotifications={unreadNotifications}
+              onLogout={handleLogout}
+            />
+          </Suspense>
+        )}
 
-      {currentPage === 'dashboard' && !isAuthenticated && (
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <p className="text-gray-600 mb-4">Please log in to view your dashboard</p>
-            <Button onClick={() => handleNavigate('login')} className="bg-orange-500 hover:bg-orange-600 mr-2">
-              Log In
-            </Button>
-            <Button onClick={() => handleNavigate('register')} variant="outline">
-              Sign Up
-            </Button>
+        {currentPage === 'dashboard' && !isAuthenticated && (
+          <div className="min-h-screen flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-gray-600 mb-4">Please log in to view your dashboard</p>
+              <Button onClick={() => handleNavigate('login')} className="bg-orange-500 hover:bg-orange-600 mr-2">
+                Log In
+              </Button>
+              <Button onClick={() => handleNavigate('register')} variant="outline">
+                Sign Up
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </ErrorBoundary>
 
-      {currentPage === 'service-detail' && (
-        <ServiceDetail 
-          onNavigate={handleNavigate}
-          serviceData={pageData}
-          userBalance={userBalance}
-          unreadNotifications={unreadNotifications}
-        />
-      )}
+      <ErrorBoundary>
+        {currentPage === 'service-detail' && (
+          <Suspense fallback={<LoadingFallback />}>
+            <ServiceDetail 
+              onNavigate={handleNavigate}
+              serviceData={pageData}
+              userBalance={userBalance}
+              unreadNotifications={unreadNotifications}
+            />
+          </Suspense>
+        )}
+      </ErrorBoundary>
 
-      {currentPage === 'post-offer' && isAuthenticated && (
-        <PostOfferForm 
-          onNavigate={handleNavigate}
-          userBalance={userBalance}
-          unreadNotifications={unreadNotifications}
-          onLogout={handleLogout}
-          serviceData={pageData}
-        />
-      )}
+      <ErrorBoundary>
+        {currentPage === 'post-offer' && isAuthenticated && (
+          <Suspense fallback={<LoadingFallback />}>
+            <PostOfferForm 
+              onNavigate={handleNavigate}
+              userBalance={userBalance}
+              unreadNotifications={unreadNotifications}
+              onLogout={handleLogout}
+              serviceData={pageData}
+            />
+          </Suspense>
+        )}
 
-      {currentPage === 'post-need' && isAuthenticated && (
-        <PostNeedForm 
-          onNavigate={handleNavigate}
-          userBalance={userBalance}
-          unreadNotifications={unreadNotifications}
-          onLogout={handleLogout}
-          serviceData={pageData}
-        />
-      )}
+        {currentPage === 'post-need' && isAuthenticated && (
+          <Suspense fallback={<LoadingFallback />}>
+            <PostNeedForm 
+              onNavigate={handleNavigate}
+              userBalance={userBalance}
+              unreadNotifications={unreadNotifications}
+              onLogout={handleLogout}
+              serviceData={pageData}
+            />
+          </Suspense>
+        )}
 
-      {!isAuthenticated && (currentPage === 'post-offer' || currentPage === 'post-need') && (
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <p className="text-gray-600 mb-4">Please log in to post a service</p>
-            <Button onClick={() => handleNavigate('login')} className="bg-orange-500 hover:bg-orange-600">
-              Log In
-            </Button>
+        {!isAuthenticated && (currentPage === 'post-offer' || currentPage === 'post-need') && (
+          <div className="min-h-screen flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-gray-600 mb-4">Please log in to post a service</p>
+              <Button onClick={() => handleNavigate('login')} className="bg-orange-500 hover:bg-orange-600">
+                Log In
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </ErrorBoundary>
 
-      {currentPage === 'messages' && isAuthenticated && (
-        <ChatPage 
-          onNavigate={handleNavigate}
-          userBalance={userBalance}
-          unreadNotifications={unreadNotifications}
-          onLogout={handleLogout}
-          onConfirmService={(handshakeId) => {
-            setCurrentHandshakeId(handshakeId);
-            setShowServiceConfirmation(true);
-          }}
-        />
-      )}
+      <ErrorBoundary>
+        {currentPage === 'messages' && isAuthenticated && (
+          <Suspense fallback={<LoadingFallback />}>
+            <ChatPage 
+              key={`messages-page-${chatPageRefreshKey}`}
+              onNavigate={handleNavigate}
+              userBalance={userBalance}
+              unreadNotifications={unreadNotifications}
+              onLogout={handleLogout}
+              onConfirmService={(handshakeId) => {
+                setCurrentHandshakeId(handshakeId);
+                setShowServiceConfirmation(true);
+              }}
+              onOpenReputationModal={handleOpenReputationModal}
+            />
+          </Suspense>
+        )}
 
-      {currentPage === 'messages' && !isAuthenticated && (
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <p className="text-gray-600 mb-4">Please log in to view messages</p>
-            <Button onClick={() => handleNavigate('login')} className="bg-orange-500 hover:bg-orange-600">
-              Log In
-            </Button>
+        {currentPage === 'messages' && !isAuthenticated && (
+          <div className="min-h-screen flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-gray-600 mb-4">Please log in to view messages</p>
+              <Button onClick={() => handleNavigate('login')} className="bg-orange-500 hover:bg-orange-600">
+                Log In
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </ErrorBoundary>
 
-      {currentPage === 'profile' && isAuthenticated && user && (
-        <UserProfile 
-          onNavigate={handleNavigate}
-          userBalance={userBalance}
-          karma={userKarma}
-          positiveReps={positiveReps}
-          badges={user?.badges || []}
-          isOwnProfile={true}
-          userName={userName}
-          userBio={user?.bio || ''}
-          memberSince={user?.date_joined ? new Date(user.date_joined).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-          onLogout={handleLogout}
-        />
-      )}
+      <ErrorBoundary>
+        {currentPage === 'profile' && isAuthenticated && user && (
+          <Suspense fallback={<LoadingFallback />}>
+            <UserProfile 
+              onNavigate={handleNavigate}
+              userBalance={userBalance}
+              karma={userKarma}
+              positiveReps={positiveReps}
+              badges={user?.badges || []}
+              isOwnProfile={true}
+              userName={userName}
+              userBio={user?.bio || ''}
+              memberSince={user?.date_joined ? new Date(user.date_joined).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+              onLogout={handleLogout}
+            />
+          </Suspense>
+        )}
 
-      {currentPage === 'profile' && !isAuthenticated && (
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <p className="text-gray-600 mb-4">Please log in to view your profile</p>
-            <Button onClick={() => handleNavigate('login')} className="bg-orange-500 hover:bg-orange-600">
-              Log In
-            </Button>
+        {currentPage === 'profile' && !isAuthenticated && (
+          <div className="min-h-screen flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-gray-600 mb-4">Please log in to view your profile</p>
+              <Button onClick={() => handleNavigate('login')} className="bg-orange-500 hover:bg-orange-600">
+                Log In
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </ErrorBoundary>
 
-      {currentPage === 'transaction-history' && isAuthenticated && (
-        <TransactionHistoryPage 
-          onNavigate={handleNavigate}
-          userBalance={userBalance}
-          unreadNotifications={unreadNotifications}
-          onLogout={handleLogout}
-        />
-      )}
+      <ErrorBoundary>
+        {currentPage === 'transaction-history' && isAuthenticated && (
+          <Suspense fallback={<LoadingFallback />}>
+            <TransactionHistoryPage 
+              onNavigate={handleNavigate}
+              userBalance={userBalance}
+              unreadNotifications={unreadNotifications}
+              onLogout={handleLogout}
+            />
+          </Suspense>
+        )}
 
-      {currentPage === 'transaction-history' && !isAuthenticated && (
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <p className="text-gray-600 mb-4">Please log in to view your transaction history</p>
-            <Button onClick={() => handleNavigate('login')} className="bg-orange-500 hover:bg-orange-600">
-              Log In
-            </Button>
+        {currentPage === 'transaction-history' && !isAuthenticated && (
+          <div className="min-h-screen flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-gray-600 mb-4">Please log in to view your transaction history</p>
+              <Button onClick={() => handleNavigate('login')} className="bg-orange-500 hover:bg-orange-600">
+                Log In
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </ErrorBoundary>
 
-      {currentPage === 'admin' && (
-        <AdminDashboard 
-          onNavigate={handleNavigate}
-        />
-      )}
+      <ErrorBoundary>
+        {currentPage === 'admin' && (
+          <Suspense fallback={<LoadingFallback />}>
+            <AdminDashboard 
+              onNavigate={handleNavigate}
+            />
+          </Suspense>
+        )}
 
-      {currentPage === 'report-detail' && (
-        <ReportDetail 
-          onNavigate={handleNavigate}
-          reportData={pageData}
-        />
-      )}
+        {currentPage === 'report-detail' && (
+          <Suspense fallback={<LoadingFallback />}>
+            <ReportDetail 
+              onNavigate={handleNavigate}
+              reportData={pageData}
+            />
+          </Suspense>
+        )}
+      </ErrorBoundary>
 
-      {currentPage === 'forum' && (
-        <ForumCategories 
-          onNavigate={handleNavigate}
-          userBalance={userBalance}
-          unreadNotifications={unreadNotifications}
-          onLogout={handleLogout}
-          isAuthenticated={isAuthenticated}
-        />
-      )}
+      <ErrorBoundary>
+        {currentPage === 'forum' && (
+          <ForumCategories 
+            onNavigate={handleNavigate}
+            userBalance={userBalance}
+            unreadNotifications={unreadNotifications}
+            onLogout={handleLogout}
+            isAuthenticated={isAuthenticated}
+          />
+        )}
+      </ErrorBoundary>
 
       {/* Welcome Modal */}
-      <WelcomeModal
-        open={showWelcomeModal}
-        onClose={() => setShowWelcomeModal(false)}
-        userName={userName}
-        onNavigate={handleNavigate}
-      />
+      <Suspense fallback={null}>
+        <WelcomeModal
+          open={showWelcomeModal}
+          onClose={() => setShowWelcomeModal(false)}
+          userName={userName}
+          onNavigate={handleNavigate}
+        />
+      </Suspense>
 
       {/* Service Confirmation Modal */}
-      <ServiceConfirmationModal
-        open={showServiceConfirmation}
-        onClose={() => {
-          setShowServiceConfirmation(false);
-          setCurrentHandshakeId(null);
-        }}
-        onComplete={(hours) => {
-          if (currentHandshakeId) {
-            handleServiceComplete(currentHandshakeId, hours);
-          }
-        }}
-        handshakeId={currentHandshakeId}
-        onReportNoShow={() => {
-          if (currentHandshakeId) {
-            handleReportNoShow(currentHandshakeId);
-          }
-        }}
-        serviceTitle="Service Completion"
-        providerName="Provider"
-        receiverName="Receiver"
-        duration={0}
-      />
+      <Suspense fallback={null}>
+        <ServiceConfirmationModal
+          open={showServiceConfirmation}
+          onClose={() => {
+            setShowServiceConfirmation(false);
+            setCurrentHandshakeId(null);
+          }}
+          onComplete={(hours) => {
+            if (currentHandshakeId) {
+              handleServiceComplete(currentHandshakeId, hours);
+            }
+          }}
+          handshakeId={currentHandshakeId}
+          onReportNoShow={() => {
+            if (currentHandshakeId) {
+              handleReportNoShow(currentHandshakeId);
+            }
+          }}
+          serviceTitle="Service Completion"
+          providerName="Provider"
+          receiverName="Receiver"
+          duration={0}
+        />
+      </Suspense>
 
       {/* Positive Rep Modal */}
-      <PositiveRepModal
-        open={showPositiveRep}
-        onClose={() => {
-          setShowPositiveRep(false);
-          setCurrentHandshakeId(null);
-          setPositiveRepPartnerName('');
-        }}
-        onSubmit={(reps) => {
-          if (currentHandshakeId) {
-            handleSubmitReps(currentHandshakeId, reps);
-          }
-        }}
-        userName={positiveRepPartnerName || 'Your Partner'}
-      />
+      <Suspense fallback={null}>
+        <PositiveRepModal
+          open={showPositiveRep}
+          onClose={() => {
+            setShowPositiveRep(false);
+            setCurrentHandshakeId(null);
+            setPositiveRepPartnerName('');
+          }}
+          onSubmit={(reps) => {
+            if (currentHandshakeId) {
+              handleSubmitReps(currentHandshakeId, reps);
+            }
+          }}
+          userName={positiveRepPartnerName || 'Your Partner'}
+        />
+      </Suspense>
     </div>
   );
 }

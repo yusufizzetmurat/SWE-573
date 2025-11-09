@@ -13,3 +13,9 @@ COPY requirements.txt /code/
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . /code/
+
+# Make entrypoint script executable
+RUN chmod +x /code/entrypoint.sh
+
+# Set entrypoint
+ENTRYPOINT ["/code/entrypoint.sh"]

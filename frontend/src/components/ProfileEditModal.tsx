@@ -19,6 +19,8 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
     bio: '',
     avatar_url: '',
     banner_url: '',
+    first_name: '',
+    last_name: '',
   });
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
@@ -31,6 +33,8 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
         bio: user.bio || '',
         avatar_url: user.avatar_url || '',
         banner_url: user.banner_url || '',
+        first_name: user.first_name || '',
+        last_name: user.last_name || '',
       });
     }
   }, [user]);
@@ -86,6 +90,31 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
               <p className="text-sm text-red-800">{error}</p>
             </div>
           )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="first_name">First Name</Label>
+              <Input
+                id="first_name"
+                type="text"
+                value={formData.first_name}
+                onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                className="mt-2"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="last_name">Last Name</Label>
+              <Input
+                id="last_name"
+                type="text"
+                value={formData.last_name}
+                onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                className="mt-2"
+                required
+              />
+            </div>
+          </div>
 
           <div>
             <Label htmlFor="bio">Bio</Label>

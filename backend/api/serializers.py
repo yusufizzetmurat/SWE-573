@@ -10,7 +10,84 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from decimal import Decimal
 import bleach
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
 
+
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'User Summary Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174000',
+                'email': 'john.doe@example.com',
+                'first_name': 'John',
+                'last_name': 'Doe',
+                'bio': 'Experienced web developer passionate about helping others',
+                'avatar_url': 'https://example.com/avatars/john.jpg',
+                'banner_url': 'https://example.com/banners/john.jpg',
+                'timebank_balance': 8.5,
+                'karma_score': 42,
+                'date_joined': '2024-01-01T12:00:00Z',
+                'badges': ['punctual_pro', 'helpful_hero'],
+                'featured_badge': 'punctual_pro'
+            },
+            response_only=True
+        )
+    ]
+)
+class UserSummarySerializer(serializers.ModelSerializer):
+    """
+    Reusable serializer for user summary information
+    Used in nested serializations to avoid circular references
+    """
+    badges = serializers.SerializerMethodField()
+    featured_badge = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = [
+            'id', 'email', 'first_name', 'last_name', 'bio',
+            'avatar_url', 'banner_url', 'timebank_balance', 'karma_score',
+            'date_joined', 'badges', 'featured_badge'
+        ]
+        read_only_fields = fields
+    
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_badges(self, obj):
+        """Return list of badge IDs - uses prefetched data when available"""
+        try:
+            if hasattr(obj, '_prefetched_objects_cache') and 'badges' in obj._prefetched_objects_cache:
+                return [user_badge.badge.id for user_badge in obj._prefetched_objects_cache['badges']]
+        except (AttributeError, KeyError):
+            pass
+        try:
+            return [user_badge.badge.id for user_badge in obj.badges.all()]
+        except (AttributeError, Exception):
+            return []
+    
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_featured_badge(self, obj):
+        """Return first badge ID as featured badge"""
+        badges = self.get_badges(obj)
+        return badges[0] if badges else None
+
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Tag Example',
+            value={
+                'id': 'programming',
+                'name': 'Programming',
+                'wikidata_info': {
+                    'label': 'Programming',
+                    'description': 'Process of writing computer programs'
+                }
+            },
+            response_only=True
+        )
+    ]
+)
 class TagSerializer(serializers.ModelSerializer):
     wikidata_info = serializers.SerializerMethodField()
     
@@ -18,6 +95,7 @@ class TagSerializer(serializers.ModelSerializer):
         model = Tag
         fields = ['id', 'name', 'wikidata_info']
     
+    @extend_schema_field(OpenApiTypes.OBJECT)
     def get_wikidata_info(self, obj):
         """Fetch Wikidata information for the tag if it has a Wikidata ID"""
         if obj.id and obj.id.startswith('Q'):
@@ -28,6 +106,57 @@ class TagSerializer(serializers.ModelSerializer):
                 return None
         return None
 
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Service Offer Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174001',
+                'title': 'Web Development Help',
+                'description': 'I can help with React, Django, and database design',
+                'type': 'Offer',
+                'duration': 2.5,
+                'location_type': 'remote',
+                'location_area': 'San Francisco Bay Area',
+                'location_lat': None,
+                'location_lng': None,
+                'status': 'Active',
+                'max_participants': 1,
+                'schedule_type': 'flexible',
+                'schedule_details': 'Weekday evenings preferred',
+                'created_at': '2024-01-01T12:00:00Z',
+                'user': {
+                    'id': '123e4567-e89b-12d3-a456-426614174000',
+                    'first_name': 'John',
+                    'last_name': 'Doe',
+                    'avatar_url': 'https://example.com/avatars/john.jpg',
+                    'badges': ['punctual_pro']
+                },
+                'tags': [
+                    {'id': 'programming', 'name': 'Programming'},
+                    {'id': 'web_development', 'name': 'Web Development'}
+                ]
+            },
+            response_only=True
+        ),
+        OpenApiExample(
+            'Create Service Request',
+            value={
+                'title': 'Web Development Help',
+                'description': 'I can help with React, Django, and database design',
+                'type': 'Offer',
+                'duration': 2.5,
+                'location_type': 'remote',
+                'location_area': 'San Francisco Bay Area',
+                'max_participants': 1,
+                'schedule_type': 'flexible',
+                'schedule_details': 'Weekday evenings preferred',
+                'tag_names': ['Programming', 'Web Development']
+            },
+            request_only=True
+        )
+    ]
+)
 class ServiceSerializer(serializers.ModelSerializer):
     tags = TagSerializer(many=True, required=False, read_only=True)
     tag_ids = serializers.ListField(
@@ -53,25 +182,23 @@ class ServiceSerializer(serializers.ModelSerializer):
             'schedule_details', 'created_at', 'tags', 'tag_ids', 'tag_names'
         ]
         read_only_fields = ['user']
+    
+    def validate_duration(self, value):
+        """Validate that duration is positive"""
+        if value <= 0:
+            raise serializers.ValidationError('Duration must be greater than 0')
+        return value
+    
+    def validate_max_participants(self, value):
+        """Validate that max_participants is positive"""
+        if value <= 0:
+            raise serializers.ValidationError('Max participants must be greater than 0')
+        return value
 
+    @extend_schema_field(UserSummarySerializer)
     def get_user(self, obj):
         """Return user details without nested services to avoid circular reference"""
-        user = obj.user
-        badges = [user_badge.badge.id for user_badge in user.badges.all()]
-        return {
-            'id': str(user.id),
-            'email': user.email,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-            'bio': user.bio,
-            'avatar_url': user.avatar_url,
-            'banner_url': user.banner_url,
-            'timebank_balance': float(user.timebank_balance),
-            'karma_score': user.karma_score,
-            'date_joined': user.date_joined.isoformat() if hasattr(user, 'date_joined') and user.date_joined else None,
-            'badges': badges,
-            'featured_badge': badges[0] if badges else None,
-        }
+        return UserSummarySerializer(obj.user).data
 
     def create(self, validated_data):
         # Sanitize description
@@ -86,22 +213,39 @@ class ServiceSerializer(serializers.ModelSerializer):
         tag_ids = validated_data.pop('tag_ids', [])
         tag_names = validated_data.pop('tag_names', [])
         
-        # Handle location coordinates if provided (convert from string to Decimal)
+        # Handle location coordinates if provided (convert from string/float to Decimal, round to 6 decimal places)
         if 'location_lat' in validated_data and validated_data['location_lat']:
-            if isinstance(validated_data['location_lat'], str):
-                from decimal import Decimal
-                try:
-                    validated_data['location_lat'] = Decimal(validated_data['location_lat'])
-                except (ValueError, TypeError):
-                    validated_data.pop('location_lat', None)
+            from decimal import Decimal, ROUND_HALF_UP
+            try:
+                lat_value = validated_data['location_lat']
+                if isinstance(lat_value, str):
+                    lat_decimal = Decimal(lat_value)
+                elif isinstance(lat_value, (int, float)):
+                    lat_decimal = Decimal(str(lat_value))
+                else:
+                    lat_decimal = lat_value
+                
+                # Round to 6 decimal places to match max_digits=9, decimal_places=6
+                # This ensures no more than 9 total digits (3 before + 6 after decimal = 9 max)
+                validated_data['location_lat'] = lat_decimal.quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP)
+            except (ValueError, TypeError, Exception):
+                validated_data.pop('location_lat', None)
         
         if 'location_lng' in validated_data and validated_data['location_lng']:
-            if isinstance(validated_data['location_lng'], str):
-                from decimal import Decimal
-                try:
-                    validated_data['location_lng'] = Decimal(validated_data['location_lng'])
-                except (ValueError, TypeError):
-                    validated_data.pop('location_lng', None)
+            from decimal import Decimal, ROUND_HALF_UP
+            try:
+                lng_value = validated_data['location_lng']
+                if isinstance(lng_value, str):
+                    lng_decimal = Decimal(lng_value)
+                elif isinstance(lng_value, (int, float)):
+                    lng_decimal = Decimal(str(lng_value))
+                else:
+                    lng_decimal = lng_value
+                
+                # Round to 6 decimal places to match max_digits=9, decimal_places=6
+                validated_data['location_lng'] = lng_decimal.quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP)
+            except (ValueError, TypeError, Exception):
+                validated_data.pop('location_lng', None)
         
         # The user will be passed in from the View
         validated_data['user'] = self.context['request'].user
@@ -152,6 +296,40 @@ class ServiceSerializer(serializers.ModelSerializer):
             )
         return super().update(instance, validated_data)
 
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Registration Request',
+            value={
+                'email': 'john.doe@example.com',
+                'password': 'SecurePassword123!',
+                'first_name': 'John',
+                'last_name': 'Doe'
+            },
+            request_only=True
+        ),
+        OpenApiExample(
+            'Registration Response',
+            value={
+                'user_id': '123e4567-e89b-12d3-a456-426614174000',
+                'name': 'John Doe',
+                'balance': 1.0,
+                'token': 'eyJ0eXAiOiJKV1QiLCJhbGc...',
+                'access': 'eyJ0eXAiOiJKV1QiLCJhbGc...',
+                'refresh': 'eyJ0eXAiOiJKV1QiLCJhbGc...',
+                'user': {
+                    'id': '123e4567-e89b-12d3-a456-426614174000',
+                    'email': 'john.doe@example.com',
+                    'first_name': 'John',
+                    'last_name': 'Doe',
+                    'timebank_balance': 1.0,
+                    'karma_score': 0
+                }
+            },
+            response_only=True
+        )
+    ]
+)
 class UserRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -178,6 +356,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     kind_count = serializers.IntegerField(read_only=True)
     badges = serializers.SerializerMethodField()
     bio = serializers.CharField(max_length=1000, allow_blank=True, required=False)
+    first_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    last_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
 
     class Meta:
         model = User
@@ -190,7 +370,26 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'id', 'email', 'timebank_balance', 'karma_score', 'services',
             'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined'
         ]
+    
+    def validate_avatar_url(self, value):
+        """Validate avatar URL format - allow data URLs for file uploads"""
+        if value and not (value.startswith(('http://', 'https://', 'data:'))):
+            raise serializers.ValidationError('Avatar URL must be a valid HTTP/HTTPS URL or data URL')
+        return value
+    
+    def validate_banner_url(self, value):
+        """Validate banner URL format - allow data URLs for file uploads"""
+        if value and not (value.startswith(('http://', 'https://', 'data:'))):
+            raise serializers.ValidationError('Banner URL must be a valid HTTP/HTTPS URL or data URL')
+        return value
+    
+    def validate_bio(self, value):
+        """Validate bio length"""
+        if value and len(value) > 1000:
+            raise serializers.ValidationError('Bio must be 1000 characters or less')
+        return value
 
+    @extend_schema_field(OpenApiTypes.OBJECT)
     def get_badges(self, obj):
         return [ub.badge.id for ub in obj.badges.all()]
 
@@ -213,14 +412,42 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
             'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined'
         ]
 
+    @extend_schema_field(OpenApiTypes.OBJECT)
     def get_badges(self, obj):
         return [ub.badge.id for ub in obj.badges.all()]
 
 # Handshake Serializers
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Handshake Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174002',
+                'service': '123e4567-e89b-12d3-a456-426614174001',
+                'service_title': 'Web Development Help',
+                'requester': '123e4567-e89b-12d3-a456-426614174003',
+                'requester_name': 'Jane Smith',
+                'provider_name': 'John',
+                'status': 'accepted',
+                'provisioned_hours': 2.5,
+                'provider_confirmed_complete': False,
+                'receiver_confirmed_complete': False,
+                'exact_location': '123 Main St, San Francisco, CA',
+                'exact_duration': 2.5,
+                'scheduled_time': '2024-12-25T14:00:00Z',
+                'provider_initiated': True,
+                'requester_initiated': True,
+                'created_at': '2024-01-01T12:00:00Z',
+                'updated_at': '2024-01-01T13:00:00Z'
+            },
+            response_only=True
+        )
+    ]
+)
 class HandshakeSerializer(serializers.ModelSerializer):
     service_title = serializers.CharField(source='service.title', read_only=True)
     requester_name = serializers.SerializerMethodField()
-    provider_name = serializers.CharField(source='service.user.first_name', read_only=True)
+    provider_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Handshake
@@ -233,27 +460,83 @@ class HandshakeSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_requester_name(self, obj):
         return f"{obj.requester.first_name} {obj.requester.last_name}".strip()
+    
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_provider_name(self, obj):
+        from .utils import get_provider_and_receiver
+        provider, _ = get_provider_and_receiver(obj)
+        return f"{provider.first_name} {provider.last_name}".strip()
 
 # Chat Message Serializers
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Chat Message Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174004',
+                'handshake': '123e4567-e89b-12d3-a456-426614174002',
+                'sender': '123e4567-e89b-12d3-a456-426614174000',
+                'sender_id': '123e4567-e89b-12d3-a456-426614174000',
+                'sender_name': 'John Doe',
+                'sender_avatar_url': 'https://example.com/avatars/john.jpg',
+                'body': 'Hello! When would be a good time to meet?',
+                'created_at': '2024-01-01T12:00:00Z'
+            },
+            response_only=True
+        ),
+        OpenApiExample(
+            'Send Message Request',
+            value={
+                'handshake_id': '123e4567-e89b-12d3-a456-426614174002',
+                'body': 'Hello! When would be a good time to meet?'
+            },
+            request_only=True
+        )
+    ]
+)
 class ChatMessageSerializer(serializers.ModelSerializer):
     sender_name = serializers.SerializerMethodField()
     sender_avatar_url = serializers.SerializerMethodField()
     sender_id = serializers.UUIDField(source='sender.id', read_only=True)
+    handshake_id = serializers.UUIDField(source='handshake.id', read_only=True)
     body = serializers.CharField(max_length=5000)
+    handshake = serializers.UUIDField(read_only=True)
+    sender = serializers.UUIDField(read_only=True)
 
     class Meta:
         model = ChatMessage
-        fields = ['id', 'handshake', 'sender', 'sender_id', 'sender_name', 'sender_avatar_url', 'body', 'created_at']
+        fields = ['id', 'handshake', 'handshake_id', 'sender', 'sender_id', 'sender_name', 'sender_avatar_url', 'body', 'created_at']
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_sender_name(self, obj):
         return f"{obj.sender.first_name} {obj.sender.last_name}".strip()
     
+    @extend_schema_field(OpenApiTypes.STR)
     def get_sender_avatar_url(self, obj):
         return obj.sender.avatar_url
 
 # Notification Serializer
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Notification Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174005',
+                'type': 'handshake_accepted',
+                'title': 'Handshake Accepted',
+                'message': "Your interest in 'Web Development Help' has been accepted!",
+                'is_read': False,
+                'related_handshake': '123e4567-e89b-12d3-a456-426614174002',
+                'related_service': '123e4567-e89b-12d3-a456-426614174001',
+                'created_at': '2024-01-01T12:00:00Z'
+            },
+            response_only=True
+        )
+    ]
+)
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
@@ -263,6 +546,36 @@ class NotificationSerializer(serializers.ModelSerializer):
         ]
 
 # Reputation Serializer
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Reputation Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174006',
+                'handshake': '123e4567-e89b-12d3-a456-426614174002',
+                'giver': '123e4567-e89b-12d3-a456-426614174000',
+                'giver_name': 'John Doe',
+                'receiver': '123e4567-e89b-12d3-a456-426614174003',
+                'receiver_name': 'Jane Smith',
+                'is_punctual': True,
+                'is_helpful': True,
+                'is_kind': False,
+                'created_at': '2024-01-01T12:00:00Z'
+            },
+            response_only=True
+        ),
+        OpenApiExample(
+            'Submit Reputation Request',
+            value={
+                'handshake_id': '123e4567-e89b-12d3-a456-426614174002',
+                'punctual': True,
+                'helpful': True,
+                'kindness': False
+            },
+            request_only=True
+        )
+    ]
+)
 class ReputationRepSerializer(serializers.ModelSerializer):
     giver_name = serializers.SerializerMethodField()
     receiver_name = serializers.SerializerMethodField()
@@ -274,19 +587,59 @@ class ReputationRepSerializer(serializers.ModelSerializer):
             'is_punctual', 'is_helpful', 'is_kind', 'created_at'
         ]
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_giver_name(self, obj):
         return f"{obj.giver.first_name} {obj.giver.last_name}".strip()
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_receiver_name(self, obj):
         return f"{obj.receiver.first_name} {obj.receiver.last_name}".strip()
 
 # Badge Serializers
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Badge Example',
+            value={
+                'id': 'punctual_pro',
+                'name': 'Punctual Pro',
+                'description': 'Earned 10+ punctual reputation points',
+                'icon_url': 'https://example.com/badges/punctual_pro.png'
+            },
+            response_only=True
+        )
+    ]
+)
 class BadgeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Badge
         fields = ['id', 'name', 'description', 'icon_url']
 
 # Report Serializer
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Report Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174007',
+                'reporter': '123e4567-e89b-12d3-a456-426614174000',
+                'reporter_name': 'John Doe',
+                'reported_user': '123e4567-e89b-12d3-a456-426614174003',
+                'reported_user_name': 'Jane Smith',
+                'reported_service': '123e4567-e89b-12d3-a456-426614174001',
+                'related_handshake': '123e4567-e89b-12d3-a456-426614174002',
+                'type': 'no_show',
+                'status': 'pending',
+                'description': 'Provider did not show up at scheduled time',
+                'admin_notes': None,
+                'created_at': '2024-01-01T12:00:00Z',
+                'resolved_at': None,
+                'resolved_by': None
+            },
+            response_only=True
+        )
+    ]
+)
 class ReportSerializer(serializers.ModelSerializer):
     reporter_name = serializers.SerializerMethodField()
     reported_user_name = serializers.SerializerMethodField()
@@ -299,15 +652,35 @@ class ReportSerializer(serializers.ModelSerializer):
             'description', 'admin_notes', 'created_at', 'resolved_at', 'resolved_by'
         ]
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_reporter_name(self, obj):
         return f"{obj.reporter.first_name} {obj.reporter.last_name}".strip()
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_reported_user_name(self, obj):
         if obj.reported_user:
             return f"{obj.reported_user.first_name} {obj.reported_user.last_name}".strip()
         return None
 
 # Transaction History Serializer
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Transaction Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174008',
+                'transaction_type': 'provision',
+                'transaction_type_display': 'Provision',
+                'amount': -2.5,
+                'balance_after': 7.5,
+                'description': "Hours escrowed for 'Web Development Help'",
+                'service_title': 'Web Development Help',
+                'created_at': '2024-01-01T12:00:00Z'
+            },
+            response_only=True
+        )
+    ]
+)
 class TransactionHistorySerializer(serializers.ModelSerializer):
     transaction_type_display = serializers.CharField(source='get_transaction_type_display', read_only=True)
     service_title = serializers.SerializerMethodField()
@@ -320,6 +693,7 @@ class TransactionHistorySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at']
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_service_title(self, obj):
         if obj.handshake and obj.handshake.service:
             return obj.handshake.service.title

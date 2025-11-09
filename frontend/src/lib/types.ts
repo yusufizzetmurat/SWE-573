@@ -1,7 +1,10 @@
 // Common types for error handling and API responses
 
 export interface ApiErrorResponse {
-  detail?: string;
+  detail: string;
+  code: string;
+  field_errors?: Record<string, string[]>;
+  // Legacy support for old error format
   error?: string;
   message?: string;
   [key: string]: unknown;
@@ -14,6 +17,24 @@ export interface ApiError extends Error {
   };
   message: string;
 }
+
+// Standard error codes from backend
+export const ErrorCodes = {
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  INSUFFICIENT_BALANCE: 'INSUFFICIENT_BALANCE',
+  INVALID_STATE: 'INVALID_STATE',
+  PERMISSION_DENIED: 'PERMISSION_DENIED',
+  NOT_FOUND: 'NOT_FOUND',
+  AUTHENTICATION_FAILED: 'AUTHENTICATION_FAILED',
+  CONFLICT: 'CONFLICT',
+  ALREADY_EXISTS: 'ALREADY_EXISTS',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  INVALID_INPUT: 'INVALID_INPUT',
+  RATE_LIMIT_EXCEEDED: 'RATE_LIMIT_EXCEEDED',
+  SERVER_ERROR: 'SERVER_ERROR',
+} as const;
+
+export type ErrorCode = typeof ErrorCodes[keyof typeof ErrorCodes];
 
 export interface NavigateData {
   id?: string;
@@ -82,7 +103,19 @@ export function getErrorMessage(error: unknown, defaultMessage: string = ERROR_M
     if (apiError.response?.data) {
       const data = apiError.response.data;
       
-      // Check for top-level error fields first
+      // New standardized format: { detail, code, field_errors? }
+      if (data.detail && data.code) {
+        // If there are field errors, format them nicely
+        if (data.field_errors && Object.keys(data.field_errors).length > 0) {
+          const fieldMessages = Object.entries(data.field_errors)
+            .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
+            .join('. ');
+          return `${data.detail} ${fieldMessages}`;
+        }
+        return data.detail;
+      }
+      
+      // Legacy support: Check for old error format
       if (data.detail) {
         return typeof data.detail === 'string' ? data.detail : String(data.detail);
       }
@@ -96,7 +129,7 @@ export function getErrorMessage(error: unknown, defaultMessage: string = ERROR_M
       // Handle field-level errors (e.g., {"email": ["user with this email already exists."]})
       const fieldErrors: string[] = [];
       for (const key in data) {
-        if (key !== 'detail' && key !== 'error' && key !== 'message') {
+        if (key !== 'detail' && key !== 'error' && key !== 'message' && key !== 'code' && key !== 'field_errors') {
           if (Array.isArray(data[key])) {
             const messages = (data[key] as string[]).map(msg => `${key}: ${msg}`);
             fieldErrors.push(...messages);
@@ -117,6 +150,34 @@ export function getErrorMessage(error: unknown, defaultMessage: string = ERROR_M
   }
   
   return defaultMessage;
+}
+
+/**
+ * Extract error code from API error
+ */
+export function getErrorCode(error: unknown): ErrorCode | null {
+  if (error && typeof error === 'object') {
+    const apiError = error as ApiError;
+    if (apiError.response?.data?.code) {
+      return apiError.response.data.code as ErrorCode;
+    }
+  }
+  return null;
+}
+
+/**
+ * Get formatted error message with code for debugging
+ * Useful for development or detailed error logging
+ */
+export function getDetailedErrorMessage(error: unknown, defaultMessage: string = ERROR_MESSAGES.UNKNOWN): string {
+  const message = getErrorMessage(error, defaultMessage);
+  const code = getErrorCode(error);
+  
+  if (code && import.meta.env.DEV) {
+    return `${message} (Code: ${code})`;
+  }
+  
+  return message;
 }
 
 /**

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Hexagon, ArrowLeft } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -18,6 +18,17 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
   });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Check for session expired error from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const errorParam = params.get('error');
+    if (errorParam === 'session_expired') {
+      setError('Your session has expired. Please log in again.');
+      // Clean up URL
+      window.history.replaceState({}, '', '/login');
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

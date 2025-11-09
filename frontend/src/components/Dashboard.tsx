@@ -26,11 +26,16 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+    let abortController = new AbortController();
+    
     const fetchServices = async () => {
       try {
         setIsLoading(true);
         setError(null);
-        const data = await serviceAPI.list();
+        const data = await serviceAPI.list({}, abortController.signal);
+        
+        if (!isMounted || abortController.signal.aborted) return;
         
         // Remove duplicates by service ID (fix for recurrent events showing multiple times)
         const uniqueServices = Array.from(
@@ -90,26 +95,38 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
           });
         }
         
-        setServices(filteredData);
-      } catch (err: unknown) {
+        if (isMounted && !abortController.signal.aborted) {
+          setServices(filteredData);
+          setIsLoading(false);
+        }
+      } catch (err: any) {
+        if (!isMounted) return;
+        
+        // Ignore cancellation errors (expected when component unmounts or new requests cancel old ones)
+        if (err?.name === 'AbortError' || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') {
+          setIsLoading(false);
+          return;
+        }
+        
         console.error('Failed to fetch services:', err);
         const errorMessage = getErrorMessage(err, 'Failed to load services. Please try again.');
         setError(errorMessage);
-      } finally {
         setIsLoading(false);
       }
     };
 
     fetchServices();
 
-    // Auto-refresh services every 10 seconds to catch status changes
+    // Auto-refresh services every 30 seconds to catch status changes
     const refreshInterval = setInterval(() => {
-      fetchServices();
-    }, 10000);
+      if (isMounted) {
+        fetchServices();
+      }
+    }, 30000);
 
     // Refresh when page becomes visible
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
+      if (!document.hidden && isMounted) {
         fetchServices();
       }
     };
@@ -117,11 +134,15 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
 
     // Refresh on window focus
     const handleFocus = () => {
-      fetchServices();
+      if (isMounted) {
+        fetchServices();
+      }
     };
     window.addEventListener('focus', handleFocus);
 
     return () => {
+      isMounted = false;
+      abortController.abort();
       clearInterval(refreshInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
@@ -242,7 +263,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
                 return (
                 <button
                   key={service.id}
-                  onClick={() => onNavigate('service-detail', service)}
+                  onClick={() => onNavigate('service-detail', { ...service, full: true })}
                   className="bg-white rounded-xl border border-gray-200 p-6 hover:border-amber-300 hover:shadow-md transition-all text-left"
                 >
                   <div className="mb-3">
@@ -263,7 +284,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
                               : 'bg-blue-100 text-blue-700 hover:bg-blue-100'
                             }
                           >
-                            {service.type}
+                            {service.type === 'Need' ? 'Want' : service.type}
                           </Badge>
                         </div>
                         <p className="text-xs text-gray-500 mb-1">{userName}</p>

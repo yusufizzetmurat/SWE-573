@@ -47,10 +47,7 @@ def fetch_wikidata_item(wikidata_id: str) -> Optional[Dict]:
             'description': descriptions.get('en', {}).get('value') if descriptions.get('en') else None,
             'aliases': [alias.get('value') for alias in aliases.get('en', [])] if aliases.get('en') else []
         }
-    except (requests.RequestException, KeyError, ValueError) as e:
-        # Suppress 403 errors (rate limiting from Wikidata) - not critical
-        if '403' not in str(e):
-            print(f"Error fetching Wikidata item {wikidata_id}: {e}")
+    except (requests.RequestException, KeyError, ValueError):
         return None
 
 
@@ -84,10 +81,7 @@ def search_wikidata_items(query: str, limit: int = 10) -> List[Dict]:
             }
             for item in results
         ]
-    except (requests.RequestException, KeyError) as e:
-        # Suppress 403 errors (rate limiting from Wikidata) - not critical
-        if '403' not in str(e):
-            print(f"Error searching Wikidata for '{query}': {e}")
+    except (requests.RequestException, KeyError):
         return []
 
 

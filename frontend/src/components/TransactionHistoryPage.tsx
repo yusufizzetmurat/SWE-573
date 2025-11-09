@@ -5,6 +5,8 @@ import { Button } from './ui/button';
 import { transactionAPI, Transaction } from '../lib/api';
 import { formatTimebank } from '../lib/utils';
 import { getErrorMessage } from '../lib/types';
+import { useAbortController } from '../lib/hooks/useAbortController';
+import { useAuth } from '../lib/auth-context';
 
 interface TransactionHistoryPageProps {
   onNavigate: (page: string) => void;
@@ -19,28 +21,48 @@ export function TransactionHistoryPage({
   unreadNotifications = 0, 
   onLogout 
 }: TransactionHistoryPageProps) {
+  const { refreshUser } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const fetchTransactions = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const data = await transactionAPI.list();
-      setTransactions(data);
-    } catch (err: unknown) {
-      console.error('Failed to fetch transactions:', err);
-      const errorMessage = getErrorMessage(err, 'Failed to load transaction history. Please try again.');
-      setError(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const signal = useAbortController();
 
   useEffect(() => {
+    let isMounted = true;
+    
+    const fetchTransactions = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        // Refresh user balance when viewing transaction history
+        await refreshUser();
+        const data = await transactionAPI.list(signal);
+        if (isMounted) {
+          setTransactions(data);
+          setIsLoading(false);
+        }
+      } catch (err: any) {
+        if (!isMounted) return;
+        
+        // Ignore cancellation errors (expected when component unmounts or new requests cancel old ones)
+        if (err?.name === 'AbortError' || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') {
+          setIsLoading(false);
+          return;
+        }
+        
+        console.error('Failed to fetch transactions:', err);
+        const errorMessage = getErrorMessage(err, 'Failed to load transaction history. Please try again.');
+        setError(errorMessage);
+        setIsLoading(false);
+      }
+    };
+
     fetchTransactions();
-  }, []);
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [signal]);
 
   const getTransactionIcon = (type: string) => {
     switch (type) {

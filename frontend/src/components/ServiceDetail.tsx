@@ -21,7 +21,7 @@ interface ServiceDetailProps {
 }
 
 export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unreadNotifications = 2 }: ServiceDetailProps) {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, refreshUser } = useAuth();
   const { showToast } = useToast();
   const [service, setService] = useState<Service | null>(serviceData || null);
   const [isLoading, setIsLoading] = useState(!serviceData);
@@ -208,7 +208,7 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                           : 'bg-blue-100 text-blue-700 hover:bg-blue-100'
                         }
                       >
-                        {service.type}
+                        {service.type === 'Need' ? 'Want' : service.type}
                       </Badge>
                     </div>
                   </div>
@@ -304,7 +304,7 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
           <div className="space-y-6">
             {/* Provider Card */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h3 className="text-gray-900 mb-4">Service Provider</h3>
+              <h3 className="text-gray-900 mb-4">{service.type === 'Offer' ? 'Service Provider' : 'Service Receiver'}</h3>
               
               <div className="flex items-start gap-4 mb-4">
                 <Avatar className="w-16 h-16">
@@ -321,7 +321,7 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                 <div className="flex-1">
                   <div className="text-gray-900 mb-1 font-medium">{providerName}</div>
                   <div className="text-sm text-gray-600">
-                    Service Provider
+                    {service.type === 'Offer' ? 'Service Provider' : 'Service Receiver'}
                   </div>
                 </div>
               </div>
@@ -409,18 +409,42 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                         onNavigate('messages');
                       }, 1000);
                     } catch (error: unknown) {
-                      console.error('Express interest error:', error);
-                      const apiError = error as { response?: { status?: number; data?: { error?: string } }; message?: string };
+                      const apiError = error as { 
+                        response?: { 
+                          status?: number; 
+                          data?: { 
+                            detail?: string;
+                            error?: string;
+                            code?: string;
+                          }; 
+                        }; 
+                        message?: string;
+                      };
+                      
+                      const errorDetail = apiError.response?.data?.detail || apiError.response?.data?.error || apiError.message;
+                      const errorCode = apiError.response?.data?.code;
+                      
                       if (apiError.response?.status === 401) {
                         showToast('Please log in to express interest', 'warning');
                         onNavigate('login');
                       } else if (apiError.response?.status === 403) {
                         showToast('Access denied. Please try logging in again.', 'error');
                         onNavigate('login');
-                      } else if (apiError.response?.status === 400 && apiError.response?.data?.error?.includes('already expressed')) {
-                        setHasInterest(true);
-                        setHandshakeStatus('pending');
-                        showToast('You have already expressed interest', 'info');
+                      } else if (apiError.response?.status === 400) {
+                        // Handle specific 400 errors
+                        if (errorCode === 'ALREADY_EXISTS' || (errorDetail && errorDetail.toLowerCase().includes('already expressed'))) {
+                          setHasInterest(true);
+                          setHandshakeStatus('pending');
+                          showToast('You have already expressed interest', 'info');
+                        } else if (errorCode === 'INVALID_STATE' && errorDetail && errorDetail.toLowerCase().includes('own service')) {
+                          showToast('Cannot express interest in your own service', 'warning');
+                        } else if (errorCode === 'INSUFFICIENT_BALANCE' || (errorDetail && errorDetail.toLowerCase().includes('insufficient'))) {
+                          const errorMsg = getErrorMessage(error, 'Insufficient TimeBank balance');
+                          showToast(errorMsg, 'error');
+                        } else {
+                          const errorMsg = getErrorMessage(error, 'Failed to express interest');
+                          showToast(errorMsg, 'error');
+                        }
                       } else {
                         const errorMsg = getErrorMessage(error, 'Failed to express interest');
                         showToast(errorMsg, 'error');
