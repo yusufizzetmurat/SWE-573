@@ -1,104 +1,113 @@
-# The Hive - TimeBank Community Platform
+# The Hive
 
-A community-driven TimeBank platform where people exchange services using time as currency. Built with Django, React, and Django Channels for real-time communication.
+A community TimeBank platform where people exchange services using time as currency. Everyone starts with 5 hours and can earn more by helping others.
+
+## What is this?
+
+Think of it as a bartering system for the modern age. Need someone to help you move furniture? Offer to teach them guitar in return. Want to learn photography? Help someone fix their computer. Every hour of service is worth one TimeBank hour, regardless of what the service is.
+
+Built this with Django for the backend (with WebSockets for real-time chat), React for the frontend, and PostgreSQL for data. It's fully containerized so you can run it anywhere.
 
 ## Features
 
-- **TimeBank System**: Exchange services using hours as currency
-- **Service Marketplace**: Post and discover services (Offers & Wants)
-- **Real-time Chat**: WebSocket-powered messaging for service coordination
-- **Reputation System**: Build trust through peer reviews
-- **Handshake Workflow**: Structured service delivery process
-- **Location-based Search**: Find services near you with interactive maps
-- **Badge System**: Earn achievements for community participation
+- **TimeBank System** - Hours are your currency. Spend them on services you need, earn them by helping others
+- **Service Posts** - Post what you can offer or what you need help with
+- **Real-time Chat** - Message people directly through WebSockets
+- **Handshake Flow** - Structured process for agreeing on service details and confirming completion
+- **Reputation System** - Service receivers rate providers after completion
+- **Map View** - See services near you on an interactive map
+- **Badges** - Earn achievements for being active in the community
 
-## Tech Stack
+## Getting Started
 
-### Backend
-- **Django 4.2** - Web framework
-- **Django REST Framework** - API
-- **Django Channels** - WebSocket support
-- **PostgreSQL 15** - Database
-- **Redis 7** - Caching & WebSocket layer
-- **Daphne** - ASGI server
+You'll need Docker installed. That's it.
 
-### Frontend
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Vite** - Build tool
-- **TailwindCSS** - Styling
-- **Radix UI** - Component primitives
-- **Leaflet** - Interactive maps
-- **Axios** - HTTP client
-
-## Quick Start (Development)
-
-### Prerequisites
-- Docker & Docker Compose
-- Node.js 18+ (for local frontend development)
-- Python 3.11+ (for local backend development)
-
-### 1. Clone and Setup
+### Quick demo setup
 
 ```bash
-git clone <repository-url>
+git clone <your-repo-url>
 cd the-hive
+make demo
 ```
 
-### 2. Configure Environment
+This will build everything, start all services, run migrations, and create demo users. Takes about 2 minutes on first run.
+
+**Demo accounts:**
+- Admin: `admin@thehive.local` / `admin123`
+- User 1: `elif@demo.com` / `demo123`
+- User 2: `cem@demo.com` / `demo123`  
+- User 3: `marcus@demo.com` / `demo123`
+
+Open http://localhost:5173 and you're good to go.
+
+### Other useful commands
+
+```bash
+make logs          # Watch what's happening
+make delete        # Clean up everything when you're done
+make migrate       # Run database migrations
+make superuser     # Create your own admin account
+make shell         # Open Django shell
+make db-backup     # Backup your database
+```
+
+Run `make help` to see all available commands.
+
+## Environment Configuration
+
+The demo works out of the box, but if you want to customize things, copy `env.example` to `.env` and adjust the values:
 
 ```bash
 cp env.example .env
-# Edit .env with your configuration
 ```
 
-### 3. Start Services
+Key settings you might want to change:
+- Database credentials
+- Secret key (generate with: `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`)
+- Allowed hosts
+- CORS origins
 
-```bash
-# Start all services
-docker-compose up -d
+## How it works
 
-# View logs
-docker-compose logs -f
+### Service Exchange
 
-# Stop services
-docker-compose down
-```
+1. Someone posts a service (either an "Offer" - something they can do, or a "Want" - something they need)
+2. Another person expresses interest, which opens a chat
+3. They discuss details in the chat
+4. The provider initiates the handshake with exact location, time, and duration
+5. The receiver approves and the TimeBank hours get escrowed (locked)
+6. They meet and complete the service
+7. Both confirm completion
+8. Hours transfer and receiver can leave a review
 
-### 4. Initialize Database
+### TimeBank Rules
 
-```bash
-# Run migrations
-docker-compose exec backend python manage.py migrate
+The system automatically figures out who's the provider and receiver based on post type:
 
-# Create superuser
-docker-compose exec backend python manage.py createsuperuser
+- **Offer posts**: Post owner is the provider, person who expressed interest is the receiver
+- **Want posts**: Post owner is the receiver, person who expressed interest is the provider
 
-# (Optional) Load demo data
-docker-compose exec backend python setup_demo.py
-```
-
-### 5. Access the Application
-
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:8000/api
-- **Admin Panel**: http://localhost:8000/admin
-- **API Documentation**: http://localhost:8000/api/docs
+The receiver always pays the provider. Hours are escrowed when the handshake is approved, transferred when both parties confirm completion.
 
 ## Production Deployment
 
-### 1. Environment Configuration
-
-Create a `.env` file with production values:
+### Build and deploy
 
 ```bash
+make prod-build    # Build production containers
+make prod-demo     # Start production with demo data
+```
+
+For production, you MUST set up a proper `.env` file:
+
+```env
 # Database
 DB_NAME=the_hive_db
 DB_USER=postgres
-DB_PASSWORD=<strong-password>
+DB_PASSWORD=<use-a-strong-password>
 
 # Django
-SECRET_KEY=<generate-secret-key>
+SECRET_KEY=<generate-this>
 DEBUG=False
 ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
 CORS_ALLOWED_ORIGINS=https://yourdomain.com
@@ -107,215 +116,119 @@ CORS_ALLOWED_ORIGINS=https://yourdomain.com
 VITE_API_URL=https://yourdomain.com/api
 ```
 
-Generate SECRET_KEY:
-```bash
-python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
-```
+### Nginx setup
 
-### 2. Deploy with Docker Compose
-
-```bash
-# Build and start production services
-docker-compose -f docker-compose.prod.yml up -d --build
-
-# Run migrations
-docker-compose -f docker-compose.prod.yml exec backend python manage.py migrate
-
-# Create superuser
-docker-compose -f docker-compose.prod.yml exec backend python manage.py createsuperuser
-
-# Collect static files
-docker-compose -f docker-compose.prod.yml exec backend python manage.py collectstatic --noinput
-```
-
-### 3. Configure Reverse Proxy (Nginx)
+You'll want a reverse proxy in front of this. Here's a basic nginx config:
 
 ```nginx
 server {
     listen 80;
     server_name yourdomain.com;
 
-    # Frontend
     location / {
         proxy_pass http://localhost:5173;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
-    # Backend API
     location /api {
         proxy_pass http://localhost:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
-    # WebSocket
     location /ws {
         proxy_pass http://localhost:8000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
     }
-
-    # Static files
-    location /static {
-        alias /path/to/staticfiles;
-    }
 }
 ```
 
-### 4. SSL with Let's Encrypt
+Then get SSL with Let's Encrypt:
 
 ```bash
-# Install certbot
 sudo apt-get install certbot python3-certbot-nginx
-
-# Obtain certificate
-sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
-
-# Auto-renewal (already configured by certbot)
-sudo certbot renew --dry-run
+sudo certbot --nginx -d yourdomain.com
 ```
+
+### Production commands
+
+```bash
+make prod-logs     # View production logs
+make prod-delete   # Clean up production environment
+make db-backup     # Backup database before making changes
+make db-restore FILE=backups/backup_20250109_143022.sql.gz  # Restore from backup
+```
+
+## Tech Stack
+
+**Backend:**
+- Django 4.2 + Django REST Framework
+- Django Channels (WebSockets)
+- PostgreSQL 15
+- Redis 7
+- Daphne ASGI server
+
+**Frontend:**
+- React 18 with TypeScript
+- Vite for builds
+- TailwindCSS for styling
+- Radix UI components
+- Leaflet for maps
+- Axios for API calls
+
+Everything runs in Docker containers so it's consistent across different environments.
 
 ## Architecture
 
 ```
-┌─────────────┐      ┌──────────────┐      ┌──────────────┐
-│   React     │─────>│    Django    │─────>│  PostgreSQL  │
-│   Frontend  │      │   (Daphne)   │      │   Database   │
-│   (Vite)    │<─────│   Backend    │<─────│              │
-└─────────────┘      └──────────────┘      └──────────────┘
-      │                     │
-      │                     │
-      │              ┌──────────────┐
-      └─────────────>│    Redis     │
-        WebSocket    │   (Cache &   │
-                     │   Channels)  │
-                     └──────────────┘
+React Frontend (Vite) <---> Django Backend (Daphne) <---> PostgreSQL
+                                    |
+                                    v
+                                  Redis
+                        (WebSocket + Cache)
 ```
 
-## Key Workflows
+Pretty straightforward. React talks to Django REST API for most things, WebSocket for real-time chat. Redis handles WebSocket routing and caching. PostgreSQL stores everything.
 
-### Service Exchange Flow
-1. **Discover**: Browse or search for services
-2. **Express Interest**: Start a conversation
-3. **Negotiate**: Chat to agree on details
-4. **Initiate**: Provider sets exact time, location, duration
-5. **Approve**: Receiver confirms and TimeBank is escrowed
-6. **Complete**: Both parties confirm service delivery
-7. **Review**: Receiver rates provider
+## Common Issues
 
-### TimeBank Rules
-- **Offer Posts**: Receiver (interest expresser) pays provider (post owner)
-- **Want Posts**: Receiver (post owner) pays provider (interest expresser)
-- Initial balance: 5 hours
-- Payment is escrowed on handshake approval
-- Transferred on mutual confirmation
-
-## Database Management
-
-### Backup
+**Can't connect to database?**
 ```bash
-docker-compose exec db pg_dump -U postgres the_hive_db > backup.sql
+make delete
+make demo
 ```
 
-### Restore
+**Frontend won't load?**
+Check if port 5173 is already in use. If so, change it in `docker-compose.yml`.
+
+**WebSocket chat not working?**
+Make sure Redis is running: `docker-compose exec redis redis-cli ping`
+
+**Need to reset everything?**
 ```bash
-docker-compose exec -T db psql -U postgres the_hive_db < backup.sql
+make delete  # Nukes everything including database
+make demo    # Fresh start
 ```
 
-### Migrations
-```bash
-# Create migrations
-docker-compose exec backend python manage.py makemigrations
+## Security Notes
 
-# Apply migrations
-docker-compose exec backend python manage.py migrate
+For production:
+- Use HTTPS (required for WebSockets to work properly)
+- Generate a strong SECRET_KEY (50+ random characters)
+- Use a secure database password
+- Keep DEBUG=False
+- Configure CORS properly (don't use * in production)
+- Keep your dependencies updated
 
-# Rollback
-docker-compose exec backend python manage.py migrate app_name migration_name
-```
+The app has CSRF protection, input validation, rate limiting, and uses Django ORM so SQL injection isn't a concern. React handles XSS protection automatically.
 
-## Monitoring
+## Contributing
 
-### Health Checks
-- Backend: `http://localhost:8000/api/health/`
-- Database: `docker-compose exec db pg_isready`
-- Redis: `docker-compose exec redis redis-cli ping`
-
-### Logs
-```bash
-# All services
-docker-compose logs -f
-
-# Specific service
-docker-compose logs -f backend
-docker-compose logs -f frontend
-docker-compose logs -f db
-docker-compose logs -f redis
-```
-
-### Performance Metrics
-```bash
-# Container stats
-docker stats
-
-# Django debug toolbar (development only)
-# Available in browser when DEBUG=True
-```
-
-## Troubleshooting
-
-### Database Connection Issues
-```bash
-# Check database is running
-docker-compose ps db
-
-# Check database logs
-docker-compose logs db
-
-# Reset database
-docker-compose down -v
-docker-compose up -d
-```
-
-### WebSocket Connection Issues
-```bash
-# Check Redis is running
-docker-compose exec redis redis-cli ping
-
-# Check channels layer
-docker-compose exec backend python manage.py shell
->>> from channels.layers import get_channel_layer
->>> channel_layer = get_channel_layer()
->>> channel_layer
-```
-
-### Frontend Build Issues
-```bash
-# Clear node modules
-rm -rf frontend/node_modules
-docker-compose build frontend --no-cache
-docker-compose up -d frontend
-```
-
-## Security Considerations
-
-- ✅ HTTPS required in production
-- ✅ Strong SECRET_KEY (50+ random characters)
-- ✅ Secure database password
-- ✅ CORS properly configured
-- ✅ Rate limiting enabled
-- ✅ Input validation and sanitization
-- ✅ SQL injection protection (Django ORM)
-- ✅ XSS protection (React escaping)
-- ✅ CSRF tokens
-- ✅ Secure headers
+Found a bug? Have an idea? Open an issue or submit a PR.
 
 ## License
 
-MIT License - See LICENSE file for details
-
-## Support
-
-For issues and feature requests, please create an issue in the repository.
+MIT
