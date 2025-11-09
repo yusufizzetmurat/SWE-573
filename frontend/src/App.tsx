@@ -98,8 +98,8 @@ function AppContent() {
     }
     
     let isMounted = true;
-    let timeoutId: NodeJS.Timeout | null = null;
-    let intervalId: NodeJS.Timeout | null = null;
+    let timeoutId: number | null = null;
+    let intervalId: number | null = null;
     
     const fetchNotifications = async () => {
       if (!isMounted) return;
