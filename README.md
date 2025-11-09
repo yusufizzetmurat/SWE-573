@@ -4,7 +4,7 @@ A community TimeBank platform where people exchange services using time as curre
 
 ## What is this?
 
-Think of it as a bartering system for the modern age. Need someone to help you move furniture? Offer to teach them guitar in return. Want to learn photography? Help someone fix their computer. Every hour of service is worth one TimeBank hour, regardless of what the service is.
+Think of it as a bartering system for the modern age. Need someone to help you learn Spanish? Offer to teach them guitar in return. Want to learn photography? Help someone with 3D printing. Every hour of service is worth one TimeBank hour, regardless of what the service is.
 
 Built this with Django for the backend (with WebSockets for real-time chat), React for the frontend, and PostgreSQL for data. It's fully containerized so you can run it anywhere.
 
