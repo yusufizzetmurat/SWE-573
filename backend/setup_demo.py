@@ -4,6 +4,14 @@ Demo setup script for The Hive
 Cleans up existing demo data and creates fresh demo users, services, and interactions
 Run: docker compose run --rm backend python manage.py shell < backend/setup_demo.py
 """
+import os
+import sys
+import django
+
+# Setup Django
+if __name__ == "__main__":
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hive_project.settings')
+    django.setup()
 
 from api.models import (
     Badge, ChatMessage, Handshake, Notification, ReputationRep, Service, Tag, User, UserBadge

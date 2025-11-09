@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface ErrorBoundaryProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   fallback?: (error: Error, errorInfo: React.ErrorInfo, reset: () => void) => React.ReactNode;
   onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
 }
