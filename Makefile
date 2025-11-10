@@ -36,18 +36,18 @@ help:
 
 build:
 	@echo "🔨 Building development containers..."
-	docker-compose build
+	docker compose build
 	@echo "✅ Build complete!"
 
 demo: build
 	@echo "🚀 Starting development environment..."
-	docker-compose up -d
+	docker compose up -d
 	@echo "⏳ Waiting for services to be ready..."
 	@sleep 5
 	@echo "🔄 Running migrations..."
-	docker-compose exec backend python manage.py migrate
+	docker compose exec backend python manage.py migrate
 	@echo "🎭 Setting up demo data..."
-	docker-compose exec backend bash -c "cd /code && DJANGO_SETTINGS_MODULE=hive_project.settings python setup_demo.py"
+	docker compose exec backend bash -c "cd /code && DJANGO_SETTINGS_MODULE=hive_project.settings python setup_demo.py"
 	@echo ""
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo "✅ Demo environment ready!"
@@ -66,11 +66,11 @@ demo: build
 
 delete:
 	@echo "🗑️  Deleting development environment..."
-	docker-compose down -v
+	docker compose down -v
 	@echo "✅ Development environment deleted (containers, volumes, databases removed)"
 
 logs:
-	docker-compose logs -f
+	docker compose logs -f
 
 # ============================================================================
 # PRODUCTION COMMANDS
@@ -78,20 +78,20 @@ logs:
 
 prod-build:
 	@echo "🔨 Building production containers..."
-	docker-compose -f docker-compose.prod.yml build
+	docker compose -f docker-compose.prod.yml build
 	@echo "✅ Production build complete!"
 
 prod-demo: prod-build
 	@echo "🚀 Starting production environment..."
-	docker-compose -f docker-compose.prod.yml up -d
+	docker compose -f docker-compose.prod.yml up -d
 	@echo "⏳ Waiting for services to be ready..."
 	@sleep 10
 	@echo "🔄 Running migrations..."
-	docker-compose -f docker-compose.prod.yml exec backend python manage.py migrate --noinput
+	docker compose -f docker-compose.prod.yml exec backend python manage.py migrate --noinput
 	@echo "📦 Collecting static files..."
-	docker-compose -f docker-compose.prod.yml exec backend python manage.py collectstatic --noinput
+	docker compose -f docker-compose.prod.yml exec backend python manage.py collectstatic --noinput
 	@echo "🎭 Setting up demo data..."
-	docker-compose -f docker-compose.prod.yml exec backend python setup_demo.py
+	docker compose -f docker-compose.prod.yml exec backend python setup_demo.py
 	@echo ""
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo "✅ Production demo environment ready!"
@@ -109,11 +109,11 @@ prod-demo: prod-build
 
 prod-delete:
 	@echo "🗑️  Deleting production environment..."
-	docker-compose -f docker-compose.prod.yml down -v
+	docker compose -f docker-compose.prod.yml down -v
 	@echo "✅ Production environment deleted (containers, volumes, databases removed)"
 
 prod-logs:
-	docker-compose -f docker-compose.prod.yml logs -f
+	docker compose -f docker-compose.prod.yml logs -f
 
 # ============================================================================
 # DATABASE COMMANDS
@@ -122,7 +122,7 @@ prod-logs:
 db-backup:
 	@mkdir -p backups
 	@echo "💾 Creating database backup..."
-	docker-compose exec -T db pg_dump -U postgres the_hive_db | gzip > backups/backup_$$(date +%Y%m%d_%H%M%S).sql.gz
+	docker compose exec -T db pg_dump -U postgres the_hive_db | gzip > backups/backup_$$(date +%Y%m%d_%H%M%S).sql.gz
 	@echo "✅ Backup created in backups/"
 
 db-restore:
@@ -132,7 +132,7 @@ db-restore:
 		exit 1; \
 	fi
 	@echo "📥 Restoring database from $(FILE)..."
-	gunzip < $(FILE) | docker-compose exec -T db psql -U postgres the_hive_db
+	gunzip < $(FILE) | docker compose exec -T db psql -U postgres the_hive_db
 	@echo "✅ Database restored from $(FILE)"
 
 # ============================================================================
@@ -140,15 +140,15 @@ db-restore:
 # ============================================================================
 
 migrate:
-	docker-compose exec backend python manage.py migrate
+	docker compose exec backend python manage.py migrate
 
 superuser:
-	docker-compose exec backend python manage.py createsuperuser
+	docker compose exec backend python manage.py createsuperuser
 
 shell:
-	docker-compose exec backend python manage.py shell
+	docker compose exec backend python manage.py shell
 
 lint:
 	@echo "🔍 Checking backend..."
-	docker-compose exec backend python manage.py check
+	docker compose exec backend python manage.py check
 	@echo "✅ Check complete"
