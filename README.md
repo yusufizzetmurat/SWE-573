@@ -224,11 +224,3 @@ For production:
 - Keep your dependencies updated
 
 The app has CSRF protection, input validation, rate limiting, and uses Django ORM so SQL injection isn't a concern. React handles XSS protection automatically.
-
-## Contributing
-
-Found a bug? Have an idea? Open an issue or submit a PR.
-
-## License
-
-MIT
