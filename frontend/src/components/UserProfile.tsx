@@ -226,11 +226,19 @@ export function UserProfile({
 
       {/* Profile Banner */}
       <div className="relative w-full h-64 bg-gradient-to-br from-amber-400 via-orange-500 to-amber-600">
-        <img 
-          src="https://images.unsplash.com/photo-1689786430584-24025fa23b5b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMHdhcm0lMjBvcmFuZ2UlMjBncmFkaWVudHxlbnwxfHx8fDE3NjIxOTkzMDh8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral" 
-          alt="Profile banner"
-          className="w-full h-full object-cover opacity-60"
-        />
+        {user?.banner_url ? (
+          <img 
+            src={user.banner_url} 
+            alt="Profile banner"
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <img 
+            src="https://images.unsplash.com/photo-1689786430584-24025fa23b5b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMHdhcm0lMjBvcmFuZ2UlMjBncmFkaWVudHxlbnwxfHx8fDE3NjIxOTkzMDh8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral" 
+            alt="Profile banner"
+            className="w-full h-full object-cover opacity-60"
+          />
+        )}
         
         {/* Edit Banner Button (only for own profile) */}
         {isOwnProfile && (
@@ -238,6 +246,7 @@ export function UserProfile({
             variant="secondary"
             size="sm"
             className="absolute top-4 right-4 bg-white/90 hover:bg-white"
+            onClick={() => setIsEditModalOpen(true)}
           >
             <Edit className="w-4 h-4 mr-2" />
             Edit Banner
@@ -253,6 +262,13 @@ export function UserProfile({
               {/* Large Avatar */}
               <div className="relative">
                 <Avatar className="w-40 h-40 border-4 border-white shadow-xl">
+                  {user?.avatar_url && (
+                    <img 
+                      src={user.avatar_url} 
+                      alt={userName}
+                      className="w-full h-full object-cover"
+                    />
+                  )}
                   <AvatarFallback className="bg-gradient-to-br from-amber-400 to-orange-500 text-white text-5xl">
                     {userName.charAt(0)}
                   </AvatarFallback>
@@ -261,6 +277,7 @@ export function UserProfile({
                   <Button 
                     size="sm" 
                     className="absolute bottom-2 right-2 w-8 h-8 p-0 rounded-full bg-white hover:bg-gray-100 text-gray-700 border border-gray-300"
+                    onClick={() => setIsEditModalOpen(true)}
                   >
                     <Edit className="w-4 h-4" />
                   </Button>

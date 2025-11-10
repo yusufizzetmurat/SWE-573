@@ -68,6 +68,14 @@ const pageToPath: Record<Page, string> = {
 };
 
 const resolvePageFromPath = (path: string): Page => {
+  // Handle paths with parameters (e.g., /service-detail/123)
+  if (path.startsWith('/service-detail/') || path === '/service-detail') {
+    return 'service-detail';
+  }
+  if (path.startsWith('/report-detail/') || path === '/report-detail') {
+    return 'report-detail';
+  }
+  
   const entry = Object.entries(pageToPath).find(([, mappedPath]) => mappedPath === path);
   return (entry ? entry[0] : 'home') as Page;
 };
@@ -151,11 +159,18 @@ function AppContent() {
 
   const handleNavigate = (page: Page | string, data?: NavigateData) => {
     const resolvedPage = page as Page;
-    const targetPath = pageToPath[resolvedPage] ?? '/';
+    let targetPath = pageToPath[resolvedPage] ?? '/';
+    
+    // Append ID to path for detail pages
+    if (resolvedPage === 'service-detail' && data && 'id' in data) {
+      targetPath = `/service-detail/${data.id}`;
+    } else if (resolvedPage === 'report-detail' && data && 'id' in data) {
+      targetPath = `/report-detail/${data.id}`;
+    }
     
     startTransition(() => {
       if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
-        window.history.pushState({ page: resolvedPage }, '', targetPath);
+        window.history.pushState({ page: resolvedPage, data }, '', targetPath);
       }
       setCurrentPage(resolvedPage);
       setPageData(data || null);
@@ -209,20 +224,24 @@ function AppContent() {
     }
 
     // Ensure the initial URL matches the current app state
-    const initialPath = pageToPath[currentPage] ?? '/';
-    if (window.location.pathname !== initialPath) {
-      window.history.replaceState({ page: currentPage }, '', initialPath);
+    let initialPath = pageToPath[currentPage] ?? '/';
+    if (currentPage === 'service-detail' && pageData && 'id' in pageData) {
+      initialPath = `/service-detail/${pageData.id}`;
+    }
+    if (window.location.pathname !== initialPath && !window.location.pathname.startsWith(initialPath)) {
+      window.history.replaceState({ page: currentPage, data: pageData }, '', initialPath);
     }
 
-    const handlePopState = () => {
+    const handlePopState = (event: PopStateEvent) => {
       const nextPage = resolvePageFromPath(window.location.pathname);
       setCurrentPage(nextPage);
-      setPageData(null);
+      // Restore data from history state if available
+      setPageData(event.state?.data || null);
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [currentPage]);
+  }, [currentPage, pageData]);
 
 
   const handleServiceComplete = async (handshakeId: string, hours?: number) => {
@@ -602,11 +621,13 @@ function AppContent() {
 
 function App() {
   return (
-    <ToastProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider children={
+        <AuthProvider children={
+          <AppContent />
+        } />
+      } />
+    </ErrorBoundary>
   );
 }
 

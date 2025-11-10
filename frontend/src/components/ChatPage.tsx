@@ -712,11 +712,13 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
                             </div>
                           );
                         })()}
-                        {selectedChat.status === 'accepted' && (
+                        {(selectedChat.status === 'accepted' || selectedChat.status === 'completed') && (
                           <div className="flex items-center gap-3">
-                            <div className="px-3 py-1.5 bg-green-100 text-green-700 rounded-md text-sm font-medium">
-                              Handshake Accepted
-                            </div>
+                            {selectedChat.status === 'accepted' && (
+                              <div className="px-3 py-1.5 bg-green-100 text-green-700 rounded-md text-sm font-medium">
+                                Handshake Accepted
+                              </div>
+                            )}
                             {/* Check if user needs to confirm completion */}
                             {(() => {
                               if (!user || !selectedChat) return null;
@@ -759,10 +761,15 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
                                     </div>
                                   );
                                 } else {
-                                  // User is the provider, they just see completion status
+                                  // User is the provider, they cannot leave reputation (receiver-only feature)
                                   return (
-                                    <div className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-md text-sm font-medium text-center">
-                                      Service Completed
+                                    <div className="flex flex-col gap-2">
+                                      <div className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-md text-sm font-medium text-center">
+                                        Service Completed
+                                      </div>
+                                      <div className="text-xs text-gray-600 text-center px-2">
+                                        The service receiver will leave reputation for you
+                                      </div>
                                     </div>
                                   );
                                 }

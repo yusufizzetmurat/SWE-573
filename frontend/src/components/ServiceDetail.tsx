@@ -24,7 +24,7 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
   const { isAuthenticated, user, refreshUser } = useAuth();
   const { showToast } = useToast();
   const [service, setService] = useState<Service | null>(serviceData || null);
-  const [isLoading, setIsLoading] = useState(!serviceData);
+  const [isLoading, setIsLoading] = useState(!serviceData || !serviceData.full);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasInterest, setHasInterest] = useState(false);
@@ -32,11 +32,22 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
 
   useEffect(() => {
     const fetchService = async () => {
-      if (serviceData?.id && !serviceData.full) {
-        // If we only have basic service data, fetch full details
+      // Extract service ID from URL if not in serviceData
+      let serviceId = serviceData?.id;
+      
+      if (!serviceId) {
+        const pathParts = window.location.pathname.split('/');
+        if (pathParts[1] === 'service-detail' && pathParts[2]) {
+          serviceId = pathParts[2];
+        }
+      }
+      
+      if (serviceId && (!serviceData || !serviceData.full)) {
+        // Fetch full service details from API
         try {
           setIsLoading(true);
-          const fullService = await serviceAPI.get(serviceData.id);
+          setError(null);
+          const fullService = await serviceAPI.get(serviceId);
           setService(fullService);
         } catch (err: unknown) {
           console.error('Failed to fetch service:', err);
@@ -45,9 +56,9 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
         } finally {
           setIsLoading(false);
         }
-      } else if (serviceData && !serviceData.id) {
-        // Invalid service data
-        setError('Invalid service data.');
+      } else if (!serviceId) {
+        // No service ID available
+        setError('Service not found');
         setIsLoading(false);
       }
     };

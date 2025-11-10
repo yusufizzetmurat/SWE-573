@@ -358,6 +358,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     bio = serializers.CharField(max_length=1000, allow_blank=True, required=False)
     first_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
     last_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    avatar_url = serializers.CharField(allow_blank=True, required=False)
+    banner_url = serializers.CharField(allow_blank=True, required=False)
 
     class Meta:
         model = User
@@ -372,15 +374,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
         ]
     
     def validate_avatar_url(self, value):
-        """Validate avatar URL format - allow data URLs for file uploads"""
-        if value and not (value.startswith(('http://', 'https://', 'data:'))):
-            raise serializers.ValidationError('Avatar URL must be a valid HTTP/HTTPS URL or data URL')
+        """Validate avatar URL format - allow data URLs for file uploads and regular URLs"""
+        if value and not (value.startswith(('http://', 'https://', 'data:', '/'))):
+            raise serializers.ValidationError('Avatar must be a valid URL or data URL (for uploaded images)')
         return value
     
     def validate_banner_url(self, value):
-        """Validate banner URL format - allow data URLs for file uploads"""
-        if value and not (value.startswith(('http://', 'https://', 'data:'))):
-            raise serializers.ValidationError('Banner URL must be a valid HTTP/HTTPS URL or data URL')
+        """Validate banner URL format - allow data URLs for file uploads and regular URLs"""
+        if value and not (value.startswith(('http://', 'https://', 'data:', '/'))):
+            raise serializers.ValidationError('Banner must be a valid URL or data URL (for uploaded images)')
         return value
     
     def validate_bio(self, value):

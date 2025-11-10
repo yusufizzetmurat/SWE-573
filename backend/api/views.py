@@ -1989,8 +1989,12 @@ class ReputationViewSet(viewsets.ModelViewSet):
         if rep.is_kind:
             karma_gain += 1
         
-        receiver.karma_score += karma_gain
-        receiver.save()
+        provider.karma_score += karma_gain
+        provider.save()
+        
+        # Invalidate conversations cache so UI updates to show reputation was submitted
+        invalidate_conversations(str(provider.id))
+        invalidate_conversations(str(receiver.id))
 
         serializer = self.get_serializer(rep)
         return Response(serializer.data, status=201)

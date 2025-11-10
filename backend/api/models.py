@@ -29,8 +29,8 @@ class User(AbstractUser):
     first_name = models.CharField(max_length=150)
     last_name = models.CharField(max_length=150)
     bio = models.TextField(blank=True, null=True)
-    avatar_url = models.URLField(blank=True, null=True)
-    banner_url = models.URLField(blank=True, null=True)
+    avatar_url = models.TextField(blank=True, null=True)  # Support data URLs and regular URLs
+    banner_url = models.TextField(blank=True, null=True)  # Support data URLs and regular URLs
     timebank_balance = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     karma_score = models.IntegerField(default=0)
     role = models.CharField(max_length=20, choices=[('member', 'Member'), ('admin', 'Admin')], default='member')
