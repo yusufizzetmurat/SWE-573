@@ -1,104 +1,146 @@
 # The Hive
 
-A community TimeBank platform where people exchange services using time as currency. Everyone starts with 5 hours and can earn more by helping others.
+A community-oriented service exchange platform developed as a course project for SWE573 Software Development Practice at Bogazici University.
 
-## What is this?
+## Overview
 
-Think of it as a bartering system for the modern age. Need someone to help you learn Spanish? Offer to teach them guitar in return. Want to learn photography? Help someone with 3D printing. Every hour of service is worth one TimeBank hour, regardless of what the service is.
+This is a web application that enables non-commercial service exchange within a community using a TimeBank system. The platform uses time as the unit of exchange - one hour of any service equals one TimeBank hour. Users can post services they offer or request services they need, negotiate details through real-time chat, and complete exchanges that transfer TimeBank hours between accounts.
 
-Built this with Django for the backend (with WebSockets for real-time chat), React for the frontend, and PostgreSQL for data. It's fully containerized so you can run it anywhere.
+The application is built with Django (backend), React with TypeScript (frontend), PostgreSQL (database), and Redis (real-time features). All components are containerized with Docker for consistent deployment across environments.
 
-## Features
+## Core Features
 
-- **TimeBank System** - Hours are your currency. Spend them on services you need, earn them by helping others
-- **Service Posts** - Post what you can offer or what you need help with
-- **Real-time Chat** - Message people directly through WebSockets
-- **Handshake Flow** - Structured process for agreeing on service details and confirming completion
-- **Reputation System** - Service receivers rate providers after completion
-- **Map View** - See services near you on an interactive map
-- **Badges** - Earn achievements for being active in the community
+- **TimeBank Economy** - Transaction system where users exchange services using time credits (1 hour = 1 TimeBank hour)
+- **Service Management** - Users can create service offers and service requests with details like duration, location type, and semantic tags
+- **Real-time Communication** - WebSocket-based chat system for service negotiation between users
+- **Service Handshake Protocol** - Structured workflow for service agreement, time provisioning (escrow), and completion confirmation
+- **Reputation System** - Post-service feedback mechanism with categorical ratings (Punctual, Helpful, Kind)
+- **Interactive Map** - Geographic visualization of available services using Leaflet
+- **Wikidata Integration** - Semantic tagging system integrated with Wikidata API for service categorization
+- **Admin Panel** - Moderation interface for handling reports and managing community content
 
 ## Getting Started
 
-You'll need Docker installed. That's it.
+### Prerequisites
 
-### Quick demo setup
+- Docker (20.10 or higher)
+- Docker Compose (v2 recommended)
+
+### Local Development Setup
+
+Clone the repository and run the demo setup:
 
 ```bash
-git clone <your-repo-url>
-cd the-hive
+git clone https://github.com/yusufizzetmurat/SWE-573.git
+cd SWE-573
 make demo
 ```
 
-This will build everything, start all services, run migrations, and create demo users. Takes about 2 minutes on first run.
+This command will:
+1. Build Docker containers for all services
+2. Start PostgreSQL, Redis, backend, and frontend
+3. Run database migrations
+4. Create demo user accounts and sample services
 
-**Demo accounts:**
-- Admin: `admin@thehive.local` / `admin123`
-- User 1: `elif@demo.com` / `demo123`
-- User 2: `cem@demo.com` / `demo123`  
-- User 3: `marcus@demo.com` / `demo123`
+The process takes approximately 2-3 minutes on first run.
 
-Open http://localhost:5173 and you're good to go.
+**Demo accounts (all passwords: `demo123`):**
+- `elif@demo.com` - Elif Yılmaz (5 TimeBank hours)
+- `marcus@demo.com` - Marcus Weber (3 TimeBank hours)
+- `cem@demo.com` - Cem Demir (2 TimeBank hours)
+- `ayse@demo.com` - Ayşe Kaya (4 TimeBank hours)
 
-### Other useful commands
+Access the application at: http://localhost:5173
+
+### Development Commands
 
 ```bash
-make logs          # Watch what's happening
-make delete        # Clean up everything when you're done
-make migrate       # Run database migrations
-make superuser     # Create your own admin account
-make shell         # Open Django shell
-make db-backup     # Backup your database
+make build         # Build containers without demo data
+make logs          # View real-time logs from all services
+make delete        # Stop and remove all containers and volumes
+make migrate       # Run Django database migrations
+make superuser     # Create an admin account interactively
+make shell         # Open Django management shell
+make db-backup     # Create timestamped database backup
 ```
 
-Run `make help` to see all available commands.
+Run `make help` for complete list of available commands.
+
+### Using Docker Compose Directly
+
+If you prefer not to use Make commands:
+
+```bash
+# Build containers
+docker compose build
+
+# Start all services
+docker compose up -d
+
+# Run migrations
+docker compose exec backend python manage.py migrate
+
+# Create demo data
+docker compose exec backend bash -c "cd /code && DJANGO_SETTINGS_MODULE=hive_project.settings python setup_demo.py"
+
+# View logs
+docker compose logs -f
+
+# Stop services
+docker compose down
+
+# Complete cleanup (removes volumes)
+docker compose down -v
+```
 
 ## Environment Configuration
 
-The demo works out of the box, but if you want to customize things, copy `env.example` to `.env` and adjust the values:
+The application uses environment variables for configuration. Default values work for local development, but can be customized by creating a `.env` file:
 
 ```bash
 cp env.example .env
 ```
 
-Key settings you might want to change:
-- Database credentials
-- Secret key (generate with: `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`)
-- Allowed hosts
-- CORS origins
+Key configuration variables:
+- `DB_NAME`, `DB_USER`, `DB_PASSWORD` - PostgreSQL credentials
+- `SECRET_KEY` - Django secret key (generate with: `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`)
+- `DEBUG` - Debug mode (True for development, False for production)
+- `ALLOWED_HOSTS` - Comma-separated list of allowed hostnames
+- `CORS_ALLOWED_ORIGINS` - Comma-separated list of allowed CORS origins
+- `VITE_API_URL` - API endpoint URL for frontend
 
-## How it works
+## System Workflow
 
-### Service Exchange
+### Service Exchange Process
 
-1. Someone posts a service (either an "Offer" - something they can do, or a "Want" - something they need)
-2. Another person expresses interest, which opens a chat
-3. They discuss details in the chat
-4. The provider initiates the handshake with exact location, time, and duration
-5. The receiver approves and the TimeBank hours get escrowed (locked)
-6. They meet and complete the service
-7. Both confirm completion
-8. Hours transfer and receiver can leave a review
+1. A user creates a service post (type: "Offer" or "Want") with details including duration, location, and semantic tags
+2. Another user expresses interest, initiating a WebSocket chat session
+3. Users negotiate details (exact time, location specifics) through real-time chat
+4. The service provider initiates a handshake request with finalized details
+5. The receiver approves the handshake, triggering TimeBank hour provisioning (escrow)
+6. Users complete the service in real life
+7. Both parties confirm completion in the system
+8. TimeBank hours transfer from receiver to provider, and the receiver can optionally leave categorical feedback
 
-### TimeBank Rules
+### TimeBank Logic
 
-The system automatically figures out who's the provider and receiver based on post type:
+The system determines provider and receiver roles based on post type:
 
-- **Offer posts**: Post owner is the provider, person who expressed interest is the receiver
-- **Want posts**: Post owner is the receiver, person who expressed interest is the provider
+- **Offer posts**: Post creator = Provider, interested party = Receiver
+- **Want posts**: Post creator = Receiver, interested party = Provider
 
-The receiver always pays the provider. Hours are escrowed when the handshake is approved, transferred when both parties confirm completion.
+Hours flow from Receiver to Provider. The provisioning (escrow) occurs at handshake approval, and the transfer executes after mutual confirmation of service completion.
 
 ## Production Deployment
 
-### Build and deploy
+### Production Build
 
 ```bash
-make prod-build    # Build production containers
-make prod-demo     # Start production with demo data
+make prod-build    # Build production-optimized containers
+make prod-demo     # Start production environment with demo data
 ```
 
-For production, you MUST set up a proper `.env` file:
+Production deployment requires a properly configured `.env` file:
 
 ```env
 # Database
@@ -116,9 +158,9 @@ CORS_ALLOWED_ORIGINS=https://yourdomain.com
 VITE_API_URL=https://yourdomain.com/api
 ```
 
-### Nginx setup
+### Reverse Proxy Configuration
 
-You'll want a reverse proxy in front of this. Here's a basic nginx config:
+A reverse proxy (Nginx) is required for production to handle SSL termination and request routing. Basic configuration:
 
 ```nginx
 server {
@@ -146,14 +188,14 @@ server {
 }
 ```
 
-Then get SSL with Let's Encrypt:
+SSL certificate setup with Let's Encrypt:
 
 ```bash
 sudo apt-get install certbot python3-certbot-nginx
 sudo certbot --nginx -d yourdomain.com
 ```
 
-### Production commands
+### Production Commands
 
 ```bash
 make prod-logs     # View production logs
@@ -162,24 +204,54 @@ make db-backup     # Backup database before making changes
 make db-restore FILE=backups/backup_20250109_143022.sql.gz  # Restore from backup
 ```
 
+### Alternative: Production with Docker Compose
+
+```bash
+# Build production containers
+docker compose -f docker-compose.prod.yml build
+
+# Start production services
+docker compose -f docker-compose.prod.yml up -d
+
+# Run migrations
+docker compose -f docker-compose.prod.yml exec backend python manage.py migrate
+
+# Collect static files
+docker compose -f docker-compose.prod.yml exec backend python manage.py collectstatic --noinput
+
+# Create demo data (optional)
+docker compose -f docker-compose.prod.yml exec backend bash -c "cd /code && DJANGO_SETTINGS_MODULE=hive_project.settings python setup_demo.py"
+
+# View logs
+docker compose -f docker-compose.prod.yml logs -f
+
+# Stop and cleanup
+docker compose -f docker-compose.prod.yml down -v
+```
+
 ## Tech Stack
 
 **Backend:**
-- Django 4.2 + Django REST Framework
-- Django Channels (WebSockets)
+- Django 5.2.8 with Django REST Framework 3.15.2
+- Django Channels 4.2.0 (ASGI/WebSocket support)
 - PostgreSQL 15
-- Redis 7
+- Redis 7 (channel layer and caching)
 - Daphne ASGI server
 
 **Frontend:**
-- React 18 with TypeScript
-- Vite for builds
-- TailwindCSS for styling
-- Radix UI components
-- Leaflet for maps
-- Axios for API calls
+- React 18.3.1 with TypeScript 5.5.3
+- Vite 5.4.2 (build tool)
+- TailwindCSS 3.4.1
+- Radix UI component library
+- Leaflet 1.9.4 (interactive maps)
+- Axios 1.7.2 (HTTP client)
 
-Everything runs in Docker containers so it's consistent across different environments.
+**Infrastructure:**
+- Docker with multi-stage builds
+- Docker Compose for orchestration
+- Nginx (production reverse proxy)
+
+All services are containerized for deployment consistency across different environments.
 
 ## Architecture
 
@@ -191,36 +263,50 @@ React Frontend (Vite) <---> Django Backend (Daphne) <---> PostgreSQL
                         (WebSocket + Cache)
 ```
 
-Pretty straightforward. React talks to Django REST API for most things, WebSocket for real-time chat. Redis handles WebSocket routing and caching. PostgreSQL stores everything.
+The frontend communicates with the backend through:
+- REST API (Django REST Framework) for standard CRUD operations
+- WebSocket connections (Django Channels) for real-time chat
+- Redis serves as the channel layer for WebSocket message routing and provides caching
+- PostgreSQL stores all persistent data (users, services, transactions, messages)
 
-## Common Issues
+## Troubleshooting
 
-**Can't connect to database?**
+**Database connection errors:**
 ```bash
-make delete
-make demo
+make delete    # Remove all containers and volumes
+make demo      # Rebuild and restart with fresh data
 ```
 
-**Frontend won't load?**
-Check if port 5173 is already in use. If so, change it in `docker-compose.yml`.
+**Frontend not accessible:**
+Verify port 5173 is not in use by another application. Modify the port mapping in `docker-compose.yml` if needed.
 
-**WebSocket chat not working?**
-Make sure Redis is running: `docker-compose exec redis redis-cli ping`
-
-**Need to reset everything?**
+**WebSocket chat not functioning:**
+Check Redis service status:
 ```bash
-make delete  # Nukes everything including database
-make demo    # Fresh start
+docker compose exec redis redis-cli ping
+```
+Expected response: `PONG`
+
+**Complete reset:**
+```bash
+make delete    # Stop and remove all containers, networks, and volumes
+make demo      # Clean rebuild with demo data
 ```
 
-## Security Notes
+## Security Considerations
 
-For production:
-- Use HTTPS (required for WebSockets to work properly)
-- Generate a strong SECRET_KEY (50+ random characters)
-- Use a secure database password
-- Keep DEBUG=False
-- Configure CORS properly (don't use * in production)
-- Keep your dependencies updated
+Production deployment checklist:
+- HTTPS is mandatory (required for secure WebSocket connections)
+- Generate a cryptographically strong SECRET_KEY (minimum 50 characters)
+- Use secure database credentials
+- Set DEBUG=False
+- Configure CORS_ALLOWED_ORIGINS with specific domains (avoid wildcard *)
+- Regularly update dependencies to patch security vulnerabilities
 
-The app has CSRF protection, input validation, rate limiting, and uses Django ORM so SQL injection isn't a concern. React handles XSS protection automatically.
+Built-in security features:
+- CSRF protection via Django middleware
+- SQL injection prevention through Django ORM
+- XSS protection via React's automatic escaping
+- Input validation on all API endpoints
+- Rate limiting on authentication endpoints
+- JWT-based authentication with refresh token rotation
