@@ -51,7 +51,8 @@ class HandshakeService:
         payer = HandshakeService._determine_payer(service, user)
         if payer.timebank_balance < service.duration:
             payer_name = "You" if payer == user else f"{payer.first_name} {payer.last_name}"
-            return False, f'Insufficient TimeBank balance. {payer_name} need {service.duration} hours, have {payer.timebank_balance}'
+            verb = "need" if payer == user else "needs"
+            return False, f'Insufficient TimeBank balance. {payer_name} {verb} {service.duration} hours, have {payer.timebank_balance}'
         
         return True, None
     
@@ -183,8 +184,9 @@ class HandshakeService:
         """Validates payer has sufficient balance using Decimal."""
         if payer.timebank_balance < service.duration:
             payer_name = "You" if payer == requester else f"{payer.first_name} {payer.last_name}"
+            verb = "need" if payer == requester else "needs"
             raise ValueError(
-                f'Insufficient TimeBank balance. {payer_name} need {service.duration} hours, have {payer.timebank_balance}'
+                f'Insufficient TimeBank balance. {payer_name} {verb} {service.duration} hours, have {payer.timebank_balance}'
             )
     
     @staticmethod
