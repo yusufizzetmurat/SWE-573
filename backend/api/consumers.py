@@ -217,8 +217,15 @@ class PublicChatConsumer(AsyncWebsocketConsumer):
             if message_type == 'chat_message':
                 body = text_data_json.get('body', '').strip()
                 if body:
-                    # Save message to database
+                    # Save message to database (returns None if body is empty after sanitization)
                     message = await self.save_message(self.room_id, self.user.id, body)
+                    if message is None:
+                        # Body was empty after HTML sanitization
+                        await self.send(text_data=json.dumps({
+                            'type': 'error',
+                            'message': 'Message body is required'
+                        }))
+                        return
                     
                     # Send message to room group
                     await self.channel_layer.group_send(
@@ -267,10 +274,14 @@ class PublicChatConsumer(AsyncWebsocketConsumer):
             body,
             tags=[],
             strip=True
-        )
+        ).strip()
+        
+        # Validate after sanitization - reject empty messages
+        if not cleaned_body:
+            return None
         
         # Truncate to max length (5000 chars)
-        cleaned_body = cleaned_body[:5000] if cleaned_body else ''
+        cleaned_body = cleaned_body[:5000]
         
         room = ChatRoom.objects.get(id=room_id)
         user = User.objects.get(id=user_id)

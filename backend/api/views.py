@@ -2456,10 +2456,16 @@ class PublicChatViewSet(viewsets.ViewSet):
                 'messages': paginator.get_paginated_response(serializer.data).data
             })
         
+        # Fallback: return consistent structure matching paginated response
         serializer = PublicChatMessageSerializer(messages, many=True)
         return Response({
             'room': ChatRoomSerializer(room).data,
-            'messages': serializer.data
+            'messages': {
+                'count': len(serializer.data),
+                'next': None,
+                'previous': None,
+                'results': serializer.data
+            }
         })
 
     @track_performance
@@ -2489,15 +2495,16 @@ class PublicChatViewSet(viewsets.ViewSet):
         )
 
         body = request.data.get('body', '').strip()
-        if not body:
+        
+        # Sanitize and truncate FIRST, then validate
+        cleaned_body = bleach.clean(body, tags=[], strip=True).strip()[:5000]
+        
+        if not cleaned_body:
             return create_error_response(
                 'Message body is required',
                 code=ErrorCodes.VALIDATION_ERROR,
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-
-        # Sanitize and truncate
-        cleaned_body = bleach.clean(body, tags=[], strip=True)[:5000]
 
         # Create message
         message = PublicChatMessage.objects.create(
