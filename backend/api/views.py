@@ -39,6 +39,7 @@ from .utils import (
     can_user_post_offer, provision_timebank, complete_timebank_transfer,
     cancel_timebank_transfer, create_notification
 )
+from .services import HandshakeService
 from .badge_utils import check_and_assign_badges
 from .performance import track_performance
 from django.db.models import Count, Q, Prefetch
@@ -606,69 +607,48 @@ class ExpressInterestView(APIView):
                 status_code=status.HTTP_404_NOT_FOUND
             )
 
-        if service.user == request.user:
-            return create_error_response(
-                'Cannot express interest in your own service',
-                code=ErrorCodes.INVALID_STATE,
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        existing = Handshake.objects.filter(
-            service=service,
-            requester=request.user,
-            status__in=['pending', 'accepted']
-        ).first()
-
-        if existing:
-            return create_error_response(
-                'You have already expressed interest',
-                code=ErrorCodes.ALREADY_EXISTS,
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Determine who will pay based on service type
-        # For "Offer" posts: requester (receiver) pays
-        # For "Need" posts: service owner (receiver) pays
-        if service.type == 'Offer':
-            payer = request.user  # Requester is the receiver
-        else:  # service.type == 'Need'
-            payer = service.user  # Service owner is the receiver
-        
-        # Check if the payer has sufficient balance
-        if payer.timebank_balance < service.duration:
-            payer_name = "You" if payer == request.user else f"{payer.first_name} {payer.last_name}"
-            return create_error_response(
-                f'Insufficient TimeBank balance. {payer_name} need {service.duration} hours, have {payer.timebank_balance}',
-                code=ErrorCodes.INSUFFICIENT_BALANCE,
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        handshake = Handshake.objects.create(
-            service=service,
-            requester=request.user,
-            provisioned_hours=service.duration,
-            status='pending'
-        )
-
-        create_notification(
-            user=service.user,
-            notification_type='handshake_request',
-            title='New Interest in Your Service',
-            message=f"{request.user.first_name} expressed interest in '{service.title}'",
-            handshake=handshake,
-            service=service
-        )
-
-        ChatMessage.objects.create(
-            handshake=handshake,
-            sender=request.user,
-            body=f"Hi! I'm interested in your service: {service.title}"
-        )
-
-        # Invalidate conversations cache for both users so new conversation appears
-        from .cache_utils import invalidate_conversations
-        invalidate_conversations(str(request.user.id))
-        invalidate_conversations(str(service.user.id))
+        try:
+            handshake = HandshakeService.express_interest(service, request.user)
+        except ValueError as e:
+            # Map ValueError to appropriate error codes
+            error_message = str(e)
+            
+            if 'own service' in error_message:
+                return create_error_response(
+                    error_message,
+                    code=ErrorCodes.INVALID_STATE,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            elif 'already expressed interest' in error_message:
+                return create_error_response(
+                    error_message,
+                    code=ErrorCodes.ALREADY_EXISTS,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            elif 'maximum capacity' in error_message:
+                return create_error_response(
+                    error_message,
+                    code=ErrorCodes.INVALID_STATE,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            elif 'Insufficient TimeBank balance' in error_message:
+                return create_error_response(
+                    error_message,
+                    code=ErrorCodes.INSUFFICIENT_BALANCE,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            elif 'not active' in error_message:
+                return create_error_response(
+                    error_message,
+                    code=ErrorCodes.INVALID_STATE,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            else:
+                return create_error_response(
+                    error_message,
+                    code=ErrorCodes.VALIDATION_ERROR,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
 
         serializer = HandshakeSerializer(handshake)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -791,67 +771,48 @@ class HandshakeViewSet(viewsets.ModelViewSet):
                 status_code=status.HTTP_404_NOT_FOUND
             )
 
-        if service.user == request.user:
-            return create_error_response(
-                'Cannot express interest in your own service',
-                code=ErrorCodes.INVALID_STATE,
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        existing = Handshake.objects.filter(
-            service=service,
-            requester=request.user,
-            status__in=['pending', 'accepted']
-        ).first()
-
-        if existing:
-            return create_error_response(
-                'You have already expressed interest',
-                code=ErrorCodes.ALREADY_EXISTS,
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Determine who will pay based on service type
-        # For "Offer" posts: requester (receiver) pays
-        # For "Need" posts: service owner (receiver) pays
-        if service.type == 'Offer':
-            payer = request.user  # Requester is the receiver
-        else:  # service.type == 'Need'
-            payer = service.user  # Service owner is the receiver
-        
-        # Check if the payer has sufficient balance
-        if payer.timebank_balance < service.duration:
-            payer_name = "You" if payer == request.user else f"{payer.first_name} {payer.last_name}"
-            return create_error_response(
-                f'Insufficient TimeBank balance. {payer_name} need {service.duration} hours, have {payer.timebank_balance}',
-                code=ErrorCodes.INSUFFICIENT_BALANCE,
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        handshake = Handshake.objects.create(
-            service=service,
-            requester=request.user,
-            provisioned_hours=service.duration,
-            status='pending'
-        )
-
-        create_notification(
-            user=service.user,
-            notification_type='handshake_request',
-            title='New Interest in Your Service',
-            message=f"{request.user.first_name} expressed interest in '{service.title}'",
-            handshake=handshake,
-            service=service
-        )
-
-        ChatMessage.objects.create(
-            handshake=handshake,
-            sender=request.user,
-            body=f"Hi! I'm interested in your service: {service.title}"
-        )
-
-        invalidate_conversations(str(request.user.id))
-        invalidate_conversations(str(service.user.id))
+        try:
+            handshake = HandshakeService.express_interest(service, request.user)
+        except ValueError as e:
+            # Map ValueError to appropriate error codes
+            error_message = str(e)
+            
+            if 'own service' in error_message:
+                return create_error_response(
+                    error_message,
+                    code=ErrorCodes.INVALID_STATE,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            elif 'already expressed interest' in error_message:
+                return create_error_response(
+                    error_message,
+                    code=ErrorCodes.ALREADY_EXISTS,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            elif 'maximum capacity' in error_message:
+                return create_error_response(
+                    error_message,
+                    code=ErrorCodes.INVALID_STATE,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            elif 'Insufficient TimeBank balance' in error_message:
+                return create_error_response(
+                    error_message,
+                    code=ErrorCodes.INSUFFICIENT_BALANCE,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            elif 'not active' in error_message:
+                return create_error_response(
+                    error_message,
+                    code=ErrorCodes.INVALID_STATE,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            else:
+                return create_error_response(
+                    error_message,
+                    code=ErrorCodes.VALIDATION_ERROR,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
 
         serializer = self.get_serializer(handshake)
         return Response(serializer.data, status=201)
