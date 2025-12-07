@@ -9,6 +9,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from django.db import transaction, IntegrityError
+from django.db.utils import OperationalError
 from django.db.models import F
 from decimal import Decimal
 import logging
@@ -609,6 +610,16 @@ class ExpressInterestView(APIView):
 
         try:
             handshake = HandshakeService.express_interest(service, request.user)
+        except OperationalError as e:
+            # Handle database deadlocks - these can occur when multiple users
+            # simultaneously express interest. The lock ordering fix should prevent
+            # most cases, but we handle it gracefully if it still occurs.
+            logger.warning(f"Database deadlock in express_interest: {e}", exc_info=True)
+            return create_error_response(
+                'A temporary database conflict occurred. Please try again.',
+                code=ErrorCodes.SERVER_ERROR,
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
         except ValueError as e:
             # Map ValueError to appropriate error codes
             error_message = str(e)
@@ -773,6 +784,16 @@ class HandshakeViewSet(viewsets.ModelViewSet):
 
         try:
             handshake = HandshakeService.express_interest(service, request.user)
+        except OperationalError as e:
+            # Handle database deadlocks - these can occur when multiple users
+            # simultaneously express interest. The lock ordering fix should prevent
+            # most cases, but we handle it gracefully if it still occurs.
+            logger.warning(f"Database deadlock in express_interest: {e}", exc_info=True)
+            return create_error_response(
+                'A temporary database conflict occurred. Please try again.',
+                code=ErrorCodes.SERVER_ERROR,
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
         except ValueError as e:
             # Map ValueError to appropriate error codes
             error_message = str(e)

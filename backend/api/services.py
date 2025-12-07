@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from django.db import transaction
+from django.db.utils import OperationalError
 
 from .models import Handshake, Service, User, ChatMessage
 from .utils import create_notification
@@ -71,15 +72,28 @@ class HandshakeService:
             
         Raises:
             ValueError: If validation fails (with descriptive error message)
+            OperationalError: If a database deadlock occurs (should be retried by caller)
         """
         # Create handshake within transaction with row-level locking
+        # Acquire locks in consistent order (by user ID) to prevent deadlocks
+        # when two users simultaneously express interest in each other's services
         with transaction.atomic():
-            # Lock service and related users to prevent concurrent modifications
-            # Use select_related to avoid extra queries, then lock all involved users
+            # Lock service first
             service = Service.objects.select_related('user').select_for_update().get(pk=service.pk)
-            requester = User.objects.select_for_update().get(pk=requester.pk)
-            # Lock service owner separately (select_for_update doesn't lock related objects)
-            service_owner = User.objects.select_for_update().get(pk=service.user.pk)
+            
+            # Determine service owner ID before locking
+            service_owner_id = service.user.pk
+            
+            # Lock users in consistent order (by ID) to prevent deadlocks
+            # This ensures all transactions acquire locks in the same order
+            if requester.pk < service_owner_id:
+                # Lock requester first, then service owner
+                requester = User.objects.select_for_update().get(pk=requester.pk)
+                service_owner = User.objects.select_for_update().get(pk=service_owner_id)
+            else:
+                # Lock service owner first, then requester
+                service_owner = User.objects.select_for_update().get(pk=service_owner_id)
+                requester = User.objects.select_for_update().get(pk=requester.pk)
             
             # Validate service exists and is active (inside transaction)
             if service.status != 'Active':
@@ -118,6 +132,7 @@ class HandshakeService:
             HandshakeService._invalidate_caches(requester, service_owner)
         
         return handshake
+        # Note: OperationalError (deadlocks) will propagate to caller for retry handling
     
     @staticmethod
     def _check_own_service(service: Service, user: User) -> None:
