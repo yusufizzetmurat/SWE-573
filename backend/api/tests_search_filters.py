@@ -798,3 +798,120 @@ class ServiceLocationFieldTestCase(TestCase):
         
         service.refresh_from_db()
         self.assertIsNone(service.location)
+
+
+class ServiceViewSetOrderingTestCase(TestCase):
+    """
+    API-level tests for ServiceViewSet ordering behavior.
+    
+    Verifies that fallback ordering is correctly applied when:
+    - Invalid lat/lng params are provided
+    - No lat/lng params are provided
+    """
+    
+    def setUp(self):
+        """Set up test data with services at different times."""
+        from rest_framework.test import APIClient
+        from django.utils import timezone
+        import time
+        
+        self.client = APIClient()
+        
+        self.user = User.objects.create_user(
+            email='testuser@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            timebank_balance=Decimal('10.00')
+        )
+        
+        # Create services with different creation times
+        self.service_older = Service.objects.create(
+            user=self.user,
+            title='Older Service',
+            description='Created first',
+            type='Offer',
+            duration=Decimal('1.00'),
+            location_type='In-Person',
+            location_area='Besiktas',
+            location_lat=Decimal('41.0422'),
+            location_lng=Decimal('29.0089'),
+            max_participants=1,
+            schedule_type='One-Time'
+        )
+        
+        # Small delay to ensure different created_at timestamps
+        time.sleep(0.01)
+        
+        self.service_newer = Service.objects.create(
+            user=self.user,
+            title='Newer Service',
+            description='Created second',
+            type='Offer',
+            duration=Decimal('2.00'),
+            location_type='In-Person',
+            location_area='Kadikoy',
+            location_lat=Decimal('40.9900'),
+            location_lng=Decimal('29.0200'),
+            max_participants=1,
+            schedule_type='One-Time'
+        )
+        
+        self.client.force_authenticate(user=self.user)
+    
+    def _get_results(self, response):
+        """Extract results from paginated or non-paginated response."""
+        data = response.json()
+        # Handle both paginated (dict with 'results') and non-paginated (list) responses
+        if isinstance(data, dict) and 'results' in data:
+            return data['results']
+        return data
+    
+    def test_invalid_lat_lng_applies_created_at_ordering(self):
+        """
+        Test that invalid lat/lng params result in -created_at ordering.
+        
+        This is a regression test for the bug where invalid lat/lng strings
+        (being truthy) would skip the fallback ordering, causing unordered results.
+        """
+        response = self.client.get('/api/services/', {
+            'lat': 'invalid',
+            'lng': '29.0089'
+        })
+        
+        self.assertEqual(response.status_code, 200)
+        results = self._get_results(response)
+        
+        # Should be ordered by -created_at (newer first)
+        self.assertGreaterEqual(len(results), 2)
+        self.assertEqual(results[0]['title'], 'Newer Service')
+        self.assertEqual(results[1]['title'], 'Older Service')
+    
+    def test_no_lat_lng_applies_created_at_ordering(self):
+        """Test that missing lat/lng params result in -created_at ordering."""
+        response = self.client.get('/api/services/')
+        
+        self.assertEqual(response.status_code, 200)
+        results = self._get_results(response)
+        
+        # Should be ordered by -created_at (newer first)
+        self.assertGreaterEqual(len(results), 2)
+        self.assertEqual(results[0]['title'], 'Newer Service')
+        self.assertEqual(results[1]['title'], 'Older Service')
+    
+    def test_valid_lat_lng_applies_distance_ordering(self):
+        """Test that valid lat/lng params result in distance ordering."""
+        # Query from Besiktas location (closer to service_older)
+        response = self.client.get('/api/services/', {
+            'lat': '41.0422',
+            'lng': '29.0089',
+            'distance': '50'  # Wide enough to include both services
+        })
+        
+        self.assertEqual(response.status_code, 200)
+        results = self._get_results(response)
+        
+        # Should be ordered by distance (Besiktas service closer)
+        self.assertGreaterEqual(len(results), 2)
+        self.assertEqual(results[0]['title'], 'Older Service')  # In Besiktas, closer
+        self.assertEqual(results[1]['title'], 'Newer Service')  # In Kadikoy, farther

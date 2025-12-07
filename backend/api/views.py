@@ -466,7 +466,20 @@ class ServiceViewSet(viewsets.ModelViewSet):
         queryset = search_engine.search(queryset, search_params)
         
         # Apply default ordering if not already ordered by distance
-        if not self.request.query_params.get('lat') or not self.request.query_params.get('lng'):
+        # Must validate that lat/lng are valid numbers, not just truthy strings
+        def is_valid_coordinate(value: str | None) -> bool:
+            if value is None:
+                return False
+            try:
+                float(value)
+                return True
+            except (ValueError, TypeError):
+                return False
+        
+        lat_param = self.request.query_params.get('lat')
+        lng_param = self.request.query_params.get('lng')
+        
+        if not (is_valid_coordinate(lat_param) and is_valid_coordinate(lng_param)):
             queryset = queryset.order_by('-created_at')
         
         return queryset
