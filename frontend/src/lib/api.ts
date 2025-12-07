@@ -43,6 +43,13 @@ export interface Service {
 export interface Tag {
   id: string;
   name: string;
+  description?: string;
+}
+
+export interface WikidataItem {
+  id: string;       // QID like "Q28865"
+  label: string;    // "Python"
+  description?: string; // "high-level programming language"
 }
 
 export interface RegisterData {
@@ -440,4 +447,16 @@ export const adminAPI = {
   },
 };
 
-
+// Wikidata API
+export const wikidataAPI = {
+  search: async (query: string, limit: number = 10, signal?: AbortSignal): Promise<WikidataItem[]> => {
+    if (!query.trim()) {
+      return [];
+    }
+    const response = await apiClient.get('/wikidata/search/', { 
+      params: { q: query, limit },
+      signal 
+    });
+    return response.data;
+  },
+};
