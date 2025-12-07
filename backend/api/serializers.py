@@ -10,8 +10,12 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from decimal import Decimal
 import bleach
+import re
+import logging
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema_serializer(
@@ -254,10 +258,51 @@ class ServiceSerializer(serializers.ModelSerializer):
         # Collect all tags to add
         tags_to_add = []
         
-        # Add tags by ID
+        # Add tags by ID (including auto-creation for Wikidata QIDs)
         if tag_ids:
-            tags_by_id = Tag.objects.filter(id__in=tag_ids)
-            tags_to_add.extend(tags_by_id)
+            # First, get all existing tags
+            existing_tags = {tag.id: tag for tag in Tag.objects.filter(id__in=tag_ids)}
+            tags_to_add.extend(existing_tags.values())
+            
+            # Find Wikidata QIDs that don't exist in database
+            wikidata_qid_pattern = re.compile(r'^Q\d+$', re.IGNORECASE)
+            missing_qids = [
+                tid for tid in tag_ids 
+                if tid not in existing_tags and wikidata_qid_pattern.match(tid)
+            ]
+            
+            # Auto-create tags for missing Wikidata QIDs
+            if missing_qids:
+                from .wikidata import fetch_wikidata_item
+                
+                for qid in missing_qids:
+                    # Normalize QID to uppercase (e.g., q28865 -> Q28865)
+                    normalized_qid = qid.upper()
+                    
+                    # Check if normalized version exists (in case of case mismatch)
+                    if normalized_qid in existing_tags:
+                        continue
+                    
+                    # Fetch label from Wikidata
+                    wikidata_info = fetch_wikidata_item(normalized_qid)
+                    
+                    if wikidata_info and wikidata_info.get('label'):
+                        tag_name = wikidata_info['label']
+                    else:
+                        # Fallback: use the QID as name if Wikidata fetch fails
+                        tag_name = normalized_qid
+                        logger.warning(f"Could not fetch Wikidata info for {normalized_qid}, using QID as name")
+                    
+                    # Create the tag (use get_or_create to handle race conditions)
+                    tag, created = Tag.objects.get_or_create(
+                        id=normalized_qid,
+                        defaults={'name': tag_name}
+                    )
+                    if tag not in tags_to_add:
+                        tags_to_add.append(tag)
+                    
+                    if created:
+                        logger.info(f"Auto-created Wikidata tag: {normalized_qid} ({tag_name})")
         
         # Create or get tags by name
         if tag_names:
