@@ -1,4 +1,4 @@
-.PHONY: help build delete demo logs migrate superuser shell lint prod-build prod-delete prod-demo prod-logs db-backup db-restore
+.PHONY: help build delete demo logs migrate superuser shell lint prod-build prod-delete prod-demo prod-logs db-backup db-restore test test-backend test-frontend test-e2e test-all
 
 # Default target
 help:
@@ -21,6 +21,13 @@ help:
 	@echo "💾 Database:"
 	@echo "  make db-backup   - Backup database to backups/"
 	@echo "  make db-restore  - Restore database (use: FILE=backup.sql.gz)"
+	@echo ""
+	@echo "🧪 Testing:"
+	@echo "  make test        - Run all tests (backend + frontend unit)"
+	@echo "  make test-backend  - Run backend Django tests"
+	@echo "  make test-frontend - Run frontend Vitest tests"
+	@echo "  make test-e2e      - Run Playwright E2E tests"
+	@echo "  make test-all      - Run all tests including E2E"
 	@echo ""
 	@echo "🔧 Utilities:"
 	@echo "  make migrate     - Run database migrations"
@@ -152,3 +159,28 @@ lint:
 	@echo "🔍 Checking backend..."
 	docker compose exec backend python manage.py check
 	@echo "✅ Check complete"
+
+# ============================================================================
+# TESTING COMMANDS
+# ============================================================================
+
+test: test-backend
+	@echo "✅ All unit tests complete!"
+
+test-backend:
+	@echo "🧪 Running backend tests..."
+	docker compose exec -T backend python manage.py test api.tests -v 2
+	@echo "✅ Backend tests complete!"
+
+test-frontend:
+	@echo "🧪 Running frontend tests..."
+	cd frontend && npm run test:run
+	@echo "✅ Frontend tests complete!"
+
+test-e2e:
+	@echo "🧪 Running E2E tests..."
+	cd frontend && npm run test:e2e
+	@echo "✅ E2E tests complete!"
+
+test-all: test-backend test-frontend test-e2e
+	@echo "✅ All tests complete!"

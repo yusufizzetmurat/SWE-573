@@ -3,7 +3,8 @@
 from rest_framework import serializers
 from .models import (
     User, Service, Tag, Handshake, ChatMessage, 
-    Notification, ReputationRep, Badge, UserBadge, Report, TransactionHistory
+    Notification, ReputationRep, Badge, UserBadge, Report, TransactionHistory,
+    ChatRoom, PublicChatMessage
 )
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.password_validation import validate_password
@@ -745,3 +746,70 @@ class TransactionHistorySerializer(serializers.ModelSerializer):
         if obj.handshake and obj.handshake.service:
             return obj.handshake.service.title
         return None
+
+
+# Public Chat Serializers
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Chat Room Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174009',
+                'name': 'Discussion: Web Development Help',
+                'type': 'public',
+                'related_service': '123e4567-e89b-12d3-a456-426614174001',
+                'created_at': '2024-01-01T12:00:00Z'
+            },
+            response_only=True
+        )
+    ]
+)
+class ChatRoomSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChatRoom
+        fields = ['id', 'name', 'type', 'related_service', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Public Chat Message Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174010',
+                'room': '123e4567-e89b-12d3-a456-426614174009',
+                'sender_id': '123e4567-e89b-12d3-a456-426614174000',
+                'sender_name': 'John Doe',
+                'sender_avatar_url': 'https://example.com/avatars/john.jpg',
+                'body': 'Has anyone tried this service before?',
+                'created_at': '2024-01-01T12:00:00Z'
+            },
+            response_only=True
+        ),
+        OpenApiExample(
+            'Send Public Chat Message Request',
+            value={
+                'body': 'Has anyone tried this service before?'
+            },
+            request_only=True
+        )
+    ]
+)
+class PublicChatMessageSerializer(serializers.ModelSerializer):
+    sender_id = serializers.UUIDField(source='sender.id', read_only=True)
+    sender_name = serializers.SerializerMethodField()
+    sender_avatar_url = serializers.SerializerMethodField()
+    body = serializers.CharField(max_length=5000)
+
+    class Meta:
+        model = PublicChatMessage
+        fields = ['id', 'room', 'sender_id', 'sender_name', 'sender_avatar_url', 'body', 'created_at']
+        read_only_fields = ['id', 'room', 'sender_id', 'created_at']
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_sender_name(self, obj):
+        return f"{obj.sender.first_name} {obj.sender.last_name}".strip()
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_sender_avatar_url(self, obj):
+        return obj.sender.avatar_url

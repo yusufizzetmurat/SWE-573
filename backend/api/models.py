@@ -371,3 +371,51 @@ class Report(models.Model):
             models.Index(fields=['resolved_by']),
             models.Index(fields=['status', 'created_at']),
         ]
+
+
+class ChatRoom(models.Model):
+    """Public chat room for service discussions (lobby)"""
+    TYPE_CHOICES = (
+        ('public', 'Public'),
+        ('private', 'Private'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=200)
+    type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='public')
+    related_service = models.OneToOneField(
+        Service, 
+        on_delete=models.CASCADE, 
+        related_name='chat_room', 
+        null=True, 
+        blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.type})"
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['type']),
+            models.Index(fields=['related_service']),
+        ]
+
+
+class PublicChatMessage(models.Model):
+    """Messages in public chat rooms"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    room = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='public_messages')
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.sender.email}: {self.body[:50]}"
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['room', 'created_at']),
+            models.Index(fields=['sender']),
+        ]
+        ordering = ['created_at']

@@ -2,12 +2,9 @@ import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
-from rest_framework_simplejwt.tokens import UntypedToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from jwt import decode as jwt_decode
-from django.conf import settings
 import bleach
-from .models import Handshake, ChatMessage
+from .models import Handshake, ChatMessage, ChatRoom, PublicChatMessage
 from .serializers import ChatMessageSerializer
 from .utils import create_notification
 
@@ -160,4 +157,139 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         except Exception:
             pass
+
+
+class PublicChatConsumer(AsyncWebsocketConsumer):
+    """WebSocket consumer for public chat rooms (service discussion lobbies)."""
+    
+    async def connect(self):
+        self.room_id = self.scope['url_route']['kwargs']['room_id']
+        self.room_group_name = f'public_chat_{self.room_id}'
+        
+        # Get token from query string
+        query_string = self.scope.get('query_string', b'').decode()
+        token = None
+        if 'token=' in query_string:
+            token = query_string.split('token=')[-1].split('&')[0]
+        
+        if not token:
+            await self.close(code=4001)
+            return
+        
+        # Authenticate user
+        try:
+            user = await self.authenticate_user(token)
+            if not user:
+                await self.close(code=4003)
+                return
+            
+            # Verify room exists
+            room_exists = await self.verify_room_exists(self.room_id)
+            if not room_exists:
+                await self.close(code=4004)
+                return
+            
+            self.user = user
+        except Exception:
+            await self.close(code=4003)
+            return
+        
+        # Join room group
+        await self.channel_layer.group_add(
+            self.room_group_name,
+            self.channel_name
+        )
+        
+        await self.accept()
+    
+    async def disconnect(self, close_code):
+        # Leave room group
+        await self.channel_layer.group_discard(
+            self.room_group_name,
+            self.channel_name
+        )
+    
+    async def receive(self, text_data):
+        try:
+            text_data_json = json.loads(text_data)
+            message_type = text_data_json.get('type')
+            
+            if message_type == 'chat_message':
+                body = text_data_json.get('body', '')
+                if body:
+                    # Save message to database
+                    message = await self.save_message(self.room_id, self.user.id, body)
+                    
+                    # Send message to room group
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            'type': 'chat_message',
+                            'message': await self.serialize_message(message)
+                        }
+                    )
+        except Exception as e:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': str(e)
+            }))
+    
+    async def chat_message(self, event):
+        # Send message to WebSocket
+        await self.send(text_data=json.dumps({
+            'type': 'chat_message',
+            'message': event['message']
+        }))
+    
+    @database_sync_to_async
+    def authenticate_user(self, token):
+        try:
+            from rest_framework_simplejwt.tokens import AccessToken
+            access_token = AccessToken(token)
+            user_id = access_token['user_id']
+            user = User.objects.get(id=user_id, is_active=True)
+            return user
+        except (InvalidToken, TokenError, User.DoesNotExist):
+            return None
+    
+    @database_sync_to_async
+    def verify_room_exists(self, room_id):
+        try:
+            ChatRoom.objects.get(id=room_id)
+            return True
+        except ChatRoom.DoesNotExist:
+            return False
+    
+    @database_sync_to_async
+    def save_message(self, room_id, user_id, body):
+        # Sanitize HTML - strip all tags
+        cleaned_body = bleach.clean(
+            body,
+            tags=[],
+            strip=True
+        )
+        
+        # Truncate to max length (5000 chars)
+        cleaned_body = cleaned_body[:5000] if cleaned_body else ''
+        
+        room = ChatRoom.objects.get(id=room_id)
+        user = User.objects.get(id=user_id)
+        message = PublicChatMessage.objects.create(
+            room=room,
+            sender=user,
+            body=cleaned_body
+        )
+        return message
+    
+    @database_sync_to_async
+    def serialize_message(self, message):
+        return {
+            'id': str(message.id),
+            'room': str(message.room.id),
+            'sender_id': str(message.sender.id),
+            'sender_name': f"{message.sender.first_name} {message.sender.last_name}".strip(),
+            'sender_avatar_url': message.sender.avatar_url,
+            'body': message.body,
+            'created_at': message.created_at.isoformat(),
+        }
 

@@ -8,9 +8,9 @@ from rest_framework import status
 from unittest.mock import patch, MagicMock
 from decimal import Decimal
 
-from .models import User, Tag, Service
-from .serializers import TagSerializer
-from .wikidata import search_wikidata_items, fetch_wikidata_item
+from api.models import User, Tag, Service
+from api.serializers import TagSerializer
+from api.wikidata import search_wikidata_items, fetch_wikidata_item
 
 
 class WikidataSearchViewTests(APITestCase):
@@ -83,15 +83,12 @@ class WikidataSearchViewTests(APITestCase):
         """Test that limit is clamped between 1 and 20"""
         mock_search.return_value = []
 
-        # Test upper bound
         response = self.client.get(self.url, {'q': 'python', 'limit': '100'})
         mock_search.assert_called_with('python', limit=20)
 
-        # Test lower bound
         response = self.client.get(self.url, {'q': 'python', 'limit': '0'})
         mock_search.assert_called_with('python', limit=1)
 
-        # Test invalid value defaults to 10
         response = self.client.get(self.url, {'q': 'python', 'limit': 'invalid'})
         mock_search.assert_called_with('python', limit=10)
 
@@ -222,15 +219,12 @@ class TagWithWikidataTests(APITestCase):
         tag = Tag.objects.create(id='cooking', name='Cooking')
         serializer = TagSerializer(tag)
 
-        # wikidata_info should be None for non-QID tags
         self.assertIsNone(serializer.data['wikidata_info'])
 
     def test_service_creation_with_wikidata_tags(self):
         """Test that services can be created with Wikidata-based tags"""
-        # Create a tag with QID
         tag = Tag.objects.create(id='Q28865', name='Python')
 
-        # Create service with tag
         response = self.client.post('/api/services/', {
             'title': 'Python Tutoring',
             'description': 'Learn Python programming',
@@ -244,31 +238,21 @@ class TagWithWikidataTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         
-        # Verify tag is associated
         service = Service.objects.get(id=response.data['id'])
         self.assertEqual(service.tags.count(), 1)
         self.assertEqual(service.tags.first().id, 'Q28865')
 
     @patch('api.wikidata.fetch_wikidata_item')
     def test_service_creation_auto_creates_wikidata_tag(self, mock_fetch):
-        """
-        Test that Wikidata tags are auto-created when they don't exist in DB.
-        
-        This is the critical test for the bug where Wikidata QIDs selected from
-        the autocomplete were silently not associated with services because the
-        backend only looked up existing tags without creating new ones.
-        """
-        # Ensure the tag does NOT exist
+        """Test that Wikidata tags are auto-created when they don't exist in DB."""
         self.assertFalse(Tag.objects.filter(id='Q2005').exists())
         
-        # Mock Wikidata API response
         mock_fetch.return_value = {
             'id': 'Q2005',
             'label': 'JavaScript',
             'description': 'high-level programming language'
         }
 
-        # Create service with a Wikidata QID that doesn't exist yet
         response = self.client.post('/api/services/', {
             'title': 'JavaScript Tutoring',
             'description': 'Learn JavaScript programming',
@@ -277,37 +261,28 @@ class TagWithWikidataTests(APITestCase):
             'location_type': 'Online',
             'max_participants': 1,
             'schedule_type': 'One-Time',
-            'tag_ids': ['Q2005']  # This QID doesn't exist in DB
+            'tag_ids': ['Q2005']
         })
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         
-        # Verify tag was auto-created
         self.assertTrue(Tag.objects.filter(id='Q2005').exists())
         tag = Tag.objects.get(id='Q2005')
         self.assertEqual(tag.name, 'JavaScript')
         
-        # Verify tag is associated with the service
         service = Service.objects.get(id=response.data['id'])
         self.assertEqual(service.tags.count(), 1)
         self.assertEqual(service.tags.first().id, 'Q2005')
         
-        # Verify Wikidata was called (at least once for tag creation)
         mock_fetch.assert_any_call('Q2005')
 
     @patch('api.wikidata.fetch_wikidata_item')
     def test_service_creation_handles_wikidata_api_failure(self, mock_fetch):
-        """
-        Test that service creation succeeds even if Wikidata API fails.
-        Falls back to using QID as tag name.
-        """
-        # Ensure the tag does NOT exist
+        """Test that service creation succeeds even if Wikidata API fails."""
         self.assertFalse(Tag.objects.filter(id='Q99999').exists())
         
-        # Mock Wikidata API failure
         mock_fetch.return_value = None
 
-        # Create service with a Wikidata QID
         response = self.client.post('/api/services/', {
             'title': 'Mystery Topic Tutoring',
             'description': 'Learn something mysterious',
@@ -321,34 +296,26 @@ class TagWithWikidataTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         
-        # Verify tag was created with QID as fallback name
         self.assertTrue(Tag.objects.filter(id='Q99999').exists())
         tag = Tag.objects.get(id='Q99999')
-        self.assertEqual(tag.name, 'Q99999')  # Fallback name
+        self.assertEqual(tag.name, 'Q99999')
         
-        # Verify tag is associated with the service
         service = Service.objects.get(id=response.data['id'])
         self.assertEqual(service.tags.count(), 1)
 
     @patch('api.wikidata.fetch_wikidata_item')
     def test_service_creation_with_mixed_existing_and_new_qids(self, mock_fetch):
-        """
-        Test creating a service with both existing and new Wikidata tags.
-        """
-        # Pre-create one tag
+        """Test creating a service with both existing and new Wikidata tags."""
         Tag.objects.create(id='Q28865', name='Python')
         
-        # Ensure the other tag does NOT exist
         self.assertFalse(Tag.objects.filter(id='Q2005').exists())
         
-        # Mock Wikidata API response for the new tag
         mock_fetch.return_value = {
             'id': 'Q2005',
             'label': 'JavaScript',
             'description': 'high-level programming language'
         }
 
-        # Create service with both existing and new QIDs
         response = self.client.post('/api/services/', {
             'title': 'Web Development Tutoring',
             'description': 'Learn Python and JavaScript',
@@ -357,18 +324,16 @@ class TagWithWikidataTests(APITestCase):
             'location_type': 'Online',
             'max_participants': 2,
             'schedule_type': 'Recurrent',
-            'tag_ids': ['Q28865', 'Q2005']  # One exists, one doesn't
+            'tag_ids': ['Q28865', 'Q2005']
         })
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         
-        # Verify both tags are associated
         service = Service.objects.get(id=response.data['id'])
         self.assertEqual(service.tags.count(), 2)
         tag_ids = set(service.tags.values_list('id', flat=True))
         self.assertEqual(tag_ids, {'Q28865', 'Q2005'})
         
-        # Verify Wikidata was called for the new QID (at least once for tag creation)
         mock_fetch.assert_any_call('Q2005')
 
 
@@ -384,7 +349,6 @@ class WikidataSearchRateLimitTests(APITestCase):
         """Test that normal usage is not rate limited"""
         mock_search.return_value = []
 
-        # Make a few requests - should all succeed
         for _ in range(5):
             response = self.client.get(self.url, {'q': 'test'})
             self.assertEqual(response.status_code, status.HTTP_200_OK)
