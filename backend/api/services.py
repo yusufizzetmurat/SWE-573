@@ -59,6 +59,9 @@ class HandshakeService:
         """
         Main business logic for expressing interest in a service.
         
+        All validations are performed inside a transaction with row-level locking
+        to prevent TOCTOU race conditions.
+        
         Args:
             service: The service to express interest in
             requester: The user expressing interest
@@ -69,35 +72,50 @@ class HandshakeService:
         Raises:
             ValueError: If validation fails (with descriptive error message)
         """
-        # Validate service exists and is active
-        if service.status != 'Active':
-            raise ValueError('Service is not active')
-        
-        # Check if user is trying to express interest in their own service
-        HandshakeService._check_own_service(service, requester)
-        
-        # Check for existing handshake
-        HandshakeService._check_existing_handshake(service, requester)
-        
-        # Check max_participants
-        HandshakeService._check_max_participants(service)
-        
-        # Determine payer and check balance
-        payer = HandshakeService._determine_payer(service, requester)
-        HandshakeService._check_balance(payer, service, requester)
-        
-        # Create handshake within transaction
+        # Create handshake within transaction with row-level locking
         with transaction.atomic():
+            # Lock service and related users to prevent concurrent modifications
+            # Use select_related to avoid extra queries, then lock all involved users
+            service = Service.objects.select_related('user').select_for_update().get(pk=service.pk)
+            requester = User.objects.select_for_update().get(pk=requester.pk)
+            # Lock service owner separately (select_for_update doesn't lock related objects)
+            service_owner = User.objects.select_for_update().get(pk=service.user.pk)
+            
+            # Validate service exists and is active (inside transaction)
+            if service.status != 'Active':
+                raise ValueError('Service is not active')
+            
+            # Check if user is trying to express interest in their own service
+            # Use locked service_owner for comparison
+            if service_owner.pk == requester.pk:
+                raise ValueError('Cannot express interest in your own service')
+            
+            # Check for existing handshake (inside transaction with locked data)
+            HandshakeService._check_existing_handshake(service, requester)
+            
+            # Check max_participants (inside transaction with locked data)
+            HandshakeService._check_max_participants(service)
+            
+            # Determine payer and check balance (inside transaction with locked data)
+            payer = HandshakeService._determine_payer(service, requester)
+            # Use locked user objects
+            if payer.pk == requester.pk:
+                payer = requester
+            else:
+                payer = service_owner
+            HandshakeService._check_balance(payer, service, requester)
+            
+            # Create handshake
             handshake = HandshakeService._create_handshake(service, requester)
             
-            # Send notifications
-            HandshakeService._send_notifications(service, handshake, requester)
+            # Send notifications (use locked service_owner)
+            HandshakeService._send_notifications(service, handshake, requester, service_owner)
             
             # Create initial chat message
             HandshakeService._create_initial_message(handshake, requester, service)
             
-            # Invalidate caches
-            HandshakeService._invalidate_caches(requester, service.user)
+            # Invalidate caches (use locked service_owner)
+            HandshakeService._invalidate_caches(requester, service_owner)
         
         return handshake
     
@@ -165,10 +183,10 @@ class HandshakeService:
         )
     
     @staticmethod
-    def _send_notifications(service: Service, handshake: Handshake, requester: User) -> None:
+    def _send_notifications(service: Service, handshake: Handshake, requester: User, service_owner: User) -> None:
         """Creates notifications."""
         create_notification(
-            user=service.user,
+            user=service_owner,
             notification_type='handshake_request',
             title='New Interest in Your Service',
             message=f"{requester.first_name} expressed interest in '{service.title}'",

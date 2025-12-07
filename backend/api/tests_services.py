@@ -102,6 +102,16 @@ class HandshakeServiceTestCase(TestCase):
         self.assertFalse(is_valid)
         self.assertIn('Insufficient TimeBank balance', error)
     
+    def test_can_express_interest_valid_need(self):
+        """Test can_express_interest returns True for valid Need service case."""
+        # Ensure service owner has sufficient balance
+        self.user1.timebank_balance = Decimal('10.00')
+        self.user1.save()
+        
+        is_valid, error = HandshakeService.can_express_interest(self.service_need, self.user2)
+        self.assertTrue(is_valid)
+        self.assertIsNone(error)
+    
     def test_can_express_interest_max_participants(self):
         """Test cannot express interest when service is at max capacity."""
         # Create handshakes up to max_participants
@@ -142,6 +152,7 @@ class HandshakeServiceTestCase(TestCase):
         self.assertEqual(handshake.service, self.service_need)
         self.assertEqual(handshake.requester, self.user2)
         self.assertEqual(handshake.status, 'pending')
+        self.assertEqual(handshake.provisioned_hours, Decimal('1.50'))
     
     def test_express_interest_duplicate(self):
         """Test cannot express interest twice."""
@@ -177,7 +188,10 @@ class HandshakeServiceTestCase(TestCase):
         
         messages = ChatMessage.objects.filter(handshake=handshake)
         self.assertEqual(messages.count(), 1)
-        self.assertIn('interested in your service', messages.first().body)
+        message = messages.first()
+        self.assertIn('interested in your service', message.body)
+        self.assertEqual(message.sender, self.user2)
+        self.assertEqual(message.handshake, handshake)
     
     def test_express_interest_creates_notification(self):
         """Test that express_interest creates notification."""
@@ -190,7 +204,11 @@ class HandshakeServiceTestCase(TestCase):
             related_handshake=handshake
         )
         self.assertEqual(notifications.count(), 1)
-        self.assertEqual(notifications.first().type, 'handshake_request')
+        notification = notifications.first()
+        self.assertEqual(notification.type, 'handshake_request')
+        self.assertEqual(notification.user, self.user1)
+        self.assertEqual(notification.related_handshake, handshake)
+        self.assertEqual(notification.related_service, self.service_offer)
     
     def test_can_express_interest_inactive_service(self):
         """Test cannot express interest in inactive service."""
