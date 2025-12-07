@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.gis',  # GeoDjango for PostGIS spatial queries
 
     # 3rd Party Apps
     'rest_framework',
@@ -97,9 +98,10 @@ ASGI_APPLICATION = 'hive_project.asgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 # Database Configuration (uses environment variables from docker-compose.yml)
+# Using PostGIS for geospatial queries
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
+        'ENGINE': 'django.contrib.gis.db.backends.postgis',
         'NAME': os.environ.get('DB_NAME'),
         'USER': os.environ.get('DB_USER'),
         'PASSWORD': os.environ.get('DB_PASSWORD'),

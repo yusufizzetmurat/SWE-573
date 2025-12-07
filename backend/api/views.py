@@ -42,6 +42,7 @@ from .utils import (
 )
 from .services import HandshakeService
 from .badge_utils import check_and_assign_badges
+from .search_filters import SearchEngine
 from .performance import track_performance
 from django.db.models import Count, Q, Prefetch
 from .cache_utils import (
@@ -391,17 +392,26 @@ class ServiceViewSet(viewsets.ModelViewSet):
 
     @track_performance
     def list(self, request, *args, **kwargs):
+        # Include all search parameters in cache key
         cache_key_params = {
             'type': request.query_params.get('type'),
             'tag': request.query_params.get('tag'),
+            'tags': ','.join(request.query_params.getlist('tags')),
             'search': request.query_params.get('search'),
+            'lat': request.query_params.get('lat'),
+            'lng': request.query_params.get('lng'),
+            'distance': request.query_params.get('distance'),
             'page': request.query_params.get('page', '1'),
             'page_size': request.query_params.get('page_size'),
         }
         
-        cached_result = get_cached_service_list(cache_key_params)
-        if cached_result is not None:
-            return Response(cached_result)
+        # Don't cache location-based queries (results vary by user location)
+        use_cache = not (request.query_params.get('lat') and request.query_params.get('lng'))
+        
+        if use_cache:
+            cached_result = get_cached_service_list(cache_key_params)
+            if cached_result is not None:
+                return Response(cached_result)
         
         queryset = self.filter_queryset(self.get_queryset())
         paginator = self.pagination_class()
@@ -416,12 +426,14 @@ class ServiceViewSet(viewsets.ModelViewSet):
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             response = paginator.get_paginated_response(serializer.data)
-            cache_service_list(cache_key_params, response.data, ttl=CACHE_TTL_SHORT)
+            if use_cache:
+                cache_service_list(cache_key_params, response.data, ttl=CACHE_TTL_SHORT)
             return response
         
         serializer = self.get_serializer(queryset[:100], many=True)
         response_data = serializer.data
-        cache_service_list(cache_key_params, response_data, ttl=CACHE_TTL_SHORT)
+        if use_cache:
+            cache_service_list(cache_key_params, response_data, ttl=CACHE_TTL_SHORT)
         return Response(response_data)
 
     @track_performance
@@ -432,12 +444,45 @@ class ServiceViewSet(viewsets.ModelViewSet):
             queryset=UserBadge.objects.select_related('badge')
         )
         
-        return (
+        # Base queryset with optimizations
+        queryset = (
             Service.objects.filter(status='Active')
             .select_related('user')
             .prefetch_related('tags', user_badges_prefetch)
-            .order_by('-created_at')
         )
+        
+        # Apply search engine filters (Strategy Pattern)
+        search_engine = SearchEngine()
+        search_params = {
+            'type': self.request.query_params.get('type'),
+            'tag': self.request.query_params.get('tag'),
+            'tags': self.request.query_params.getlist('tags'),
+            'search': self.request.query_params.get('search'),
+            'lat': self.request.query_params.get('lat'),
+            'lng': self.request.query_params.get('lng'),
+            'distance': self.request.query_params.get('distance', 10),
+        }
+        
+        queryset = search_engine.search(queryset, search_params)
+        
+        # Apply default ordering if not already ordered by distance
+        # Must validate that lat/lng are valid numbers, not just truthy strings
+        def is_valid_coordinate(value: str | None) -> bool:
+            if value is None:
+                return False
+            try:
+                float(value)
+                return True
+            except (ValueError, TypeError):
+                return False
+        
+        lat_param = self.request.query_params.get('lat')
+        lng_param = self.request.query_params.get('lng')
+        
+        if not (is_valid_coordinate(lat_param) and is_valid_coordinate(lng_param)):
+            queryset = queryset.order_by('-created_at')
+        
+        return queryset
 
     def get_serializer_context(self):
         return {'request': self.request}
