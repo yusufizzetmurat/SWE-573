@@ -1,17 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Clock, MapPin, Calendar, Users, Monitor, Flag, Tag } from 'lucide-react';
+import { ArrowLeft, Clock, MapPin, Calendar, Users, Monitor, Flag, Tag, MessageSquare } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from './ui/avatar';
-import { ImageWithFallback } from './figma/ImageWithFallback';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { serviceAPI, handshakeAPI, Service } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { ServiceMap } from './ServiceMap';
 import { useToast } from './Toast';
 import { getBadgeMeta } from '../lib/badges';
 import { formatTimebank } from '../lib/utils';
-import { getErrorMessage, type NavigateData, type ApiError } from '../lib/types';
+import { getErrorMessage, type NavigateData } from '../lib/types';
+import { PublicChat } from './PublicChat';
 
 interface ServiceDetailProps {
   onNavigate: (page: string) => void;
@@ -205,110 +206,129 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
         <div className="grid grid-cols-[1fr_400px] gap-8">
           {/* Main Content */}
           <div>
-            <div className="bg-white rounded-xl border border-gray-200 p-8">
-              {/* Header */}
-              <div className="mb-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <div className="flex items-center gap-3 mb-2">
-                      <h1 className="text-gray-900">{service.title}</h1>
-                      <Badge 
-                        variant={service.type === 'Offer' ? 'default' : 'secondary'}
-                        className={service.type === 'Offer' 
-                          ? 'bg-green-100 text-green-700 hover:bg-green-100' 
-                          : 'bg-blue-100 text-blue-700 hover:bg-blue-100'
-                        }
-                      >
-                        {service.type === 'Need' ? 'Want' : service.type}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
+            <Tabs defaultValue="details" className="w-full">
+              <TabsList className="mb-4">
+                <TabsTrigger value="details" className="flex items-center gap-2">
+                  <Tag className="w-4 h-4" />
+                  Details
+                </TabsTrigger>
+                <TabsTrigger value="discussion" className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4" />
+                  Public Discussion
+                </TabsTrigger>
+              </TabsList>
 
-                {/* Key Info */}
-                <div className="grid grid-cols-2 gap-4 p-4 bg-amber-50 rounded-lg border border-amber-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center">
-                      <Clock className="w-5 h-5 text-white" />
+              <TabsContent value="details">
+                <div className="bg-white rounded-xl border border-gray-200 p-8">
+                  {/* Header */}
+                  <div className="mb-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <div className="flex items-center gap-3 mb-2">
+                          <h1 className="text-gray-900">{service.title}</h1>
+                          <Badge 
+                            variant={service.type === 'Offer' ? 'default' : 'secondary'}
+                            className={service.type === 'Offer' 
+                              ? 'bg-green-100 text-green-700 hover:bg-green-100' 
+                              : 'bg-blue-100 text-blue-700 hover:bg-blue-100'
+                            }
+                          >
+                            {service.type === 'Need' ? 'Want' : service.type}
+                          </Badge>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="text-xs text-gray-600">Duration</div>
-                      <div className="text-gray-900">{formatTimebank(service.duration)} TimeBank {formatTimebank(service.duration) === '1' ? 'Hour' : 'Hours'}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center">
-                      <Calendar className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-600">Schedule</div>
-                      <div className="text-gray-900">
-                        {service.schedule_type}: {service.schedule_details || 'TBD'}
+
+                    {/* Key Info */}
+                    <div className="grid grid-cols-2 gap-4 p-4 bg-amber-50 rounded-lg border border-amber-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center">
+                          <Clock className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-600">Duration</div>
+                          <div className="text-gray-900">{formatTimebank(service.duration)} TimeBank {formatTimebank(service.duration) === '1' ? 'Hour' : 'Hours'}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center">
+                          <Calendar className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-600">Schedule</div>
+                          <div className="text-gray-900">
+                            {service.schedule_type}: {service.schedule_details || 'TBD'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center">
+                          {service.location_type === 'Online' ? (
+                            <Monitor className="w-5 h-5 text-white" />
+                          ) : (
+                            <MapPin className="w-5 h-5 text-white" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-600">Location Type</div>
+                          <div className="text-gray-900">{service.location_type}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center">
+                          <Users className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-600">Max Participants</div>
+                          <div className="text-gray-900">{service.max_participants}</div>
+                        </div>
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center">
-                      {service.location_type === 'Online' ? (
-                        <Monitor className="w-5 h-5 text-white" />
-                      ) : (
-                        <MapPin className="w-5 h-5 text-white" />
-                      )}
+
+                  {/* Description */}
+                  <div className="mb-6">
+                    <h3 className="text-gray-900 mb-3">Description</h3>
+                    <div className="text-gray-700 whitespace-pre-line leading-relaxed">
+                      {service.description}
                     </div>
+                  </div>
+
+                  {/* Tags */}
+                  {service.tags && service.tags.length > 0 && (
                     <div>
-                      <div className="text-xs text-gray-600">Location Type</div>
-                      <div className="text-gray-900">{service.location_type}</div>
+                      <h3 className="text-gray-900 mb-3">Tags</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {service.tags.map((tag) => (
+                          <span 
+                            key={tag.id}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-sm"
+                          >
+                            <Tag className="w-3 h-3" />
+                            #{tag.name}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center">
-                      <Users className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-600">Max Participants</div>
-                      <div className="text-gray-900">{service.max_participants}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                  )}
 
-              {/* Description */}
-              <div className="mb-6">
-                <h3 className="text-gray-900 mb-3">Description</h3>
-                <div className="text-gray-700 whitespace-pre-line leading-relaxed">
-                  {service.description}
-                </div>
-              </div>
-
-              {/* Tags */}
-              {service.tags && service.tags.length > 0 && (
-                <div>
-                  <h3 className="text-gray-900 mb-3">Tags</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {service.tags.map((tag) => (
-                      <span 
-                        key={tag.id}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-sm"
-                      >
-                        <Tag className="w-3 h-3" />
-                        #{tag.name}
-                      </span>
-                    ))}
+                  {/* Map/Image */}
+                  <div className="mt-6">
+                    <ServiceMap 
+                      locationType={service.location_type}
+                      locationArea={service.location_area}
+                      locationLat={service.location_lat}
+                      locationLng={service.location_lng}
+                      locationDetails={service.location_type === 'In-Person' ? 'Location will be shared after handshake' : undefined}
+                    />
                   </div>
                 </div>
-              )}
+              </TabsContent>
 
-              {/* Map/Image */}
-        <div className="mt-6">
-          <ServiceMap 
-            locationType={service.location_type}
-            locationArea={service.location_area}
-            locationLat={service.location_lat}
-            locationLng={service.location_lng}
-            locationDetails={service.location_type === 'In-Person' ? 'Location will be shared after handshake' : undefined}
-          />
-        </div>
-            </div>
+              <TabsContent value="discussion">
+                <PublicChat serviceId={service.id} onNavigate={onNavigate} />
+              </TabsContent>
+            </Tabs>
           </div>
 
           {/* Sidebar */}

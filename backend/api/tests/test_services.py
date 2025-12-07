@@ -8,8 +8,8 @@ from decimal import Decimal
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 
-from .models import Service, Handshake
-from .services import HandshakeService
+from api.models import Service, Handshake
+from api.services import HandshakeService
 
 User = get_user_model()
 
@@ -84,7 +84,6 @@ class HandshakeServiceTestCase(TestCase):
     
     def test_can_express_interest_insufficient_balance_offer(self):
         """Test cannot express interest with insufficient balance for Offer service."""
-        # For Offer, requester pays
         self.user2.timebank_balance = Decimal('1.00')
         self.user2.save()
         
@@ -94,7 +93,6 @@ class HandshakeServiceTestCase(TestCase):
     
     def test_can_express_interest_insufficient_balance_need(self):
         """Test cannot express interest with insufficient balance for Need service."""
-        # For Need, service owner pays
         self.user1.timebank_balance = Decimal('1.00')
         self.user1.save()
         
@@ -104,7 +102,6 @@ class HandshakeServiceTestCase(TestCase):
     
     def test_can_express_interest_valid_need(self):
         """Test can_express_interest returns True for valid Need service case."""
-        # Ensure service owner has sufficient balance
         self.user1.timebank_balance = Decimal('10.00')
         self.user1.save()
         
@@ -114,7 +111,6 @@ class HandshakeServiceTestCase(TestCase):
     
     def test_can_express_interest_max_participants(self):
         """Test cannot express interest when service is at max capacity."""
-        # Create handshakes up to max_participants
         Handshake.objects.create(
             service=self.service_offer,
             requester=self.user2,
@@ -128,8 +124,6 @@ class HandshakeServiceTestCase(TestCase):
             status='accepted'
         )
         
-        # Now user4 cannot express interest (max_participants=2, already 2)
-        # Use user4 instead of user3 to avoid "already expressed interest" error
         is_valid, error = HandshakeService.can_express_interest(self.service_offer, self.user4)
         self.assertFalse(is_valid)
         self.assertIn('maximum capacity', error)
@@ -158,7 +152,6 @@ class HandshakeServiceTestCase(TestCase):
         """Test cannot express interest twice."""
         HandshakeService.express_interest(self.service_offer, self.user2)
         
-        # Try to express interest again
         with self.assertRaises(ValueError) as context:
             HandshakeService.express_interest(self.service_offer, self.user2)
         
@@ -166,7 +159,6 @@ class HandshakeServiceTestCase(TestCase):
     
     def test_express_interest_max_participants_raises_error(self):
         """Test express_interest raises ValueError when at max capacity."""
-        # Fill up the service
         Handshake.objects.create(
             service=self.service_need,
             requester=self.user2,
@@ -174,7 +166,6 @@ class HandshakeServiceTestCase(TestCase):
             status='pending'
         )
         
-        # Try to express interest when at capacity
         with self.assertRaises(ValueError) as context:
             HandshakeService.express_interest(self.service_need, self.user3)
         
@@ -182,7 +173,7 @@ class HandshakeServiceTestCase(TestCase):
     
     def test_express_interest_creates_chat_message(self):
         """Test that express_interest creates initial chat message."""
-        from .models import ChatMessage
+        from api.models import ChatMessage
         
         handshake = HandshakeService.express_interest(self.service_offer, self.user2)
         
@@ -195,7 +186,7 @@ class HandshakeServiceTestCase(TestCase):
     
     def test_express_interest_creates_notification(self):
         """Test that express_interest creates notification."""
-        from .models import Notification
+        from api.models import Notification
         
         handshake = HandshakeService.express_interest(self.service_offer, self.user2)
         
@@ -231,8 +222,6 @@ class HandshakeServiceTestCase(TestCase):
     
     def test_payer_determination_offer(self):
         """Test payer determination for Offer service - requester pays."""
-        # For Offer, requester (user2) should pay
-        # Set user2 balance low, user1 balance high
         self.user2.timebank_balance = Decimal('1.00')
         self.user2.save()
         self.user1.timebank_balance = Decimal('10.00')
@@ -240,14 +229,11 @@ class HandshakeServiceTestCase(TestCase):
         
         is_valid, error = HandshakeService.can_express_interest(self.service_offer, self.user2)
         self.assertFalse(is_valid)
-        # Error should mention "You" since requester is the payer
         self.assertIn('You', error)
         self.assertIn('Insufficient TimeBank balance', error)
     
     def test_payer_determination_need(self):
         """Test payer determination for Need service - service owner pays."""
-        # For Need, service owner (user1) should pay
-        # Set user1 balance low, user2 balance high
         self.user1.timebank_balance = Decimal('1.00')
         self.user1.save()
         self.user2.timebank_balance = Decimal('10.00')
@@ -255,18 +241,11 @@ class HandshakeServiceTestCase(TestCase):
         
         is_valid, error = HandshakeService.can_express_interest(self.service_need, self.user2)
         self.assertFalse(is_valid)
-        # Error should mention service owner's name since they are the payer
         self.assertIn('User One', error)
         self.assertIn('Insufficient TimeBank balance', error)
     
     def test_lock_ordering_prevents_deadlock(self):
-        """
-        Test that locks are acquired in consistent order (by user ID) to prevent deadlocks.
-        
-        This test verifies that when two users express interest in each other's services,
-        locks are acquired in the same order (smaller ID first), preventing circular waits.
-        """
-        # Create two services where users can express interest in each other's services
+        """Test that locks are acquired in consistent order to prevent deadlocks."""
         service_user2 = Service.objects.create(
             user=self.user2,
             title='User2 Service',
@@ -278,25 +257,17 @@ class HandshakeServiceTestCase(TestCase):
             schedule_type='One-Time'
         )
         
-        # Both users have sufficient balance
         self.user1.timebank_balance = Decimal('10.00')
         self.user1.save()
         self.user2.timebank_balance = Decimal('10.00')
         self.user2.save()
         
-        # Verify both can express interest (this tests lock ordering doesn't break functionality)
-        # User1 expresses interest in User2's service
         handshake1 = HandshakeService.express_interest(service_user2, self.user1)
         self.assertIsNotNone(handshake1)
         self.assertEqual(handshake1.requester, self.user1)
         self.assertEqual(handshake1.service, service_user2)
         
-        # User2 expresses interest in User1's service
         handshake2 = HandshakeService.express_interest(self.service_offer, self.user2)
         self.assertIsNotNone(handshake2)
         self.assertEqual(handshake2.requester, self.user2)
         self.assertEqual(handshake2.service, self.service_offer)
-        
-        # The fact that both succeeded without deadlock demonstrates lock ordering works
-        # (In the old implementation, this could cause a deadlock)
-

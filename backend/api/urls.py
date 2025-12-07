@@ -21,7 +21,8 @@ from .views import (
     AdminUserViewSet,
     ExpressInterestView,
     TransactionHistoryViewSet,
-    WikidataSearchView
+    WikidataSearchView,
+    PublicChatViewSet
 )
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .views import CustomTokenObtainPairView
@@ -98,6 +99,12 @@ def health_check(request):
     status_code = 200 if overall_healthy else 503
     return JsonResponse(health_status, status=status_code)
 
+# Create viewset instance for public chat
+public_chat_viewset = PublicChatViewSet.as_view({
+    'get': 'retrieve',
+    'post': 'create'
+})
+
 urlpatterns = [
     path('health/', health_check, name='health_check'),
     path('auth/register/', UserRegistrationView.as_view(), name='register'),
@@ -108,6 +115,7 @@ urlpatterns = [
     path('services/<uuid:service_id>/interest/', 
          ExpressInterestView.as_view(),
          name='express-interest'),
+    path('public-chat/<uuid:pk>/', public_chat_viewset, name='public-chat'),
     path('wikidata/search/', WikidataSearchView.as_view(), name='wikidata-search'),
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
     path('docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),

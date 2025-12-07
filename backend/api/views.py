@@ -22,7 +22,8 @@ from .exceptions import create_error_response, ErrorCodes
 
 from .models import (
     User, Service, Tag, Handshake, ChatMessage,
-    Notification, ReputationRep, Badge, Report, UserBadge, TransactionHistory
+    Notification, ReputationRep, Badge, Report, UserBadge, TransactionHistory,
+    ChatRoom, PublicChatMessage
 )
 from .serializers import (
     UserRegistrationSerializer, 
@@ -34,7 +35,9 @@ from .serializers import (
     NotificationSerializer,
     ReputationRepSerializer,
     ReportSerializer,
-    TransactionHistorySerializer
+    TransactionHistorySerializer,
+    ChatRoomSerializer,
+    PublicChatMessageSerializer
 )
 from .utils import (
     can_user_post_offer, provision_timebank, complete_timebank_transfer,
@@ -2397,3 +2400,135 @@ class WikidataSearchView(APIView):
         results = search_wikidata_items(query, limit=limit)
         
         return Response(results)
+
+
+class PublicChatViewSet(viewsets.ViewSet):
+    """
+    Public Chat Room API
+    
+    Provides access to public discussion rooms for services (service lobbies).
+    Any authenticated user can read and post messages.
+    
+    **Endpoints:**
+    - GET /api/public-chat/{service_id}/ - Get room info and messages
+    - POST /api/public-chat/{service_id}/ - Send a message to the room
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [UserRateThrottle]
+    pagination_class = StandardResultsSetPagination
+
+    @track_performance
+    def retrieve(self, request, pk=None):
+        """
+        Get public chat room info and messages for a service.
+        
+        Returns room details and paginated messages.
+        """
+        try:
+            service = Service.objects.get(id=pk)
+        except Service.DoesNotExist:
+            return create_error_response(
+                'Service not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get or create chat room for the service (atomic to handle concurrent requests)
+        room, _ = ChatRoom.objects.get_or_create(
+            related_service=service,
+            defaults={
+                'name': f"Discussion: {service.title}",
+                'type': 'public',
+            }
+        )
+
+        # Get messages with pagination (select_related to avoid N+1 queries)
+        messages = PublicChatMessage.objects.filter(room=room).select_related('sender').order_by('-created_at')
+        
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(messages, request)
+        
+        if page is not None:
+            serializer = PublicChatMessageSerializer(page, many=True)
+            # Return room info along with paginated messages
+            return Response({
+                'room': ChatRoomSerializer(room).data,
+                'messages': paginator.get_paginated_response(serializer.data).data
+            })
+        
+        # Fallback: return consistent structure matching paginated response
+        serializer = PublicChatMessageSerializer(messages, many=True)
+        return Response({
+            'room': ChatRoomSerializer(room).data,
+            'messages': {
+                'count': len(serializer.data),
+                'next': None,
+                'previous': None,
+                'results': serializer.data
+            }
+        })
+
+    @track_performance
+    def create(self, request, pk=None):
+        """
+        Send a message to a public chat room.
+        
+        Request body:
+        - body (string, required): The message content (max 5000 chars)
+        """
+        try:
+            service = Service.objects.get(id=pk)
+        except Service.DoesNotExist:
+            return create_error_response(
+                'Service not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get or create chat room (atomic to handle concurrent requests)
+        room, _ = ChatRoom.objects.get_or_create(
+            related_service=service,
+            defaults={
+                'name': f"Discussion: {service.title}",
+                'type': 'public',
+            }
+        )
+
+        body = (request.data.get('body', '') or '').strip()
+        
+        # Sanitize and truncate FIRST, then validate
+        cleaned_body = bleach.clean(body, tags=[], strip=True).strip()[:5000]
+        
+        if not cleaned_body:
+            return create_error_response(
+                'Message body is required',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create message
+        message = PublicChatMessage.objects.create(
+            room=room,
+            sender=request.user,
+            body=cleaned_body
+        )
+
+        # Broadcast via WebSocket channel layer
+        try:
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+            channel_layer = get_channel_layer()
+            if channel_layer:
+                serializer = PublicChatMessageSerializer(message)
+                async_to_sync(channel_layer.group_send)(
+                    f'public_chat_{room.id}',
+                    {
+                        'type': 'chat_message',
+                        'message': serializer.data
+                    }
+                )
+        except Exception as e:
+            logger.warning(f"Failed to broadcast public chat message: {e}")
+
+        serializer = PublicChatMessageSerializer(message)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

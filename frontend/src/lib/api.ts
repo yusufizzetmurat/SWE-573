@@ -460,3 +460,40 @@ export const wikidataAPI = {
     return response.data;
   },
 };
+
+// Public Chat API
+export interface ChatRoom {
+  id: string;
+  name: string;
+  type: 'public' | 'private';
+  related_service: string;
+  created_at: string;
+}
+
+export interface PublicChatMessage {
+  id: string;
+  room: string;
+  sender_id: string;
+  sender_name: string;
+  sender_avatar_url?: string;
+  body: string;
+  created_at: string;
+}
+
+export interface PublicChatResponse {
+  room: ChatRoom;
+  messages: PaginatedResponse<PublicChatMessage>;
+}
+
+export const publicChatAPI = {
+  getRoom: async (serviceId: string, page?: number, signal?: AbortSignal): Promise<PublicChatResponse> => {
+    const params = page ? { page } : {};
+    const response = await apiClient.get(`/public-chat/${serviceId}/`, { params, signal });
+    return response.data;
+  },
+
+  sendMessage: async (serviceId: string, body: string, signal?: AbortSignal): Promise<PublicChatMessage> => {
+    const response = await apiClient.post(`/public-chat/${serviceId}/`, { body }, { signal });
+    return response.data;
+  },
+};

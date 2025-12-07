@@ -65,6 +65,7 @@ export function WikidataAutocomplete({
       console.error('Wikidata search error:', err);
       setError('Failed to search. Please try again.');
       setResults([]);
+      setIsOpen(true); // Show dropdown to display error
       setIsLoading(false);
     }
   }, [existingTags]);

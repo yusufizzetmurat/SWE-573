@@ -34,11 +34,12 @@ describe('WikidataAutocomplete', () => {
   const mockOnSelect = vi.fn();
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    vi.useFakeTimers();
+    vi.resetAllMocks();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
   });
 
   afterEach(() => {
+    vi.runOnlyPendingTimers();
     vi.useRealTimers();
   });
 
@@ -58,7 +59,7 @@ describe('WikidataAutocomplete', () => {
     render(<WikidataAutocomplete onSelect={mockOnSelect} />);
     
     const input = screen.getByRole('textbox');
-    await userEvent.type(input, 'python');
+    fireEvent.change(input, { target: { value: 'python' } });
 
     // Fast-forward debounce timer
     act(() => {
@@ -73,7 +74,7 @@ describe('WikidataAutocomplete', () => {
   it('displays search results with label and description', async () => {
     const mockResults = [
       { id: 'Q28865', label: 'Python', description: 'high-level programming language' },
-      { id: 'Q81', label: 'Python', description: 'genus of reptiles' },
+      { id: 'Q81', label: 'Cobra', description: 'genus of reptiles' },
     ];
     mockWikidataAPI.search.mockResolvedValue(mockResults);
 

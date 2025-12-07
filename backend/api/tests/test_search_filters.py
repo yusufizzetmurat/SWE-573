@@ -9,8 +9,8 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.contrib.gis.geos import Point
 
-from .models import Service, Tag
-from .search_filters import (
+from api.models import Service, Tag
+from api.search_filters import (
     SearchStrategy,
     LocationStrategy,
     TagStrategy,
