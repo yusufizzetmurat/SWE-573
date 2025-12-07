@@ -164,7 +164,7 @@ lint:
 # TESTING COMMANDS
 # ============================================================================
 
-test: test-backend
+test: test-backend test-frontend
 	@echo "✅ All unit tests complete!"
 
 test-backend:
