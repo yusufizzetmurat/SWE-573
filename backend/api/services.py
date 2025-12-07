@@ -128,9 +128,11 @@ class HandshakeService:
             
             # Create initial chat message
             HandshakeService._create_initial_message(handshake, requester, service)
-            
-            # Invalidate caches (use locked service_owner)
-            HandshakeService._invalidate_caches(requester, service_owner)
+        
+        # Invalidate caches AFTER transaction commits to prevent race condition:
+        # If we invalidate before commit, another request could see cache miss,
+        # query DB (seeing old data), and cache stale data before our transaction commits.
+        HandshakeService._invalidate_caches(requester, service_owner)
         
         return handshake
         # Note: OperationalError (deadlocks) will propagate to caller for retry handling
