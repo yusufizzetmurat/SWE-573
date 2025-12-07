@@ -40,6 +40,13 @@ class HandshakeServiceTestCase(TestCase):
             last_name='Three',
             timebank_balance=Decimal('3.00')
         )
+        self.user4 = User.objects.create_user(
+            email='user4@test.com',
+            password='testpass123',
+            first_name='User',
+            last_name='Four',
+            timebank_balance=Decimal('5.00')
+        )
         
         self.service_offer = Service.objects.create(
             user=self.user1,
@@ -111,8 +118,9 @@ class HandshakeServiceTestCase(TestCase):
             status='accepted'
         )
         
-        # Now user3 cannot express interest (max_participants=2, already 2)
-        is_valid, error = HandshakeService.can_express_interest(self.service_offer, self.user3)
+        # Now user4 cannot express interest (max_participants=2, already 2)
+        # Use user4 instead of user3 to avoid "already expressed interest" error
+        is_valid, error = HandshakeService.can_express_interest(self.service_offer, self.user4)
         self.assertFalse(is_valid)
         self.assertIn('maximum capacity', error)
     
@@ -183,4 +191,53 @@ class HandshakeServiceTestCase(TestCase):
         )
         self.assertEqual(notifications.count(), 1)
         self.assertEqual(notifications.first().type, 'handshake_request')
+    
+    def test_can_express_interest_inactive_service(self):
+        """Test cannot express interest in inactive service."""
+        self.service_offer.status = 'Completed'
+        self.service_offer.save()
+        
+        is_valid, error = HandshakeService.can_express_interest(self.service_offer, self.user2)
+        self.assertFalse(is_valid)
+        self.assertIn('not active', error)
+    
+    def test_express_interest_inactive_service_raises_error(self):
+        """Test express_interest raises ValueError for inactive service."""
+        self.service_offer.status = 'Cancelled'
+        self.service_offer.save()
+        
+        with self.assertRaises(ValueError) as context:
+            HandshakeService.express_interest(self.service_offer, self.user2)
+        
+        self.assertIn('not active', str(context.exception))
+    
+    def test_payer_determination_offer(self):
+        """Test payer determination for Offer service - requester pays."""
+        # For Offer, requester (user2) should pay
+        # Set user2 balance low, user1 balance high
+        self.user2.timebank_balance = Decimal('1.00')
+        self.user2.save()
+        self.user1.timebank_balance = Decimal('10.00')
+        self.user1.save()
+        
+        is_valid, error = HandshakeService.can_express_interest(self.service_offer, self.user2)
+        self.assertFalse(is_valid)
+        # Error should mention "You" since requester is the payer
+        self.assertIn('You', error)
+        self.assertIn('Insufficient TimeBank balance', error)
+    
+    def test_payer_determination_need(self):
+        """Test payer determination for Need service - service owner pays."""
+        # For Need, service owner (user1) should pay
+        # Set user1 balance low, user2 balance high
+        self.user1.timebank_balance = Decimal('1.00')
+        self.user1.save()
+        self.user2.timebank_balance = Decimal('10.00')
+        self.user2.save()
+        
+        is_valid, error = HandshakeService.can_express_interest(self.service_need, self.user2)
+        self.assertFalse(is_valid)
+        # Error should mention service owner's name since they are the payer
+        self.assertIn('User One', error)
+        self.assertIn('Insufficient TimeBank balance', error)
 
