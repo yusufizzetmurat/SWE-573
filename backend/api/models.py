@@ -130,18 +130,50 @@ class Service(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-        """Auto-populate PointField from lat/lng for geospatial queries"""
-        if self.location_lat is not None and self.location_lng is not None:
-            self.location = Point(float(self.location_lng), float(self.location_lat), srid=4326)
-        else:
-            self.location = None
+        """
+        Auto-populate PointField from lat/lng for geospatial queries.
         
-        # If update_fields is provided and includes lat/lng, ensure location is also updated
-        # to prevent data inconsistency between lat/lng and the PointField
+        When using update_fields with only one coordinate, the other coordinate
+        is refreshed from the database to prevent computing location with stale
+        in-memory values (race condition prevention).
+        """
         update_fields = kwargs.get('update_fields')
-        if update_fields is not None:
-            if 'location_lat' in update_fields or 'location_lng' in update_fields:
-                # Convert to set for safe modification, then back to list
+        should_compute_location = False
+        
+        if update_fields is None:
+            # Full save - compute location from in-memory values
+            should_compute_location = True
+        else:
+            lat_in_fields = 'location_lat' in update_fields
+            lng_in_fields = 'location_lng' in update_fields
+            
+            if lat_in_fields or lng_in_fields:
+                should_compute_location = True
+                
+                # If only one coordinate is being updated and this is an existing object,
+                # refresh the OTHER coordinate from DB to avoid using stale in-memory value.
+                # This prevents race conditions where another process updated the other
+                # coordinate between our load and save.
+                if self.pk is not None and (lat_in_fields != lng_in_fields):
+                    if lat_in_fields and not lng_in_fields:
+                        # Refreshing location_lng from database
+                        db_values = Service.objects.filter(pk=self.pk).values('location_lng').first()
+                        if db_values:
+                            self.location_lng = db_values['location_lng']
+                    elif lng_in_fields and not lat_in_fields:
+                        # Refreshing location_lat from database
+                        db_values = Service.objects.filter(pk=self.pk).values('location_lat').first()
+                        if db_values:
+                            self.location_lat = db_values['location_lat']
+        
+        if should_compute_location:
+            if self.location_lat is not None and self.location_lng is not None:
+                self.location = Point(float(self.location_lng), float(self.location_lat), srid=4326)
+            else:
+                self.location = None
+            
+            # Add location to update_fields if doing partial save
+            if update_fields is not None:
                 update_fields_set = set(update_fields)
                 update_fields_set.add('location')
                 kwargs['update_fields'] = list(update_fields_set)
