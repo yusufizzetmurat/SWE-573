@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MapPin, Clock, Users, Tag, Calendar, Monitor, Search, Navigation, Loader2 } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Badge } from './ui/badge';
@@ -29,9 +29,33 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
   // Location-based search state
   const [userLocation, setUserLocation] = useState<{lat: number; lng: number} | null>(null);
   const [distanceKm, setDistanceKm] = useState<number>(10);
+  const [debouncedDistanceKm, setDebouncedDistanceKm] = useState<number>(10);
   const [locationEnabled, setLocationEnabled] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  
+  // Debounce timer ref for distance slider
+  const distanceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Debounce distanceKm changes to prevent excessive API calls while dragging slider
+  useEffect(() => {
+    // Clear any existing timeout
+    if (distanceDebounceRef.current) {
+      clearTimeout(distanceDebounceRef.current);
+    }
+    
+    // Set new timeout to update debounced value after 300ms of no changes
+    distanceDebounceRef.current = setTimeout(() => {
+      setDebouncedDistanceKm(distanceKm);
+    }, 300);
+    
+    // Cleanup timeout on unmount or when distanceKm changes
+    return () => {
+      if (distanceDebounceRef.current) {
+        clearTimeout(distanceDebounceRef.current);
+      }
+    };
+  }, [distanceKm]);
 
   // Function to request user location
   const requestLocation = useCallback(() => {
@@ -103,7 +127,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
         if (locationEnabled && userLocation) {
           apiParams.lat = userLocation.lat;
           apiParams.lng = userLocation.lng;
-          apiParams.distance = distanceKm;
+          apiParams.distance = debouncedDistanceKm;
         }
         
         const data = await serviceAPI.list(apiParams, abortController.signal);
@@ -220,7 +244,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [activeFilter, searchQuery, locationEnabled, userLocation, distanceKm]);
+  }, [activeFilter, searchQuery, locationEnabled, userLocation, debouncedDistanceKm]);
 
   const filters = [
     { id: 'all', label: 'All Services' },
