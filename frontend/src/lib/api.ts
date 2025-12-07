@@ -120,7 +120,11 @@ export const serviceAPI = {
   list: async (params?: {
     type?: 'Offer' | 'Need';
     tag?: string;
+    tags?: string[];
     search?: string;
+    lat?: number;
+    lng?: number;
+    distance?: number;  // in kilometers
     page?: number;
     page_size?: number;
   }, signal?: AbortSignal): Promise<Service[]> => {

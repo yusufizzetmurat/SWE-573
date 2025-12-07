@@ -1,4 +1,6 @@
 from django.db import models
+from django.contrib.gis.db import models as gis_models
+from django.contrib.gis.geos import Point
 from django.contrib.auth.models import AbstractUser, UserManager
 from decimal import Decimal
 import uuid
@@ -118,6 +120,7 @@ class Service(models.Model):
     location_area = models.CharField(max_length=100, null=True, blank=True, help_text='General area for in-person services (e.g., Besiktas, Kadikoy)')
     location_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text='Latitude for approximate location')
     location_lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text='Longitude for approximate location')
+    location = gis_models.PointField(null=True, blank=True, geography=True, srid=4326, help_text='PostGIS point for geospatial queries')
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Active')
     max_participants = models.IntegerField(default=1)
     schedule_type = models.CharField(max_length=10, choices=SCHEDULE_CHOICES)
@@ -125,6 +128,14 @@ class Service(models.Model):
     tags = models.ManyToManyField(Tag, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        """Auto-populate PointField from lat/lng for geospatial queries"""
+        if self.location_lat is not None and self.location_lng is not None:
+            self.location = Point(float(self.location_lng), float(self.location_lat), srid=4326)
+        else:
+            self.location = None
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.title

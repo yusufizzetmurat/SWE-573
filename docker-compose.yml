@@ -33,7 +33,7 @@ services:
       - VITE_API_URL=http://localhost:8000/api
 
   db:
-    image: postgres:15
+    image: postgis/postgis:15-3.4
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     environment:

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { MapPin, Clock, Users, Tag, Calendar, Monitor, Search } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { MapPin, Clock, Users, Tag, Calendar, Monitor, Search, Navigation, Loader2 } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Slider } from './ui/slider';
 import { Avatar, AvatarImage, AvatarFallback } from './ui/avatar';
 import { serviceAPI, Service } from '../lib/api';
 import { formatTimebank } from '../lib/utils';
@@ -24,6 +25,68 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
   const [services, setServices] = useState<Service[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Location-based search state
+  const [userLocation, setUserLocation] = useState<{lat: number; lng: number} | null>(null);
+  const [distanceKm, setDistanceKm] = useState<number>(10);
+  const [locationEnabled, setLocationEnabled] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+
+  // Function to request user location
+  const requestLocation = useCallback(() => {
+    setLocationLoading(true);
+    setLocationError(null);
+    
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation is not supported by your browser');
+      setLocationLoading(false);
+      return;
+    }
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+        setLocationEnabled(true);
+        setLocationLoading(false);
+      },
+      (error) => {
+        let errorMessage = 'Unable to get your location';
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Location permission denied';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Location information unavailable';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Location request timed out';
+            break;
+        }
+        setLocationError(errorMessage);
+        setLocationLoading(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 300000 // Cache for 5 minutes
+      }
+    );
+  }, []);
+  
+  // Toggle location-based search
+  const toggleLocationSearch = useCallback(() => {
+    if (locationEnabled) {
+      setLocationEnabled(false);
+    } else if (userLocation) {
+      setLocationEnabled(true);
+    } else {
+      requestLocation();
+    }
+  }, [locationEnabled, userLocation, requestLocation]);
 
   useEffect(() => {
     let isMounted = true;
@@ -33,7 +96,17 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
       try {
         setIsLoading(true);
         setError(null);
-        const data = await serviceAPI.list({}, abortController.signal);
+        
+        // Build API params including location if enabled
+        const apiParams: Parameters<typeof serviceAPI.list>[0] = {};
+        
+        if (locationEnabled && userLocation) {
+          apiParams.lat = userLocation.lat;
+          apiParams.lng = userLocation.lng;
+          apiParams.distance = distanceKm;
+        }
+        
+        const data = await serviceAPI.list(apiParams, abortController.signal);
         
         if (!isMounted || abortController.signal.aborted) return;
         
@@ -147,7 +220,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [activeFilter, searchQuery]);
+  }, [activeFilter, searchQuery, locationEnabled, userLocation, distanceKm]);
 
   const filters = [
     { id: 'all', label: 'All Services' },
@@ -211,8 +284,9 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
 
         {/* Services List Section - Below Map */}
         <div>
-          {/* Search */}
-          <div className="mb-6">
+          {/* Search and Location Controls */}
+          <div className="mb-6 space-y-4">
+            {/* Text Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <Input
@@ -221,6 +295,74 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
               />
+            </div>
+            
+            {/* Distance Filter */}
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Navigation className="w-5 h-5 text-amber-500" />
+                  <span className="font-medium text-gray-900">Search by Distance</span>
+                </div>
+                <Button
+                  variant={locationEnabled ? "default" : "outline"}
+                  size="sm"
+                  onClick={toggleLocationSearch}
+                  disabled={locationLoading}
+                  className={locationEnabled ? "bg-amber-500 hover:bg-amber-600" : ""}
+                >
+                  {locationLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Getting location...
+                    </>
+                  ) : locationEnabled ? (
+                    <>
+                      <MapPin className="w-4 h-4 mr-2" />
+                      Enabled
+                    </>
+                  ) : (
+                    <>
+                      <MapPin className="w-4 h-4 mr-2" />
+                      Enable Location
+                    </>
+                  )}
+                </Button>
+              </div>
+              
+              {locationError && (
+                <p className="text-sm text-red-500 mb-3">{locationError}</p>
+              )}
+              
+              {locationEnabled && userLocation && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Distance: {distanceKm} km</span>
+                    <span className="text-xs text-gray-400">
+                      {distanceKm <= 5 ? 'Nearby' : distanceKm <= 15 ? 'Local Area' : distanceKm <= 30 ? 'Wider Area' : 'City-wide'}
+                    </span>
+                  </div>
+                  <Slider
+                    value={[distanceKm]}
+                    onValueChange={([value]) => setDistanceKm(value)}
+                    min={1}
+                    max={50}
+                    step={1}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-gray-400">
+                    <span>1 km</span>
+                    <span>25 km</span>
+                    <span>50 km</span>
+                  </div>
+                </div>
+              )}
+              
+              {!locationEnabled && !locationLoading && (
+                <p className="text-sm text-gray-500">
+                  Enable location to find services near you, sorted by distance.
+                </p>
+              )}
             </div>
           </div>
 
