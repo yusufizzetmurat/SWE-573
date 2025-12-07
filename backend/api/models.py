@@ -135,6 +135,17 @@ class Service(models.Model):
             self.location = Point(float(self.location_lng), float(self.location_lat), srid=4326)
         else:
             self.location = None
+        
+        # If update_fields is provided and includes lat/lng, ensure location is also updated
+        # to prevent data inconsistency between lat/lng and the PointField
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            if 'location_lat' in update_fields or 'location_lng' in update_fields:
+                # Convert to set for safe modification, then back to list
+                update_fields_set = set(update_fields)
+                update_fields_set.add('location')
+                kwargs['update_fields'] = list(update_fields_set)
+        
         super().save(*args, **kwargs)
 
     def __str__(self):

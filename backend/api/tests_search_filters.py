@@ -798,6 +798,86 @@ class ServiceLocationFieldTestCase(TestCase):
         
         service.refresh_from_db()
         self.assertIsNone(service.location)
+    
+    def test_location_updated_with_update_fields(self):
+        """Test location field is updated when save() is called with update_fields."""
+        service = Service.objects.create(
+            user=self.user,
+            title='Test Service',
+            description='A test service',
+            type='Offer',
+            duration=Decimal('2.00'),
+            location_type='In-Person',
+            location_lat=Decimal('41.0422'),
+            location_lng=Decimal('29.0089'),
+            max_participants=1,
+            schedule_type='One-Time'
+        )
+        
+        original_location = service.location
+        self.assertIsNotNone(original_location)
+        
+        # Update only location_lat with update_fields
+        service.location_lat = Decimal('40.0000')
+        service.save(update_fields=['location_lat'])
+        
+        service.refresh_from_db()
+        # Verify location was also updated (not just location_lat)
+        self.assertIsNotNone(service.location)
+        self.assertEqual(service.location.y, 40.0)  # lat changed
+        self.assertEqual(service.location.x, 29.0089)  # lng unchanged
+    
+    def test_location_updated_with_update_fields_lng_only(self):
+        """Test location field is updated when only location_lng is in update_fields."""
+        service = Service.objects.create(
+            user=self.user,
+            title='Test Service',
+            description='A test service',
+            type='Offer',
+            duration=Decimal('2.00'),
+            location_type='In-Person',
+            location_lat=Decimal('41.0422'),
+            location_lng=Decimal('29.0089'),
+            max_participants=1,
+            schedule_type='One-Time'
+        )
+        
+        # Update only location_lng with update_fields
+        service.location_lng = Decimal('30.0000')
+        service.save(update_fields=['location_lng'])
+        
+        service.refresh_from_db()
+        # Verify location was also updated
+        self.assertIsNotNone(service.location)
+        self.assertEqual(service.location.y, 41.0422)  # lat unchanged
+        self.assertEqual(service.location.x, 30.0)  # lng changed
+    
+    def test_location_not_added_when_unrelated_update_fields(self):
+        """Test location field is not added to update_fields when lat/lng not included."""
+        service = Service.objects.create(
+            user=self.user,
+            title='Test Service',
+            description='A test service',
+            type='Offer',
+            duration=Decimal('2.00'),
+            location_type='In-Person',
+            location_lat=Decimal('41.0422'),
+            location_lng=Decimal('29.0089'),
+            max_participants=1,
+            schedule_type='One-Time'
+        )
+        
+        original_location = service.location
+        
+        # Update only title with update_fields (no lat/lng)
+        service.title = 'Updated Title'
+        service.save(update_fields=['title'])
+        
+        service.refresh_from_db()
+        self.assertEqual(service.title, 'Updated Title')
+        # Location should remain unchanged
+        self.assertEqual(service.location.x, original_location.x)
+        self.assertEqual(service.location.y, original_location.y)
 
 
 class ServiceViewSetOrderingTestCase(TestCase):
