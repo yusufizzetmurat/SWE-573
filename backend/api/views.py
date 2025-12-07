@@ -2414,6 +2414,7 @@ class PublicChatViewSet(viewsets.ViewSet):
     - POST /api/public-chat/{service_id}/ - Send a message to the room
     """
     permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [UserRateThrottle]
     pagination_class = StandardResultsSetPagination
 
     @track_performance
@@ -2443,8 +2444,8 @@ class PublicChatViewSet(viewsets.ViewSet):
                 related_service=service
             )
 
-        # Get messages with pagination
-        messages = PublicChatMessage.objects.filter(room=room).order_by('-created_at')
+        # Get messages with pagination (select_related to avoid N+1 queries)
+        messages = PublicChatMessage.objects.filter(room=room).select_related('sender').order_by('-created_at')
         
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(messages, request)

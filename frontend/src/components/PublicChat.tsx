@@ -27,6 +27,7 @@ export function PublicChat({ serviceId, onNavigate }: PublicChatProps) {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const shouldScrollRef = useRef(true);
 
   // Fetch initial room and messages
   const fetchRoom = useCallback(async () => {
@@ -93,6 +94,7 @@ export function PublicChat({ serviceId, onNavigate }: PublicChatProps) {
   const loadMoreMessages = async () => {
     if (!room || isLoadingMore || !hasMoreMessages) return;
 
+    shouldScrollRef.current = false; // Don't scroll when loading older messages
     setIsLoadingMore(true);
     try {
       const nextPage = currentPage + 1;
@@ -109,11 +111,13 @@ export function PublicChat({ serviceId, onNavigate }: PublicChatProps) {
     }
   };
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom only for new messages (not when loading older)
   useEffect(() => {
-    if (messagesEndRef.current) {
+    if (messagesEndRef.current && shouldScrollRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
+    // Reset scroll flag for next update
+    shouldScrollRef.current = true;
   }, [messages]);
 
   const handleSendMessage = async () => {
