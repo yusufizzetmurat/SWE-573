@@ -20,7 +20,8 @@ from .views import (
     AdminReportViewSet,
     AdminUserViewSet,
     ExpressInterestView,
-    TransactionHistoryViewSet
+    TransactionHistoryViewSet,
+    WikidataSearchView
 )
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .views import CustomTokenObtainPairView
@@ -107,6 +108,7 @@ urlpatterns = [
     path('services/<uuid:service_id>/interest/', 
          ExpressInterestView.as_view(),
          name='express-interest'),
+    path('wikidata/search/', WikidataSearchView.as_view(), name='wikidata-search'),
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
     path('docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),

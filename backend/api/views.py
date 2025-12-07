@@ -2336,3 +2336,64 @@ class TransactionHistoryViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return TransactionHistory.objects.filter(user=self.request.user).order_by('-created_at')
+
+
+class WikidataSearchView(APIView):
+    """
+    Wikidata Search Proxy
+    
+    Search Wikidata for entities to use as service tags.
+    
+    **Endpoint:** GET /api/wikidata/search/?q=python&limit=10
+    
+    **Query Parameters:**
+    - `q` (required): Search query string
+    - `limit` (optional): Maximum number of results (default: 10, max: 20)
+    
+    **Response Format:**
+    ```json
+    [
+        {
+            "id": "Q28865",
+            "label": "Python",
+            "description": "high-level programming language"
+        }
+    ]
+    ```
+    
+    **Business Rules:**
+    - Proxies requests to Wikidata wbsearchentities API
+    - Returns empty list on API failures (graceful degradation)
+    - Results are in English language
+    
+    **Error Scenarios:**
+    - 400 Bad Request: Missing or empty query parameter
+    
+    **Authentication:** Not required (public endpoint)
+    **Rate Limiting:** Standard anonymous rate limit
+    """
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [AnonRateThrottle]
+
+    def get(self, request):
+        query = request.query_params.get('q', '').strip()
+        
+        if not query:
+            return create_error_response(
+                'Query parameter "q" is required',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get limit with validation
+        try:
+            limit = int(request.query_params.get('limit', 10))
+            limit = min(max(limit, 1), 20)  # Clamp between 1 and 20
+        except (ValueError, TypeError):
+            limit = 10
+        
+        # Use existing wikidata utility
+        from .wikidata import search_wikidata_items
+        results = search_wikidata_items(query, limit=limit)
+        
+        return Response(results)

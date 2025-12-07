@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Plus, X } from 'lucide-react';
+import { ArrowLeft, X } from 'lucide-react';
+import { WikidataAutocomplete } from './WikidataAutocomplete';
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -29,7 +30,6 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
   const [scheduleType, setScheduleType] = useState<'one-time' | 'recurrent'>('one-time');
   const [tags, setTags] = useState<Tag[]>([]);
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
-  const [newTag, setNewTag] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedTime, setSelectedTime] = useState<string>('');
@@ -140,44 +140,6 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
     }
   }, [formData.location_type]);
 
-  const addTag = async () => {
-    if (newTag.trim()) {
-      const tagName = newTag.trim();
-      const tagNameLower = tagName.toLowerCase();
-      
-      // Try to find existing tag
-      const existingTag = availableTags.find(t => 
-        t.name.toLowerCase() === tagNameLower || 
-        t.id.toLowerCase() === tagNameLower
-      );
-      
-      if (existingTag) {
-        if (!tags.find(t => t.id === existingTag.id)) {
-          setTags([...tags, existingTag]);
-          setNewTag('');
-        } else {
-          showToast('Tag already added', 'warning');
-        }
-      } else {
-        // Create new tag
-        try {
-          const newTagObj = await tagAPI.create(tagName);
-          setTags([...tags, newTagObj]);
-          setAvailableTags([...availableTags, newTagObj]);
-          setNewTag('');
-          showToast(`Tag "${tagName}" created`, 'success');
-        } catch (error: unknown) {
-          console.error('Failed to create tag:', error);
-          // If creation fails, still add it as a temporary tag (backend will create it)
-          const tempTag: Tag = { id: tagNameLower, name: tagName };
-          setTags([...tags, tempTag]);
-          setNewTag('');
-          showToast(`Tag "${tagName}" will be created when you submit`, 'info');
-        }
-      }
-    }
-  };
-
   const removeTag = (tagToRemove: Tag) => {
     setTags(tags.filter(tag => tag.id !== tagToRemove.id));
   };
@@ -220,9 +182,10 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
       const newTagNames: string[] = [];
       
       tags.forEach(tag => {
-        // Check if tag has a UUID format (existing tag) or is a temporary tag (new)
+        // Check if tag has a UUID format (existing tag) or Wikidata QID (e.g., Q28865)
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tag.id);
-        if (isUUID) {
+        const isWikidataQID = /^Q\d+$/i.test(tag.id);
+        if (isUUID || isWikidataQID) {
           existingTagIds.push(tag.id);
         } else {
           newTagNames.push(tag.name);
@@ -651,38 +614,44 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
             {/* Tags */}
             <div>
               <Label htmlFor="tags">Tags</Label>
+              <p className="text-xs text-gray-500 mt-1 mb-2">
+                Search for standardized tags from Wikidata to categorize your service want
+              </p>
               <div className="mt-2">
-                <div className="flex gap-2 mb-3">
-                  <Input
-                    id="tags"
-                    placeholder="Type a tag (e.g., moving, gardening)"
-                    value={newTag}
-                    onChange={(e) => setNewTag(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addTag();
-                      }
-                    }}
-                    list="available-tags-list"
-                  />
-                  <datalist id="available-tags-list">
-                    {availableTags.map(tag => (
-                      <option key={tag.id} value={tag.name} />
+                <WikidataAutocomplete
+                  onSelect={(tag) => {
+                    if (!tags.find(t => t.id === tag.id)) {
+                      setTags([...tags, tag]);
+                    }
+                  }}
+                  existingTags={tags}
+                  placeholder="Search for tags (e.g., moving, gardening, tutoring)"
+                />
+                
+                {tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {tags.map(tag => (
+                      <span 
+                        key={tag.id}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-900 rounded-lg border border-blue-200"
+                      >
+                        <span className="text-xs text-blue-600 font-mono">{tag.id}</span>
+                        #{tag.name}
+                        <button
+                          type="button"
+                          onClick={() => removeTag(tag)}
+                          className="hover:text-blue-700"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
                     ))}
-                  </datalist>
-                  <Button 
-                    type="button" 
-                    variant="outline"
-                    onClick={addTag}
-                  >
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </div>
+                  </div>
+                )}
                 
                 {availableTags.length > 0 && (
-                  <div className="mb-3">
-                    <p className="text-xs text-gray-500 mb-2">Available tags:</p>
+                  <div className="mt-3">
+                    <p className="text-xs text-gray-500 mb-2">Previously used tags:</p>
                     <div className="flex flex-wrap gap-2">
                       {availableTags.slice(0, 10).map(tag => (
                         <button
@@ -703,26 +672,6 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
                         </button>
                       ))}
                     </div>
-                  </div>
-                )}
-                
-                {tags.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {tags.map(tag => (
-                      <span 
-                        key={tag.id}
-                        className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-900 rounded-lg border border-blue-200"
-                      >
-                        #{tag.name}
-                        <button
-                          type="button"
-                          onClick={() => removeTag(tag)}
-                          className="hover:text-blue-700"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    ))}
                   </div>
                 )}
               </div>
