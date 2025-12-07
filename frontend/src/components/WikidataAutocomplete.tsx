@@ -56,15 +56,15 @@ export function WikidataAutocomplete({
       setResults(filteredItems);
       setIsOpen(filteredItems.length > 0);
       setHighlightedIndex(-1);
+      setIsLoading(false);
     } catch (err) {
-      // Ignore abort errors
+      // Ignore abort errors - don't reset loading state since a new request is in flight
       if (err instanceof Error && err.name === 'AbortError') {
         return;
       }
       console.error('Wikidata search error:', err);
       setError('Failed to search. Please try again.');
       setResults([]);
-    } finally {
       setIsLoading(false);
     }
   }, [existingTags]);
