@@ -2494,7 +2494,7 @@ class PublicChatViewSet(viewsets.ViewSet):
             }
         )
 
-        body = request.data.get('body', '').strip()
+        body = (request.data.get('body', '') or '').strip()
         
         # Sanitize and truncate FIRST, then validate
         cleaned_body = bleach.clean(body, tags=[], strip=True).strip()[:5000]
