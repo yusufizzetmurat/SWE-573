@@ -58,6 +58,7 @@ frontend/build/
 *.swo
 *~
 .DS_Store
+.cursorrules
 
 # Testing
 .coverage

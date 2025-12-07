@@ -65,7 +65,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             message_type = text_data_json.get('type')
             
             if message_type == 'chat_message':
-                body = text_data_json.get('body', '')
+                body = text_data_json.get('body', '').strip()
                 if body:
                     # Save message to database
                     message = await self.save_message(self.handshake_id, self.user.id, body)
@@ -81,10 +81,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             'message': await self.serialize_message(message)
                         }
                     )
-        except Exception as e:
+        except Exception:
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'message': str(e)
+                'message': 'An error occurred while processing your message'
             }))
     
     async def chat_message(self, event):
@@ -215,7 +215,7 @@ class PublicChatConsumer(AsyncWebsocketConsumer):
             message_type = text_data_json.get('type')
             
             if message_type == 'chat_message':
-                body = text_data_json.get('body', '')
+                body = text_data_json.get('body', '').strip()
                 if body:
                     # Save message to database
                     message = await self.save_message(self.room_id, self.user.id, body)
@@ -228,10 +228,10 @@ class PublicChatConsumer(AsyncWebsocketConsumer):
                             'message': await self.serialize_message(message)
                         }
                     )
-        except Exception as e:
+        except Exception:
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'message': str(e)
+                'message': 'An error occurred while processing your message'
             }))
     
     async def chat_message(self, event):

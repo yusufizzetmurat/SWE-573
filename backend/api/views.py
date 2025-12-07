@@ -2433,16 +2433,14 @@ class PublicChatViewSet(viewsets.ViewSet):
                 status_code=status.HTTP_404_NOT_FOUND
             )
 
-        # Get or create chat room for the service
-        try:
-            room = ChatRoom.objects.get(related_service=service)
-        except ChatRoom.DoesNotExist:
-            # Create room if it doesn't exist (for services created before this feature)
-            room = ChatRoom.objects.create(
-                name=f"Discussion: {service.title}",
-                type='public',
-                related_service=service
-            )
+        # Get or create chat room for the service (atomic to handle concurrent requests)
+        room, _ = ChatRoom.objects.get_or_create(
+            related_service=service,
+            defaults={
+                'name': f"Discussion: {service.title}",
+                'type': 'public',
+            }
+        )
 
         # Get messages with pagination (select_related to avoid N+1 queries)
         messages = PublicChatMessage.objects.filter(room=room).select_related('sender').order_by('-created_at')
@@ -2481,15 +2479,14 @@ class PublicChatViewSet(viewsets.ViewSet):
                 status_code=status.HTTP_404_NOT_FOUND
             )
 
-        # Get or create chat room
-        try:
-            room = ChatRoom.objects.get(related_service=service)
-        except ChatRoom.DoesNotExist:
-            room = ChatRoom.objects.create(
-                name=f"Discussion: {service.title}",
-                type='public',
-                related_service=service
-            )
+        # Get or create chat room (atomic to handle concurrent requests)
+        room, _ = ChatRoom.objects.get_or_create(
+            related_service=service,
+            defaults={
+                'name': f"Discussion: {service.title}",
+                'type': 'public',
+            }
+        )
 
         body = request.data.get('body', '').strip()
         if not body:
