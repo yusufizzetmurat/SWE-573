@@ -99,6 +99,11 @@ def complete_timebank_transfer(handshake: Handshake) -> bool:
             description=f"Service completed: '{handshake.service.title}' ({hours} hours transferred)"
         )
         
+        # Award karma for completing handshake as provider (+5)
+        provider.karma_score = F("karma_score") + 5
+        provider.save(update_fields=["karma_score"])
+        provider.refresh_from_db(fields=["karma_score"])
+        
         _, receiver = get_provider_and_receiver(handshake)
         invalidate_conversations(str(provider.id))
         invalidate_conversations(str(receiver.id))

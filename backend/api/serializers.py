@@ -4,7 +4,7 @@ from rest_framework import serializers
 from .models import (
     User, Service, Tag, Handshake, ChatMessage, 
     Notification, ReputationRep, Badge, UserBadge, Report, TransactionHistory,
-    ChatRoom, PublicChatMessage
+    ChatRoom, PublicChatMessage, Comment, NegativeRep
 )
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.password_validation import validate_password
@@ -178,15 +178,25 @@ class ServiceSerializer(serializers.ModelSerializer):
     user = serializers.SerializerMethodField()
     description = serializers.CharField(max_length=5000)
     title = serializers.CharField(max_length=200)
+    comment_count = serializers.SerializerMethodField()
+    hot_score = serializers.FloatField(read_only=True)
 
     class Meta:
         model = Service
         fields = [
             'id', 'user', 'title', 'description', 'type', 'duration',
             'location_type', 'location_area', 'location_lat', 'location_lng', 'status', 'max_participants', 'schedule_type',
-            'schedule_details', 'created_at', 'tags', 'tag_ids', 'tag_names'
+            'schedule_details', 'created_at', 'tags', 'tag_ids', 'tag_names', 'comment_count', 'hot_score'
         ]
-        read_only_fields = ['user']
+        read_only_fields = ['user', 'hot_score']
+    
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_comment_count(self, obj):
+        """Return the count of non-deleted comments on this service"""
+        # Use prefetched data if available to avoid N+1 queries
+        if hasattr(obj, '_prefetched_objects_cache') and 'comments' in obj._prefetched_objects_cache:
+            return len([c for c in obj.comments.all() if not c.is_deleted])
+        return obj.comments.filter(is_deleted=False).count()
     
     def validate_duration(self, value):
         """Validate that duration is positive"""
@@ -813,3 +823,192 @@ class PublicChatMessageSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.STR)
     def get_sender_avatar_url(self, obj):
         return obj.sender.avatar_url
+
+
+# Comment Serializers
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Comment Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174011',
+                'service': '123e4567-e89b-12d3-a456-426614174001',
+                'user_id': '123e4567-e89b-12d3-a456-426614174000',
+                'user_name': 'John Doe',
+                'user_avatar_url': 'https://example.com/avatars/john.jpg',
+                'parent': None,
+                'body': 'Great service! Would recommend.',
+                'is_deleted': False,
+                'reply_count': 2,
+                'created_at': '2024-01-01T12:00:00Z',
+                'updated_at': '2024-01-01T12:00:00Z'
+            },
+            response_only=True
+        ),
+        OpenApiExample(
+            'Create Comment Request',
+            value={
+                'body': 'Great service! Would recommend.',
+                'parent_id': None
+            },
+            request_only=True
+        )
+    ]
+)
+class CommentSerializer(serializers.ModelSerializer):
+    user_id = serializers.UUIDField(source='user.id', read_only=True)
+    user_name = serializers.SerializerMethodField()
+    user_avatar_url = serializers.SerializerMethodField()
+    reply_count = serializers.SerializerMethodField()
+    parent_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
+    body = serializers.CharField(max_length=2000)
+    replies = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Comment
+        fields = [
+            'id', 'service', 'user_id', 'user_name', 'user_avatar_url',
+            'parent', 'parent_id', 'body', 'is_deleted', 'reply_count',
+            'replies', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'service', 'user_id', 'parent', 'is_deleted', 'created_at', 'updated_at']
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_user_name(self, obj):
+        return f"{obj.user.first_name} {obj.user.last_name}".strip()
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_user_avatar_url(self, obj):
+        return obj.user.avatar_url
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_reply_count(self, obj):
+        """Return count of non-deleted replies"""
+        # Check for prefetched active_replies (already filtered for is_deleted=False)
+        if hasattr(obj, 'active_replies'):
+            return len(obj.active_replies)
+        return obj.replies.filter(is_deleted=False).count()
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_replies(self, obj):
+        """Return replies for top-level comments only"""
+        # Only include replies for top-level comments (no nesting beyond 1 level)
+        if obj.parent is not None:
+            return []
+        
+        # Use prefetched active_replies if available (already filtered for is_deleted=False)
+        if hasattr(obj, 'active_replies'):
+            replies = obj.active_replies
+        else:
+            replies = obj.replies.filter(is_deleted=False).select_related('user')
+        
+        # Serialize replies without nested replies (prevent recursion)
+        return CommentReplySerializer(replies, many=True).data
+
+    def validate_parent_id(self, value):
+        """Validate that parent exists and enforce single-level threading"""
+        if value is None:
+            return value
+        
+        try:
+            parent = Comment.objects.get(id=value)
+        except Comment.DoesNotExist:
+            raise serializers.ValidationError('Parent comment not found')
+        
+        # Enforce single-level threading: replies cannot have replies
+        if parent.parent is not None:
+            raise serializers.ValidationError('Cannot reply to a reply. Only top-level comments can have replies.')
+        
+        return value
+
+
+class CommentReplySerializer(serializers.ModelSerializer):
+    """Simplified serializer for comment replies (no nested replies)"""
+    user_id = serializers.UUIDField(source='user.id', read_only=True)
+    user_name = serializers.SerializerMethodField()
+    user_avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Comment
+        fields = [
+            'id', 'user_id', 'user_name', 'user_avatar_url',
+            'body', 'is_deleted', 'created_at', 'updated_at'
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_user_name(self, obj):
+        return f"{obj.user.first_name} {obj.user.last_name}".strip()
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_user_avatar_url(self, obj):
+        return obj.user.avatar_url
+
+
+# Negative Reputation Serializers
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Negative Reputation Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174012',
+                'handshake': '123e4567-e89b-12d3-a456-426614174002',
+                'giver': '123e4567-e89b-12d3-a456-426614174000',
+                'giver_name': 'John Doe',
+                'receiver': '123e4567-e89b-12d3-a456-426614174003',
+                'receiver_name': 'Jane Smith',
+                'is_late': True,
+                'is_unhelpful': False,
+                'is_rude': False,
+                'comment': 'Was 30 minutes late',
+                'created_at': '2024-01-01T12:00:00Z'
+            },
+            response_only=True
+        ),
+        OpenApiExample(
+            'Submit Negative Reputation Request',
+            value={
+                'handshake_id': '123e4567-e89b-12d3-a456-426614174002',
+                'is_late': True,
+                'is_unhelpful': False,
+                'is_rude': False,
+                'comment': 'Was 30 minutes late'
+            },
+            request_only=True
+        )
+    ]
+)
+class NegativeRepSerializer(serializers.ModelSerializer):
+    giver_name = serializers.SerializerMethodField()
+    receiver_name = serializers.SerializerMethodField()
+    handshake_id = serializers.UUIDField(write_only=True, required=False)
+
+    class Meta:
+        model = NegativeRep
+        fields = [
+            'id', 'handshake', 'handshake_id', 'giver', 'giver_name',
+            'receiver', 'receiver_name', 'is_late', 'is_unhelpful',
+            'is_rude', 'comment', 'created_at'
+        ]
+        read_only_fields = ['id', 'handshake', 'giver', 'receiver', 'created_at']
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_giver_name(self, obj):
+        return f"{obj.giver.first_name} {obj.giver.last_name}".strip()
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_receiver_name(self, obj):
+        return f"{obj.receiver.first_name} {obj.receiver.last_name}".strip()
+
+    def validate(self, data):
+        """Validate that at least one negative trait is selected"""
+        is_late = data.get('is_late', False)
+        is_unhelpful = data.get('is_unhelpful', False)
+        is_rude = data.get('is_rude', False)
+        
+        if not any([is_late, is_unhelpful, is_rude]):
+            raise serializers.ValidationError(
+                'At least one negative trait must be selected (is_late, is_unhelpful, or is_rude)'
+            )
+        
+        return data
