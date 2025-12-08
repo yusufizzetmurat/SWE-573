@@ -186,9 +186,9 @@ class ServiceSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'title', 'description', 'type', 'duration',
             'location_type', 'location_area', 'location_lat', 'location_lng', 'status', 'max_participants', 'schedule_type',
-            'schedule_details', 'created_at', 'tags', 'tag_ids', 'tag_names', 'comment_count', 'hot_score'
+            'schedule_details', 'created_at', 'tags', 'tag_ids', 'tag_names', 'comment_count', 'hot_score', 'is_visible'
         ]
-        read_only_fields = ['user', 'hot_score']
+        read_only_fields = ['user', 'hot_score', 'is_visible']
     
     @extend_schema_field(OpenApiTypes.INT)
     def get_comment_count(self, obj):
@@ -488,11 +488,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
         if value:
             if len(value) > 5:
                 raise serializers.ValidationError('Maximum 5 portfolio images allowed')
-            # Validate each URL has a safe scheme (consistent with avatar/banner validation)
+            # Validate each URL has a safe scheme (http/https/data only - no relative paths)
             for idx, url in enumerate(value):
-                if url and not url.startswith(('http://', 'https://', 'data:', '/')):
+                if url and not url.startswith(('http://', 'https://', 'data:')):
                     raise serializers.ValidationError(
-                        f'Portfolio image {idx + 1} must be a valid URL (http://, https://, data:, or /)'
+                        f'Portfolio image {idx + 1} must be a valid URL (http://, https://, or data:)'
                     )
         return value
 
@@ -759,13 +759,21 @@ class BadgeSerializer(serializers.ModelSerializer):
 class ReportSerializer(serializers.ModelSerializer):
     reporter_name = serializers.SerializerMethodField()
     reported_user_name = serializers.SerializerMethodField()
+    reported_service_title = serializers.SerializerMethodField()
+    handshake_hours = serializers.SerializerMethodField()
+    handshake_scheduled_time = serializers.SerializerMethodField()
+    handshake_status = serializers.SerializerMethodField()
+    reported_user_is_receiver = serializers.SerializerMethodField()
 
     class Meta:
         model = Report
         fields = [
             'id', 'reporter', 'reporter_name', 'reported_user', 'reported_user_name',
-            'reported_service', 'related_handshake', 'type', 'status',
-            'description', 'admin_notes', 'created_at', 'resolved_at', 'resolved_by'
+            'reported_service', 'reported_service_title', 'related_handshake',
+            'handshake_hours', 'handshake_scheduled_time', 'handshake_status',
+            'reported_user_is_receiver',
+            'type', 'status', 'description', 'admin_notes', 
+            'created_at', 'resolved_at', 'resolved_by'
         ]
 
     @extend_schema_field(OpenApiTypes.STR)
@@ -777,6 +785,43 @@ class ReportSerializer(serializers.ModelSerializer):
         if obj.reported_user:
             return f"{obj.reported_user.first_name} {obj.reported_user.last_name}".strip()
         return None
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_reported_service_title(self, obj):
+        if obj.reported_service:
+            return obj.reported_service.title
+        return None
+
+    @extend_schema_field(OpenApiTypes.DECIMAL)
+    def get_handshake_hours(self, obj):
+        if obj.related_handshake:
+            return float(obj.related_handshake.provisioned_hours)
+        return None
+
+    @extend_schema_field(OpenApiTypes.DATETIME)
+    def get_handshake_scheduled_time(self, obj):
+        if obj.related_handshake and obj.related_handshake.scheduled_time:
+            return obj.related_handshake.scheduled_time
+        return None
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_handshake_status(self, obj):
+        if obj.related_handshake:
+            return obj.related_handshake.status
+        return None
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_reported_user_is_receiver(self, obj):
+        """
+        Determine if the reported user is the receiver in the handshake.
+        This affects the financial action: if receiver no-showed, hours go to provider.
+        """
+        if not obj.related_handshake or not obj.reported_user:
+            return None
+        
+        from .utils import get_provider_and_receiver
+        _, receiver = get_provider_and_receiver(obj.related_handshake)
+        return obj.reported_user.id == receiver.id
 
 # Transaction History Serializer
 @extend_schema_serializer(
