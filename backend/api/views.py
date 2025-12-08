@@ -2765,7 +2765,7 @@ class CommentViewSet(viewsets.ViewSet):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-        body = request.data.get('body', '').strip()
+        body = (request.data.get('body', '') or '').strip()
         if not body:
             return create_error_response(
                 'Comment body is required',
