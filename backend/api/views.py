@@ -3288,9 +3288,11 @@ class CommentViewSet(viewsets.ViewSet):
             )
 
         # Exclude handshakes already reviewed by this user
+        # Exclude handshakes with active (non-deleted) verified reviews
         already_reviewed = Comment.objects.filter(
             user=request.user,
             is_verified_review=True,
+            is_deleted=False,
             related_handshake__isnull=False
         ).values_list('related_handshake_id', flat=True)
 
