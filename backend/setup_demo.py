@@ -27,9 +27,6 @@ print("=" * 60)
 print("The Hive - Demo Data Setup")
 print("=" * 60)
 
-# ============================================================================
-# STEP 1: CLEANUP
-# ============================================================================
 print("\n[1/6] Cleaning up existing demo data...")
 
 demo_emails = [
@@ -59,11 +56,8 @@ orphaned_messages = ChatMessage.objects.filter(handshake__isnull=True)
 if orphaned_messages.exists():
     orphaned_messages.delete()
 
-print("  ✅ Cleanup complete")
+print("  Done")
 
-# ============================================================================
-# STEP 2: CREATE TAGS
-# ============================================================================
 print("\n[2/6] Creating tags...")
 
 tags_data = [
@@ -89,11 +83,8 @@ for tag_data in tags_data:
             Tag.objects.create(id=tag_data['id'], name=tag_data['name'])
             created_count += 1
 
-print(f"  ✅ Processed {len(tags_data)} tags ({created_count} created)")
+print(f"  Processed {len(tags_data)} tags ({created_count} created)")
 
-# ============================================================================
-# STEP 3: CREATE DEMO USERS
-# ============================================================================
 print("\n[3/6] Creating demo users...")
 
 def create_or_update_user(email, first_name, last_name, bio, balance, karma):
@@ -114,11 +105,11 @@ def create_or_update_user(email, first_name, last_name, bio, balance, karma):
         user.karma_score = karma
         user.set_password('demo123')
         user.save()
-    print(f"  ✅ {'Created' if created else 'Updated'}: {email} (Balance: {balance}h)")
+    print(f"  {'Created' if created else 'Updated'}: {email} (Balance: {balance}h)")
     return user
 
 elif_user = create_or_update_user(
-    'elif@demo.com', 'Elif', 'Yılmaz',
+    'elif@demo.com', 'Elif', 'Yilmaz',
     'Freelance designer and cooking enthusiast. Love sharing traditional Turkish recipes!',
     Decimal('5.00'), 20
 )
@@ -148,14 +139,11 @@ alex = create_or_update_user(
 )
 
 ayse = create_or_update_user(
-    'ayse@demo.com', 'Ayşe', 'Kaya',
+    'ayse@demo.com', 'Ayse', 'Kaya',
     'Gardening enthusiast and community organizer. Passionate about sustainable living.',
     Decimal('4.00'), 15
 )
 
-# ============================================================================
-# STEP 4: CREATE SERVICES
-# ============================================================================
 print("\n[4/6] Creating services...")
 
 def get_tag(tag_id, tag_name):
@@ -178,14 +166,14 @@ elif_manti = Service.objects.create(
     type='Offer',
     duration=Decimal('3.00'),
     location_type='In-Person',
-    location_area='Beşiktaş',
+    location_area='Besiktas',
     max_participants=2,
     schedule_type='Recurrent',
     schedule_details='Every Tuesday at 19:00',
     status='Active',
 )
 elif_manti.tags.set([cooking_tag])
-print(f"  ✅ Created: {elif_manti.title}")
+print(f"  Created: {elif_manti.title}")
 
 elif_3d = Service.objects.create(
     user=elif_user,
@@ -194,14 +182,14 @@ elif_3d = Service.objects.create(
     type='Need',
     duration=Decimal('2.00'),
     location_type='In-Person',
-    location_area='Beşiktaş',
+    location_area='Besiktas',
     max_participants=1,
     schedule_type='One-Time',
     schedule_details='This Saturday at 14:00',
     status='Active',
 )
 elif_3d.tags.set([technology_tag])
-print(f"  ✅ Created: {elif_3d.title}")
+print(f"  Created: {elif_3d.title}")
 
 cem_chess = Service.objects.create(
     user=cem,
@@ -210,14 +198,14 @@ cem_chess = Service.objects.create(
     type='Need',
     duration=Decimal('1.00'),
     location_type='In-Person',
-    location_area='Kadıköy',
+    location_area='Kadikoy',
     max_participants=1,
     schedule_type='Recurrent',
     schedule_details='Every Sunday at 15:00',
     status='Active',
 )
 cem_chess.tags.set([chess_tag])
-print(f"  ✅ Created: {cem_chess.title}")
+print(f"  Created: {cem_chess.title}")
 
 cem_genealogy = Service.objects.create(
     user=cem,
@@ -232,7 +220,7 @@ cem_genealogy = Service.objects.create(
     status='Active',
 )
 cem_genealogy.tags.set([education_tag])
-print(f"  ✅ Created: {cem_genealogy.title}")
+print(f"  Created: {cem_genealogy.title}")
 
 ayse_gardening = Service.objects.create(
     user=ayse,
@@ -241,14 +229,14 @@ ayse_gardening = Service.objects.create(
     type='Offer',
     duration=Decimal('2.00'),
     location_type='In-Person',
-    location_area='Üsküdar',
+    location_area='Uskudar',
     max_participants=3,
     schedule_type='One-Time',
     schedule_details='Next Saturday at 10:00',
     status='Active',
 )
 ayse_gardening.tags.set([gardening_tag])
-print(f"  ✅ Created: {ayse_gardening.title}")
+print(f"  Created: {ayse_gardening.title}")
 
 marcus_turkish = Service.objects.create(
     user=marcus,
@@ -263,11 +251,8 @@ marcus_turkish = Service.objects.create(
     status='Active',
 )
 marcus_turkish.tags.set([language_tag])
-print(f"  ✅ Created: {marcus_turkish.title}")
+print(f"  Created: {marcus_turkish.title}")
 
-# ============================================================================
-# STEP 5: CREATE COMMENTS ON SERVICES
-# ============================================================================
 print("\n[5/6] Creating service comments...")
 
 Comment.objects.create(
@@ -311,11 +296,8 @@ Comment.objects.create(
     body='I\'d be happy to help with Turkish practice! I\'m a native speaker.'
 )
 
-print("  ✅ Created 7 comments on services")
+print("  Created 7 comments on services")
 
-# ============================================================================
-# STEP 6: CREATE FORUM TOPICS AND POSTS
-# ============================================================================
 print("\n[6/6] Creating forum content...")
 
 try:
@@ -346,7 +328,7 @@ try:
         category=collab_cat,
         author=ayse,
         title='Community Garden Project - Looking for Partners',
-        body='I\'m thinking of starting a small community garden in Üsküdar. Would anyone be interested in collaborating? We could share knowledge, seeds, and the harvest! Looking for 3-4 people to get started.'
+        body='I\'m thinking of starting a small community garden in Uskudar. Would anyone be interested in collaborating? We could share knowledge, seeds, and the harvest! Looking for 3-4 people to get started.'
     )
     ForumPost.objects.create(
         topic=garden_topic,
@@ -383,29 +365,25 @@ try:
         body='I agree! Also, don\'t underestimate "simple" skills - everyone has something valuable to offer.'
     )
 
-    print("  ✅ Created 4 forum topics with 7 replies")
+    print("  Created 4 forum topics with 7 replies")
 
 except ForumCategory.DoesNotExist:
-    print("  ⚠️  Forum categories not found. Run 'python manage.py seed_forum_categories' first.")
+    print("  Warning: Forum categories not found. Run 'python manage.py seed_forum_categories' first.")
 
-# Assign badges
 print("\n  Assigning badges...")
 for user in [elif_user, cem, marcus, sarah, alex, ayse]:
     check_and_assign_badges(user)
-print("  ✅ Badges assigned")
+print("  Done")
 
-# ============================================================================
-# SUMMARY
-# ============================================================================
 print("\n" + "=" * 60)
-print("✅ Demo setup complete!")
+print("Demo setup complete!")
 print("=" * 60)
-print(f"\n📊 Summary:")
+print(f"\nSummary:")
 print(f"  Users: {User.objects.filter(email__in=demo_emails).count()}")
 print(f"  Services: {Service.objects.filter(user__email__in=demo_emails).count()}")
 print(f"  Comments: {Comment.objects.filter(user__email__in=demo_emails).count()}")
 print(f"  Forum Topics: {ForumTopic.objects.filter(author__email__in=demo_emails).count()}")
-print(f"\n🔑 Demo Accounts (password: demo123):")
+print(f"\nDemo Accounts (password: demo123):")
 for user in [elif_user, cem, sarah, marcus, alex, ayse]:
-    print(f"  • {user.first_name}: {user.email} (Balance: {user.timebank_balance}h)")
+    print(f"  {user.first_name}: {user.email} (Balance: {user.timebank_balance}h)")
 print("\n" + "=" * 60)
