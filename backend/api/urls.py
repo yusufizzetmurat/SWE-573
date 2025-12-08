@@ -11,6 +11,7 @@ from django.core.cache import cache
 from .views import (
     UserRegistrationView,
     UserProfileView,
+    UserHistoryView,
     ServiceViewSet,
     TagViewSet,
     HandshakeViewSet,
@@ -130,6 +131,7 @@ urlpatterns = [
     path('auth/refresh/', CustomTokenRefreshView.as_view(), name='token_refresh'),
     path('users/me/', UserProfileView.as_view(), name='user-profile'),
     path('users/<uuid:id>/', UserProfileView.as_view(), name='user-detail'),
+    path('users/<uuid:id>/history/', UserHistoryView.as_view(), name='user-history'),
     path('services/<uuid:service_id>/interest/', 
          ExpressInterestView.as_view(),
          name='express-interest'),

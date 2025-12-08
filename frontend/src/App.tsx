@@ -22,6 +22,7 @@ const TransactionHistoryPage = lazy(() => import('./components/TransactionHistor
 const AdminDashboard = lazy(() => import('./components/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const ReportDetail = lazy(() => import('./components/ReportDetail').then(m => ({ default: m.ReportDetail })));
 const ForumCategories = lazy(() => import('./components/ForumCategories').then(m => ({ default: m.ForumCategories })));
+const PublicProfile = lazy(() => import('./components/PublicProfile').then(m => ({ default: m.PublicProfile })));
 const WelcomeModal = lazy(() => import('./components/WelcomeModal').then(m => ({ default: m.WelcomeModal })));
 const ServiceConfirmationModal = lazy(() => import('./components/ServiceConfirmationModal').then(m => ({ default: m.ServiceConfirmationModal })));
 const PositiveRepModal = lazy(() => import('./components/PositiveRepModal').then(m => ({ default: m.PositiveRepModal })));
@@ -46,6 +47,7 @@ type Page =
   | 'post-need'
   | 'messages'
   | 'profile'
+  | 'public-profile'
   | 'transaction-history'
   | 'admin'
   | 'report-detail'
@@ -61,6 +63,7 @@ const pageToPath: Record<Page, string> = {
   'post-need': '/post-need',
   messages: '/messages',
   profile: '/profile',
+  'public-profile': '/public-profile',
   'transaction-history': '/transaction-history',
   admin: '/admin',
   'report-detail': '/report-detail',
@@ -74,6 +77,9 @@ const resolvePageFromPath = (path: string): Page => {
   }
   if (path.startsWith('/report-detail/') || path === '/report-detail') {
     return 'report-detail';
+  }
+  if (path.startsWith('/public-profile/') || path === '/public-profile') {
+    return 'public-profile';
   }
   
   const entry = Object.entries(pageToPath).find(([, mappedPath]) => mappedPath === path);
@@ -166,6 +172,8 @@ function AppContent() {
       targetPath = `/service-detail/${data.id}`;
     } else if (resolvedPage === 'report-detail' && data && 'id' in data) {
       targetPath = `/report-detail/${data.id}`;
+    } else if (resolvedPage === 'public-profile' && data && 'userId' in data) {
+      targetPath = `/public-profile/${data.userId}`;
     }
     
     startTransition(() => {
@@ -505,6 +513,27 @@ function AppContent() {
             </div>
           </div>
         )}
+      </ErrorBoundary>
+
+      <ErrorBoundary>
+        {currentPage === 'public-profile' && (() => {
+          // Get userId from pageData or fallback to URL path for direct navigation
+          const userId = pageData && 'userId' in pageData 
+            ? pageData.userId as string 
+            : window.location.pathname.split('/').pop();
+          
+          return userId ? (
+            <Suspense fallback={<LoadingFallback />}>
+              <PublicProfile 
+                onNavigate={handleNavigate}
+                userId={userId}
+                userBalance={userBalance}
+                unreadNotifications={unreadNotifications}
+                onLogout={handleLogout}
+              />
+            </Suspense>
+          ) : null;
+        })()}
       </ErrorBoundary>
 
       <ErrorBoundary>
