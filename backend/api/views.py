@@ -2947,10 +2947,12 @@ class CommentViewSet(viewsets.ViewSet):
             service=service,
             parent__isnull=True,
             is_deleted=False
-        ).select_related('user').prefetch_related(
+        ).select_related('user', 'related_handshake').prefetch_related(
             Prefetch(
                 'replies',
-                queryset=Comment.objects.filter(is_deleted=False).select_related('user'),
+                queryset=Comment.objects.filter(is_deleted=False).select_related(
+                    'user', 'related_handshake'
+                ),
                 to_attr='active_replies'
             )
         ).order_by('-created_at')
@@ -2974,6 +2976,12 @@ class CommentViewSet(viewsets.ViewSet):
         Request body:
         - body (string, required): Comment text (max 2000 chars)
         - parent_id (uuid, optional): Parent comment ID for replies
+        - handshake_id (uuid, optional): Handshake ID for verified reviews
+        
+        When handshake_id is provided:
+        - Handshake must be completed
+        - User must be either provider or receiver of the handshake
+        - User can only post one verified review per handshake
         """
         service = self._get_service(service_id)
         if service is None:
@@ -3025,22 +3033,98 @@ class CommentViewSet(viewsets.ViewSet):
                     status_code=status.HTTP_404_NOT_FOUND
                 )
 
+        # Handle verified review (with handshake validation)
+        is_verified_review = False
+        related_handshake = None
+        handshake_id = serializer.validated_data.get('handshake_id')
+        
+        # Verified reviews must be top-level comments (not replies)
+        if handshake_id and parent:
+            return create_error_response(
+                'Verified reviews must be top-level comments, not replies',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if handshake_id:
+            try:
+                handshake = Handshake.objects.select_related('service', 'requester').get(id=handshake_id)
+            except Handshake.DoesNotExist:
+                return create_error_response(
+                    'Handshake not found',
+                    code=ErrorCodes.NOT_FOUND,
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Verify handshake is for this service
+            if handshake.service_id != service.id:
+                return create_error_response(
+                    'Handshake does not belong to this service',
+                    code=ErrorCodes.VALIDATION_ERROR,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Verify handshake is completed
+            if handshake.status != 'completed':
+                return create_error_response(
+                    'Can only post verified review for completed transactions',
+                    code=ErrorCodes.INVALID_STATE,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Determine provider based on service type
+            if service.type == 'Offer':
+                provider = service.user
+                receiver = handshake.requester
+            else:  # Need
+                provider = handshake.requester
+                receiver = service.user
+            
+            # Verify user is either provider or receiver
+            if request.user.id not in [provider.id, receiver.id]:
+                return create_error_response(
+                    'You must be a participant of this transaction to post a verified review',
+                    code=ErrorCodes.PERMISSION_DENIED,
+                    status_code=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check for duplicate verified review (exclude soft-deleted reviews)
+            existing_review = Comment.objects.filter(
+                related_handshake=handshake,
+                user=request.user,
+                is_verified_review=True,
+                is_deleted=False
+            ).exists()
+            
+            if existing_review:
+                return create_error_response(
+                    'You have already posted a verified review for this transaction',
+                    code=ErrorCodes.ALREADY_EXISTS,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            is_verified_review = True
+            related_handshake = handshake
+
         # Create comment
         comment = Comment.objects.create(
             service=service,
             user=request.user,
             parent=parent,
-            body=body
+            body=body,
+            is_verified_review=is_verified_review,
+            related_handshake=related_handshake
         )
 
-        # Award karma for posting a comment (+1)
-        request.user.karma_score = F("karma_score") + 1
+        # Award karma for posting a comment (+1, +2 for verified review)
+        karma_points = 2 if is_verified_review else 1
+        request.user.karma_score = F("karma_score") + karma_points
         request.user.save(update_fields=['karma_score'])
         request.user.refresh_from_db(fields=['karma_score'])
 
-        # Award karma to service owner for receiving a comment (+1)
+        # Award karma to service owner for receiving a comment (+1, +2 for verified review)
         if service.user != request.user:
-            service.user.karma_score = F("karma_score") + 1
+            service.user.karma_score = F("karma_score") + karma_points
             service.user.save(update_fields=['karma_score'])
             service.user.refresh_from_db(fields=['karma_score'])
 
@@ -3049,7 +3133,7 @@ class CommentViewSet(viewsets.ViewSet):
 
         # Notify service owner about new comment (if not self-comment)
         if service.user != request.user:
-            comment_type = "reply" if parent else "comment"
+            comment_type = "verified review" if is_verified_review else ("reply" if parent else "comment")
             create_notification(
                 user=service.user,
                 notification_type='new_comment',
@@ -3163,6 +3247,67 @@ class CommentViewSet(viewsets.ViewSet):
         comment.save(update_fields=['is_deleted', 'updated_at'])
 
         return Response({'status': 'deleted'}, status=status.HTTP_200_OK)
+
+    @track_performance
+    def reviewable_handshakes(self, request, service_id=None):
+        """
+        Get list of completed handshakes that the user can review.
+        
+        Returns handshakes where:
+        - User is either provider or receiver
+        - Handshake is completed
+        - User has not already posted a verified review
+        """
+        if not request.user.is_authenticated:
+            return Response({'handshakes': []})
+
+        service = self._get_service(service_id)
+        if service is None:
+            return create_error_response(
+                'Service not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get completed handshakes for this service where user is a participant
+        if service.type == 'Offer':
+            # For Offer: service.user is provider, requester is receiver
+            handshakes = Handshake.objects.filter(
+                service=service,
+                status='completed'
+            ).filter(
+                Q(requester=request.user) | Q(service__user=request.user)
+            )
+        else:
+            # For Need: requester is provider, service.user is receiver
+            handshakes = Handshake.objects.filter(
+                service=service,
+                status='completed'
+            ).filter(
+                Q(requester=request.user) | Q(service__user=request.user)
+            )
+
+        # Exclude handshakes already reviewed by this user
+        # Exclude handshakes with active (non-deleted) verified reviews
+        already_reviewed = Comment.objects.filter(
+            user=request.user,
+            is_verified_review=True,
+            is_deleted=False,
+            related_handshake__isnull=False
+        ).values_list('related_handshake_id', flat=True)
+
+        handshakes = handshakes.exclude(id__in=already_reviewed)
+
+        # Return simple list of reviewable handshakes
+        result = []
+        for handshake in handshakes:
+            result.append({
+                'id': str(handshake.id),
+                'provisioned_hours': float(handshake.provisioned_hours),
+                'completed_at': handshake.updated_at.isoformat(),
+            })
+
+        return Response({'handshakes': result})
 
 
 class NegativeRepViewSet(viewsets.ViewSet):

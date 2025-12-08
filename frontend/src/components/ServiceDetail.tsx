@@ -13,6 +13,7 @@ import { getBadgeMeta } from '../lib/badges';
 import { formatTimebank } from '../lib/utils';
 import { getErrorMessage, type NavigateData } from '../lib/types';
 import { PublicChat } from './PublicChat';
+import { CommentSection } from './CommentSection';
 
 interface ServiceDetailProps {
   onNavigate: (page: string) => void;
@@ -323,6 +324,9 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                     />
                   </div>
                 </div>
+
+                {/* Comments Section */}
+                <CommentSection serviceId={service.id} onNavigate={onNavigate} />
               </TabsContent>
 
               <TabsContent value="discussion">

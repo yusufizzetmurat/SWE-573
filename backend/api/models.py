@@ -462,11 +462,23 @@ class Comment(models.Model):
     )
     body = models.TextField(max_length=2000)
     is_deleted = models.BooleanField(default=False, help_text='Soft delete flag')
+    is_verified_review = models.BooleanField(
+        default=False,
+        help_text='True if this is a post-completion verified review'
+    )
+    related_handshake = models.ForeignKey(
+        Handshake,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='review_comments',
+        help_text='Linked handshake for verified reviews'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        prefix = "Reply" if self.parent else "Comment"
+        prefix = "Review" if self.is_verified_review else ("Reply" if self.parent else "Comment")
         return f"{prefix} by {self.user.email} on {self.service.title[:30]}"
 
     class Meta:
@@ -475,8 +487,17 @@ class Comment(models.Model):
             models.Index(fields=['user', 'created_at']),
             models.Index(fields=['parent']),
             models.Index(fields=['service', 'is_deleted', 'created_at']),
+            models.Index(fields=['related_handshake']),
+            models.Index(fields=['service', 'is_verified_review']),
         ]
         ordering = ['created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['related_handshake', 'user'],
+                condition=models.Q(is_verified_review=True, is_deleted=False),
+                name='unique_verified_review_per_handshake_user',
+            ),
+        ]
 
 
 class NegativeRep(models.Model):

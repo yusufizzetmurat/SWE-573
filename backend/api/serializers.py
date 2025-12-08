@@ -942,6 +942,9 @@ class PublicChatMessageSerializer(serializers.ModelSerializer):
                 'parent': None,
                 'body': 'Great service! Would recommend.',
                 'is_deleted': False,
+                'is_verified_review': True,
+                'handshake_hours': 2.0,
+                'handshake_completed_at': '2024-01-01T14:00:00Z',
                 'reply_count': 2,
                 'created_at': '2024-01-01T12:00:00Z',
                 'updated_at': '2024-01-01T12:00:00Z'
@@ -955,6 +958,14 @@ class PublicChatMessageSerializer(serializers.ModelSerializer):
                 'parent_id': None
             },
             request_only=True
+        ),
+        OpenApiExample(
+            'Create Verified Review Request',
+            value={
+                'body': 'Excellent service! Very professional.',
+                'handshake_id': '123e4567-e89b-12d3-a456-426614174002'
+            },
+            request_only=True
         )
     ]
 )
@@ -964,17 +975,24 @@ class CommentSerializer(serializers.ModelSerializer):
     user_avatar_url = serializers.SerializerMethodField()
     reply_count = serializers.SerializerMethodField()
     parent_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
+    handshake_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
     body = serializers.CharField(max_length=2000)
     replies = serializers.SerializerMethodField()
+    handshake_hours = serializers.SerializerMethodField()
+    handshake_completed_at = serializers.SerializerMethodField()
 
     class Meta:
         model = Comment
         fields = [
             'id', 'service', 'user_id', 'user_name', 'user_avatar_url',
-            'parent', 'parent_id', 'body', 'is_deleted', 'reply_count',
-            'replies', 'created_at', 'updated_at'
+            'parent', 'parent_id', 'body', 'is_deleted', 'is_verified_review',
+            'handshake_id', 'handshake_hours', 'handshake_completed_at',
+            'reply_count', 'replies', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'service', 'user_id', 'parent', 'is_deleted', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'service', 'user_id', 'parent', 'is_deleted',
+            'is_verified_review', 'created_at', 'updated_at'
+        ]
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_user_name(self, obj):
@@ -983,6 +1001,20 @@ class CommentSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.STR)
     def get_user_avatar_url(self, obj):
         return obj.user.avatar_url
+
+    @extend_schema_field(OpenApiTypes.FLOAT)
+    def get_handshake_hours(self, obj):
+        """Return hours from the linked handshake for verified reviews"""
+        if obj.is_verified_review and obj.related_handshake:
+            return float(obj.related_handshake.provisioned_hours)
+        return None
+
+    @extend_schema_field(OpenApiTypes.DATETIME)
+    def get_handshake_completed_at(self, obj):
+        """Return completion timestamp from the linked handshake"""
+        if obj.is_verified_review and obj.related_handshake:
+            return obj.related_handshake.updated_at
+        return None
 
     @extend_schema_field(OpenApiTypes.INT)
     def get_reply_count(self, obj):
@@ -1030,12 +1062,16 @@ class CommentReplySerializer(serializers.ModelSerializer):
     user_id = serializers.UUIDField(source='user.id', read_only=True)
     user_name = serializers.SerializerMethodField()
     user_avatar_url = serializers.SerializerMethodField()
+    handshake_hours = serializers.SerializerMethodField()
+    handshake_completed_at = serializers.SerializerMethodField()
 
     class Meta:
         model = Comment
         fields = [
             'id', 'user_id', 'user_name', 'user_avatar_url',
-            'body', 'is_deleted', 'created_at', 'updated_at'
+            'body', 'is_deleted', 'is_verified_review',
+            'handshake_hours', 'handshake_completed_at',
+            'created_at', 'updated_at'
         ]
         read_only_fields = fields
 
@@ -1046,6 +1082,20 @@ class CommentReplySerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.STR)
     def get_user_avatar_url(self, obj):
         return obj.user.avatar_url
+
+    @extend_schema_field(OpenApiTypes.FLOAT)
+    def get_handshake_hours(self, obj):
+        """Return hours from the linked handshake for verified reviews"""
+        if obj.is_verified_review and obj.related_handshake:
+            return float(obj.related_handshake.provisioned_hours)
+        return None
+
+    @extend_schema_field(OpenApiTypes.DATETIME)
+    def get_handshake_completed_at(self, obj):
+        """Return completion timestamp from the linked handshake"""
+        if obj.is_verified_review and obj.related_handshake:
+            return obj.related_handshake.updated_at
+        return None
 
 
 # Negative Reputation Serializers
