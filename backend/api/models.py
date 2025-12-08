@@ -547,14 +547,22 @@ class ForumCategory(models.Model):
     description = models.TextField(blank=True)
     slug = models.SlugField(max_length=100, unique=True)
     icon = models.CharField(
-        max_length=50, 
-        blank=True, 
+        max_length=50,
+        blank=True,
         default='message-square',
         help_text='Lucide icon name (e.g., message-square, users, book-open)'
     )
     color = models.CharField(max_length=20, choices=COLOR_CHOICES, default='blue')
     display_order = models.IntegerField(default=0, help_text='Lower numbers appear first')
     is_active = models.BooleanField(default=True)
+    wikidata_tag = models.ForeignKey(
+        Tag,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='forum_categories',
+        help_text='Optional Wikidata tag for semantic categorization'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -574,17 +582,18 @@ class ForumTopic(models.Model):
     """Forum topics (threads) within categories"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     category = models.ForeignKey(
-        ForumCategory, 
-        on_delete=models.CASCADE, 
+        ForumCategory,
+        on_delete=models.CASCADE,
         related_name='topics'
     )
     author = models.ForeignKey(
-        User, 
-        on_delete=models.CASCADE, 
+        User,
+        on_delete=models.CASCADE,
         related_name='forum_topics'
     )
     title = models.CharField(max_length=200)
     body = models.TextField(max_length=10000)
+    tags = models.ManyToManyField(Tag, blank=True, help_text='Wikidata tags for topic categorization')
     is_pinned = models.BooleanField(default=False, help_text='Pinned topics appear at the top')
     is_locked = models.BooleanField(default=False, help_text='Locked topics cannot receive new posts')
     view_count = models.IntegerField(default=0)

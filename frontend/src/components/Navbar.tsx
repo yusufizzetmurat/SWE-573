@@ -1,7 +1,8 @@
 import React from 'react';
-import { Hexagon, Search, Plus, User, LogOut, MessageSquare, UserCircle, Bell } from 'lucide-react';
+import { Hexagon, Search, Plus, User, LogOut, MessageSquare, UserCircle, Bell, Sun, Moon } from 'lucide-react';
 import { formatTimebank } from '../lib/utils';
 import { Button } from './ui/button';
+import { Avatar, AvatarImage, AvatarFallback } from './ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { NotificationDropdown } from './NotificationDropdown';
+import { useAuth } from '../lib/auth-context';
+import { useTheme } from '../lib/theme-context';
 
 interface NavbarProps {
   activeLink?: string;
@@ -31,6 +34,17 @@ export function Navbar({
   onLogout = () => {},
   isAuthenticated = false
 }: NavbarProps) {
+  const { user } = useAuth();
+  const { resolvedTheme, toggleTheme } = useTheme();
+  
+  // Get user initials for avatar fallback
+  const userInitials = user 
+    ? `${user.first_name?.[0] || ''}${user.last_name?.[0] || ''}`.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U'
+    : 'U';
+  const userName = user 
+    ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email 
+    : 'User';
+
   return (
     <nav className="sticky top-0 z-50 bg-white border-b border-gray-200">
       <div className="max-w-[1440px] mx-auto px-8 py-4">
@@ -115,6 +129,19 @@ export function Navbar({
                   </DropdownMenu>
                 )}
 
+                {/* Dark Mode Toggle */}
+                <button
+                  onClick={toggleTheme}
+                  className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  title={resolvedTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                >
+                  {resolvedTheme === 'dark' ? (
+                    <Sun className="w-5 h-5 text-amber-500" />
+                  ) : (
+                    <Moon className="w-5 h-5 text-gray-600" />
+                  )}
+                </button>
+
                 {/* Notifications Bell */}
                 <NotificationDropdown
                   unreadCount={unreadNotifications}
@@ -137,17 +164,34 @@ export function Navbar({
                 {/* User Profile Dropdown */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="flex items-center justify-center w-10 h-10 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors">
-                      <User className="w-5 h-5" />
+                    <button className="flex items-center justify-center rounded-full hover:ring-2 hover:ring-amber-300 transition-all">
+                      <Avatar className="w-10 h-10">
+                        {user?.avatar_url && (
+                          <AvatarImage src={user.avatar_url} alt={userName} />
+                        )}
+                        <AvatarFallback className="bg-amber-100 text-amber-700">
+                          {userInitials}
+                        </AvatarFallback>
+                      </Avatar>
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
                     <DropdownMenuLabel>
-                      <div className="flex flex-col">
-                        <span>My Account</span>
-                        <span className="text-xs text-gray-500 mt-1">
-                          Balance: {formatTimebank(userBalance)} TimeBank {formatTimebank(userBalance) === '1' ? 'Hour' : 'Hours'}
-                        </span>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="w-10 h-10">
+                          {user?.avatar_url && (
+                            <AvatarImage src={user.avatar_url} alt={userName} />
+                          )}
+                          <AvatarFallback className="bg-amber-100 text-amber-700 text-sm">
+                            {userInitials}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{userName}</span>
+                          <span className="text-xs text-gray-500">
+                            Balance: {formatTimebank(userBalance)} {formatTimebank(userBalance) === '1' ? 'Hour' : 'Hours'}
+                          </span>
+                        </div>
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />

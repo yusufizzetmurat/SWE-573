@@ -1327,13 +1327,20 @@ class ForumTopicSerializer(serializers.ModelSerializer):
     category_slug = serializers.CharField(source='category.slug', read_only=True)
     reply_count = serializers.SerializerMethodField()
     last_activity = serializers.SerializerMethodField()
+    tags = TagSerializer(many=True, read_only=True)
+    tag_ids = serializers.ListField(
+        child=serializers.CharField(),
+        write_only=True,
+        required=False,
+        help_text='List of tag IDs (Wikidata QIDs) to assign to this topic'
+    )
 
     class Meta:
         model = ForumTopic
         fields = [
             'id', 'category', 'category_name', 'category_slug',
             'author_id', 'author_name', 'author_avatar_url',
-            'title', 'body', 'is_pinned', 'is_locked', 'view_count',
+            'title', 'body', 'tags', 'tag_ids', 'is_pinned', 'is_locked', 'view_count',
             'reply_count', 'last_activity', 'created_at', 'updated_at'
         ]
         read_only_fields = [

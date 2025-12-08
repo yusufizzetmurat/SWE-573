@@ -231,6 +231,7 @@ export interface ForumTopic {
   author_avatar_url: string | null;
   title: string;
   body: string;
+  tags?: Array<{ id: string; name: string; description?: string }>;
   is_pinned: boolean;
   is_locked: boolean;
   view_count: number;
@@ -257,6 +258,7 @@ export interface CreateForumTopicData {
   category: string;
   title: string;
   body: string;
+  tag_ids?: string[];
 }
 
 export interface CreateForumPostData {

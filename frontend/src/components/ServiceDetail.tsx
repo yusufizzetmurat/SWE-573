@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Clock, MapPin, Calendar, Users, Monitor, Flag, Tag, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Clock, MapPin, Calendar, Users, Monitor, Flag, Tag, MessageSquare, Play, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -14,6 +14,7 @@ import { formatTimebank } from '../lib/utils';
 import { getErrorMessage, type NavigateData } from '../lib/types';
 import { PublicChat } from './PublicChat';
 import { CommentSection } from './CommentSection';
+import { ReportListingModal } from './ReportListingModal';
 
 interface ServiceDetailProps {
   onNavigate: (page: string) => void;
@@ -31,6 +32,7 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
   const [error, setError] = useState<string | null>(null);
   const [hasInterest, setHasInterest] = useState(false);
   const [handshakeStatus, setHandshakeStatus] = useState<string | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
     const fetchService = async () => {
@@ -414,6 +416,112 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
               </div>
             </div>
 
+            {/* Provider Portfolio & Media */}
+            {providerUser && (providerUser.video_intro_url || (providerUser.portfolio_images && providerUser.portfolio_images.length > 0)) && (
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h3 className="text-gray-900 mb-4 font-medium">Portfolio & Media</h3>
+                
+                {/* Video Intro */}
+                {providerUser.video_intro_url && (
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-2 text-sm text-gray-600">
+                      <Play className="w-4 h-4" />
+                      <span>Video Introduction</span>
+                    </div>
+                    {(() => {
+                      const videoUrl = providerUser.video_intro_url;
+                      // Check for YouTube
+                      const youtubeMatch = videoUrl.match(/(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/);
+                      if (youtubeMatch) {
+                        return (
+                          <div className="aspect-video rounded-lg overflow-hidden bg-black">
+                            <iframe
+                              src={`https://www.youtube.com/embed/${youtubeMatch[1]}`}
+                              title="Video Introduction"
+                              className="w-full h-full"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            />
+                          </div>
+                        );
+                      }
+                      // Check for Vimeo
+                      const vimeoMatch = videoUrl.match(/vimeo\.com\/(?:.*\/)?(\d+)/);
+                      if (vimeoMatch) {
+                        return (
+                          <div className="aspect-video rounded-lg overflow-hidden bg-black">
+                            <iframe
+                              src={`https://player.vimeo.com/video/${vimeoMatch[1]}`}
+                              title="Video Introduction"
+                              className="w-full h-full"
+                              allow="autoplay; fullscreen; picture-in-picture"
+                              allowFullScreen
+                            />
+                          </div>
+                        );
+                      }
+                      // Fallback: external link
+                      if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
+                        return (
+                          <a 
+                            href={videoUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 p-3 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                          >
+                            <Play className="w-4 h-4 text-amber-600" />
+                            <span className="text-gray-700">Watch Video Introduction</span>
+                            <ExternalLink className="w-3 h-3 text-gray-400 ml-auto" />
+                          </a>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                )}
+
+                {/* Portfolio Images */}
+                {providerUser.portfolio_images && providerUser.portfolio_images.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2 text-sm text-gray-600">
+                      <ImageIcon className="w-4 h-4" />
+                      <span>Portfolio ({providerUser.portfolio_images.length} images)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {providerUser.portfolio_images.slice(0, 4).map((img, idx) => (
+                        <a
+                          key={idx}
+                          href={img}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="aspect-square rounded-lg overflow-hidden border border-gray-200 hover:border-amber-400 transition-colors"
+                        >
+                          <img 
+                            src={img} 
+                            alt={`Portfolio ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                    {providerUser.portfolio_images.length > 4 && (
+                      <button
+                        onClick={() => {
+                          const providerId = typeof service.user === 'object' ? service.user?.id : service.user;
+                          if (providerId) {
+                            onNavigate('public-profile', { userId: providerId });
+                          }
+                        }}
+                        className="mt-2 text-xs text-amber-600 hover:text-amber-700"
+                      >
+                        View all {providerUser.portfolio_images.length} images →
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Action Card */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               {hasInterest ? (
@@ -513,6 +621,14 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
               
               <button 
                 className="text-sm text-gray-500 hover:text-red-600 flex items-center gap-2 mx-auto"
+                onClick={() => {
+                  if (!isAuthenticated) {
+                    showToast('Please log in to report a listing', 'warning');
+                    onNavigate('login');
+                    return;
+                  }
+                  setShowReportModal(true);
+                }}
               >
                 <Flag className="w-4 h-4" />
                 Report this listing
@@ -521,6 +637,14 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
           </div>
         </div>
       </div>
+
+      {/* Report Listing Modal */}
+      <ReportListingModal
+        open={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        serviceId={service.id}
+        serviceTitle={service.title}
+      />
     </div>
   );
 }

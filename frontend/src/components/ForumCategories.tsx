@@ -9,6 +9,7 @@ import { ImageWithFallback } from './figma/ImageWithFallback';
 import { forumAPI } from '../lib/api';
 import type { ForumCategory, ForumCategoryColor } from '../lib/types';
 import { useToast } from './Toast';
+import { GuidelinesModal } from './GuidelinesModal';
 
 interface ForumCategoriesProps {
   onNavigate: (page: string, data?: Record<string, unknown>) => void;
@@ -67,6 +68,7 @@ export function ForumCategories({
   const [categories, setCategories] = useState<ForumCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showGuidelines, setShowGuidelines] = useState(false);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -241,88 +243,33 @@ export function ForumCategories({
         )}
 
         {/* Community Guidelines CTA */}
-        <div className="mt-12 bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl p-8 text-white">
+        <div className="mt-12 bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-8 text-white">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
-              <h3 className="text-white mb-2">New to the forums?</h3>
-              <p className="text-gray-300">
+              <h3 className="text-white mb-2 flex items-center gap-2">
+                <BookOpen className="w-5 h-5" />
+                New to the forums?
+              </h3>
+              <p className="text-amber-100">
                 Please read our community guidelines before posting to ensure a 
                 respectful and welcoming environment for everyone.
               </p>
             </div>
             <Button 
-              variant="outline" 
-              className="border-gray-600 text-white hover:bg-gray-700 flex-shrink-0"
-              onClick={() => {
-                const guidelines = `Community Guidelines
-
-1. Be Respectful
-   - Treat all members with kindness and respect
-   - No harassment, discrimination, or hate speech
-   - Disagree constructively and professionally
-
-2. Stay On Topic
-   - Keep discussions relevant to the forum category
-   - Use appropriate categories for your posts
-   - Avoid spamming or off-topic content
-
-3. Share Knowledge
-   - Help others by sharing your expertise
-   - Ask questions when you need help
-   - Provide constructive feedback
-
-4. Follow TimeBank Principles
-   - Honor your commitments
-   - Communicate clearly about schedules
-   - Report issues through proper channels
-
-5. Privacy & Safety
-   - Don't share personal information publicly
-   - Report suspicious behavior
-   - Respect others' privacy
-
-6. Moderation
-   - Admins may remove inappropriate content
-   - Repeated violations may result in warnings or bans
-   - Appeals can be made through support channels
-
-Thank you for helping maintain a positive community!`;
-                const guidelinesModal = document.createElement('div');
-                guidelinesModal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50';
-                
-                const modalContent = document.createElement('div');
-                modalContent.className = 'bg-white rounded-lg p-6 max-w-2xl max-h-[80vh] overflow-y-auto shadow-xl mx-4';
-                
-                const title = document.createElement('h2');
-                title.className = 'text-2xl font-bold mb-4 text-gray-900';
-                title.textContent = 'Community Guidelines';
-                
-                const pre = document.createElement('pre');
-                pre.className = 'whitespace-pre-wrap text-sm text-gray-700';
-                pre.textContent = guidelines;
-                
-                const closeButton = document.createElement('button');
-                closeButton.className = 'mt-4 px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600';
-                closeButton.textContent = 'Close';
-                closeButton.addEventListener('click', () => guidelinesModal.remove());
-                
-                modalContent.appendChild(title);
-                modalContent.appendChild(pre);
-                modalContent.appendChild(closeButton);
-                guidelinesModal.appendChild(modalContent);
-                
-                // Close on backdrop click
-                guidelinesModal.addEventListener('click', (e) => {
-                  if (e.target === guidelinesModal) guidelinesModal.remove();
-                });
-                
-                document.body.appendChild(guidelinesModal);
-              }}
+              className="bg-white text-amber-600 hover:bg-amber-50 flex-shrink-0 shadow-lg"
+              onClick={() => setShowGuidelines(true)}
             >
+              <BookOpen className="w-4 h-4 mr-2" />
               Read Guidelines
             </Button>
           </div>
         </div>
+
+        {/* Guidelines Modal */}
+        <GuidelinesModal
+          open={showGuidelines}
+          onClose={() => setShowGuidelines(false)}
+        />
       </div>
     </div>
   );

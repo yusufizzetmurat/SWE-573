@@ -692,6 +692,94 @@ class ServiceViewSet(viewsets.ModelViewSet):
             'message': f'Service has been {action_text}'
         })
 
+    @action(detail=True, methods=['post'], url_path='report')
+    def report(self, request, pk=None):
+        """
+        Report a Service Listing
+
+        Submit a report for inappropriate content, spam, or other issues with a service.
+
+        **Endpoint:** POST /api/services/{id}/report/
+
+        **Request Format:**
+        ```json
+        {
+            "type": "inappropriate_content",  // or "spam", "service_issue"
+            "description": "Detailed description of the issue"
+        }
+        ```
+
+        **Response:**
+        ```json
+        {
+            "status": "success",
+            "report_id": "uuid",
+            "message": "Report submitted successfully"
+        }
+        ```
+
+        **Error Scenarios:**
+        - 400 Bad Request: Missing or invalid report type/description
+        - 401 Unauthorized: Authentication required
+        - 404 Not Found: Service does not exist
+        """
+        service = self.get_object()
+        
+        # Validate report type
+        valid_types = ['inappropriate_content', 'spam', 'service_issue']
+        report_type = request.data.get('type')
+        description = request.data.get('description', '')
+        
+        if not report_type or report_type not in valid_types:
+            return create_error_response(
+                f'Invalid report type. Must be one of: {", ".join(valid_types)}',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not description or len(description.strip()) < 10:
+            return create_error_response(
+                'Please provide a description of at least 10 characters',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Prevent self-reporting
+        if service.user == request.user:
+            return create_error_response(
+                'You cannot report your own service',
+                code=ErrorCodes.INVALID_STATE,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create the report
+        report = Report.objects.create(
+            reporter=request.user,
+            reported_user=service.user,
+            reported_service=service,
+            type=report_type,
+            description=description.strip(),
+            status='pending'
+        )
+        
+        # Notify admins about the new report
+        admin_users = User.objects.filter(role='admin')
+        for admin in admin_users:
+            create_notification(
+                user=admin,
+                notification_type='admin_alert',
+                title='New Service Report',
+                message=f'A {report.get_type_display()} report has been submitted for "{service.title}"',
+                service=service
+            )
+        
+        return Response({
+            'status': 'success',
+            'report_id': str(report.id),
+            'message': 'Report submitted successfully. Our team will review it shortly.'
+        })
+
+
 class TagViewSet(viewsets.ModelViewSet):
     """
     Tag Management
@@ -3580,8 +3668,8 @@ class ForumTopicViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated()]
     
     def get_queryset(self):
-        queryset = ForumTopic.objects.select_related('author', 'category')
-        
+        queryset = ForumTopic.objects.select_related('author', 'category').prefetch_related('tags')
+
         # Filter by category if provided
         category_slug = self.request.query_params.get('category')
         if category_slug:
@@ -3589,12 +3677,12 @@ class ForumTopicViewSet(viewsets.ModelViewSet):
         else:
             # Only show topics from active categories
             queryset = queryset.filter(category__is_active=True)
-        
+
         # Annotate with reply count
         queryset = queryset.annotate(
             reply_count_annotated=Count('posts', filter=Q(posts__is_deleted=False))
         )
-        
+
         return queryset.order_by('-is_pinned', '-created_at')
     
     def get_serializer_class(self):
@@ -3651,8 +3739,17 @@ class ForumTopicViewSet(viewsets.ModelViewSet):
                 status_code=status.HTTP_404_NOT_FOUND
             )
         
-        serializer.save(author=request.user, category=category)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        topic = serializer.save(author=request.user, category=category)
+        
+        # Handle tags if provided
+        tag_ids = request.data.get('tag_ids', [])
+        if tag_ids:
+            tags = Tag.objects.filter(id__in=tag_ids)
+            topic.tags.set(tags)
+        
+        # Re-serialize to include tags in response
+        response_serializer = self.get_serializer(topic)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
     
     @track_performance
     def partial_update(self, request, pk=None):
@@ -3674,13 +3771,20 @@ class ForumTopicViewSet(viewsets.ModelViewSet):
                 status_code=status.HTTP_403_FORBIDDEN
             )
         
-        # Only allow editing title and body
-        allowed_fields = {'title', 'body'}
+        # Only allow editing title, body, and tags
+        allowed_fields = {'title', 'body', 'tag_ids'}
         update_data = {k: v for k, v in request.data.items() if k in allowed_fields}
         
         serializer = self.get_serializer(topic, data=update_data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        
+        # Handle tags if provided
+        tag_ids = request.data.get('tag_ids')
+        if tag_ids is not None:
+            tags = Tag.objects.filter(id__in=tag_ids)
+            topic.tags.set(tags)
+        
         return Response(serializer.data)
     
     @track_performance

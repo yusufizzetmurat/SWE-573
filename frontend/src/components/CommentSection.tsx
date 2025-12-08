@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MessageSquare, CheckCircle, Send, ChevronDown, ChevronUp, CornerDownRight, Loader2 } from 'lucide-react';
+import { CheckCircle, ChevronDown, ChevronUp, CornerDownRight, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { Avatar, AvatarImage, AvatarFallback } from './ui/avatar';
@@ -224,9 +224,6 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
   const [page, setPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   
-  const [commentText, setCommentText] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  
   const [reviewableHandshakes, setReviewableHandshakes] = useState<ReviewableHandshake[]>([]);
   const [selectedHandshake, setSelectedHandshake] = useState<string | null>(null);
   const [showReviewForm, setShowReviewForm] = useState(false);
@@ -271,23 +268,6 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
     fetchReviewableHandshakes();
   }, [fetchComments, fetchReviewableHandshakes]);
 
-  const handleSubmitComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!commentText.trim() || isSubmitting) return;
-
-    setIsSubmitting(true);
-    try {
-      await commentAPI.create(serviceId, commentText.trim());
-      setCommentText('');
-      fetchComments();
-      showToast('Comment posted!', 'success');
-    } catch (error) {
-      showToast(getErrorMessage(error, 'Failed to post comment'), 'error');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reviewText.trim() || !selectedHandshake || isSubmittingReview) return;
@@ -314,12 +294,15 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
     }
   };
 
+  // Filter to only show verified reviews
+  const verifiedReviews = comments.filter(c => c.is_verified_review);
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-          <MessageSquare className="w-5 h-5 text-amber-500" />
-          Comments & Reviews
+          <CheckCircle className="w-5 h-5 text-green-500" />
+          Verified Reviews
         </h3>
         
         {reviewableHandshakes.length > 0 && !showReviewForm && (
@@ -337,6 +320,14 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
             Write a Verified Review
           </Button>
         )}
+      </div>
+
+      {/* Info about verified reviews */}
+      <div className="mb-6 p-3 bg-green-50 rounded-lg border border-green-100">
+        <p className="text-sm text-green-800">
+          <CheckCircle className="w-4 h-4 inline mr-1" />
+          Only users who have completed a transaction with this provider can leave verified reviews.
+        </p>
       </div>
 
       {/* Verified Review Form */}
@@ -404,47 +395,8 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
         </div>
       )}
 
-      {/* Regular Comment Form */}
-      {isAuthenticated ? (
-        <form onSubmit={handleSubmitComment} className="mb-6">
-          <div className="flex gap-3">
-            <Avatar className="w-8 h-8">
-              {user?.avatar_url && (
-                <AvatarImage src={user.avatar_url} alt={`${user.first_name} ${user.last_name}`} />
-              )}
-              <AvatarFallback className="bg-amber-100 text-amber-700 text-xs">
-                {user?.first_name?.[0]}{user?.last_name?.[0]}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1">
-              <Textarea
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Ask a question or share your thoughts..."
-                className="min-h-[60px] resize-none"
-                maxLength={2000}
-              />
-              <div className="flex justify-end mt-2">
-                <Button
-                  type="submit"
-                  disabled={!commentText.trim() || isSubmitting}
-                  className="bg-amber-500 hover:bg-amber-600"
-                  size="sm"
-                >
-                  {isSubmitting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4 mr-1" />
-                      Post
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </form>
-      ) : (
+      {/* Sign in prompt for non-authenticated users */}
+      {!isAuthenticated && (
         <div className="mb-6 p-4 bg-gray-50 rounded-lg text-center">
           <p className="text-gray-600 text-sm">
             <button 
@@ -453,25 +405,26 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
             >
               Sign in
             </button>
-            {' '}to leave a comment or review.
+            {' '}to leave a verified review after completing a service.
           </p>
         </div>
       )}
 
-      {/* Comments List */}
+      {/* Verified Reviews List */}
       {isLoading ? (
         <div className="text-center py-8">
           <Loader2 className="w-6 h-6 animate-spin mx-auto text-amber-500" />
-          <p className="text-sm text-gray-500 mt-2">Loading comments...</p>
+          <p className="text-sm text-gray-500 mt-2">Loading reviews...</p>
         </div>
-      ) : comments.length === 0 ? (
+      ) : verifiedReviews.length === 0 ? (
         <div className="text-center py-8">
-          <MessageSquare className="w-10 h-10 mx-auto text-gray-300 mb-2" />
-          <p className="text-gray-500">No comments yet. Be the first to comment!</p>
+          <CheckCircle className="w-10 h-10 mx-auto text-gray-300 mb-2" />
+          <p className="text-gray-500">No verified reviews yet.</p>
+          <p className="text-sm text-gray-400 mt-1">Reviews appear after completed transactions.</p>
         </div>
       ) : (
         <div className="space-y-6">
-          {comments.map((comment) => (
+          {verifiedReviews.map((comment) => (
             <CommentItem
               key={comment.id}
               comment={comment}
@@ -494,7 +447,7 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
                     Loading...
                   </>
                 ) : (
-                  'Load More Comments'
+                  'Load More Reviews'
                 )}
               </Button>
             </div>

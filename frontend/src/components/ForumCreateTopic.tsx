@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, X, Tag as TagIcon } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { forumAPI } from '../lib/api';
+import { forumAPI, Tag } from '../lib/api';
 import type { ForumCategory } from '../lib/types';
 import { useToast } from './Toast';
 import { useAuth } from '../lib/auth-context';
 import { getErrorMessage } from '../lib/types';
+import { WikidataAutocomplete } from './WikidataAutocomplete';
 
 interface ForumCreateTopicProps {
   onNavigate: (page: string, data?: Record<string, unknown>) => void;
@@ -33,6 +34,7 @@ export function ForumCreateTopic({
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [tags, setTags] = useState<Tag[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ title?: string; body?: string; category?: string }>({});
 
@@ -104,7 +106,8 @@ export function ForumCreateTopic({
       const newTopic = await forumAPI.createTopic({
         category: selectedCategoryId,
         title: title.trim(),
-        body: body.trim()
+        body: body.trim(),
+        tag_ids: tags.map(t => t.id)
       });
       
       showToast('Topic created successfully!', 'success');
@@ -116,6 +119,16 @@ export function ForumCreateTopic({
     } finally {
       setIsSubmitting(false);
     }
+  };
+  
+  const handleAddTag = (tag: Tag) => {
+    if (tags.length < 5 && !tags.find(t => t.id === tag.id)) {
+      setTags([...tags, tag]);
+    }
+  };
+  
+  const handleRemoveTag = (tagId: string) => {
+    setTags(tags.filter(t => t.id !== tagId));
   };
 
   const handleBack = () => {
@@ -218,6 +231,42 @@ export function ForumCreateTopic({
                 )}
                 <span className="text-sm text-gray-400">{title.length}/200</span>
               </div>
+            </div>
+
+            {/* Tags */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Tags <span className="text-gray-400">(optional)</span>
+              </label>
+              <WikidataAutocomplete
+                onSelect={handleAddTag}
+                placeholder="Search for tags (e.g., cooking, programming)..."
+                existingTags={tags}
+                disabled={tags.length >= 5}
+              />
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {tags.map(tag => (
+                    <span
+                      key={tag.id}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-100 text-amber-800 text-sm"
+                    >
+                      <TagIcon className="w-3 h-3" />
+                      {tag.name}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveTag(tag.id)}
+                        className="ml-1 text-amber-600 hover:text-amber-800"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="mt-1 text-sm text-gray-500">
+                Add up to 5 tags to help others find your topic ({tags.length}/5)
+              </p>
             </div>
 
             {/* Body */}

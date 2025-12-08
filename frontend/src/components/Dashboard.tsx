@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { MapPin, Clock, Users, Tag, Calendar, Monitor, Search, Navigation, Loader2 } from 'lucide-react';
+import { MapPin, Clock, Users, Tag, Calendar, Monitor, Search, Navigation, Loader2, AlertCircle } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -33,9 +33,36 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
   const [locationEnabled, setLocationEnabled] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [permissionState, setPermissionState] = useState<PermissionState | null>(null);
   
   // Debounce timer ref for distance slider
   const distanceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Check geolocation permission status on mount
+  useEffect(() => {
+    const checkPermission = async () => {
+      if ('permissions' in navigator) {
+        try {
+          const result = await navigator.permissions.query({ name: 'geolocation' });
+          setPermissionState(result.state);
+          
+          // Listen for permission changes
+          result.addEventListener('change', () => {
+            setPermissionState(result.state);
+            // If permission was just granted, try to get location
+            if (result.state === 'granted' && !userLocation) {
+              requestLocation();
+            }
+          });
+        } catch {
+          // Permission API not supported for geolocation
+          setPermissionState(null);
+        }
+      }
+    };
+    
+    checkPermission();
+  }, []);
   
   // Debounce distanceKm changes to prevent excessive API calls while dragging slider
   useEffect(() => {
@@ -76,21 +103,27 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
         });
         setLocationEnabled(true);
         setLocationLoading(false);
+        setPermissionState('granted');
       },
       (error) => {
         let errorMessage = 'Unable to get your location';
+        let helpText = '';
         switch (error.code) {
           case error.PERMISSION_DENIED:
             errorMessage = 'Location permission denied';
+            helpText = ' — Please allow location access in your browser settings (click the lock icon in the address bar)';
+            setPermissionState('denied');
             break;
           case error.POSITION_UNAVAILABLE:
             errorMessage = 'Location information unavailable';
+            helpText = ' — Please ensure location services are enabled on your device';
             break;
           case error.TIMEOUT:
             errorMessage = 'Location request timed out';
+            helpText = ' — Please try again';
             break;
         }
-        setLocationError(errorMessage);
+        setLocationError(errorMessage + helpText);
         setLocationLoading(false);
       },
       {
@@ -332,7 +365,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
                   variant={locationEnabled ? "default" : "outline"}
                   size="sm"
                   onClick={toggleLocationSearch}
-                  disabled={locationLoading}
+                  disabled={locationLoading || permissionState === 'denied'}
                   className={locationEnabled ? "bg-amber-500 hover:bg-amber-600" : ""}
                 >
                   {locationLoading ? (
@@ -345,6 +378,11 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
                       <MapPin className="w-4 h-4 mr-2" />
                       Enabled
                     </>
+                  ) : permissionState === 'denied' ? (
+                    <>
+                      <AlertCircle className="w-4 h-4 mr-2" />
+                      Permission Denied
+                    </>
                   ) : (
                     <>
                       <MapPin className="w-4 h-4 mr-2" />
@@ -355,36 +393,44 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
               </div>
               
               {locationError && (
-                <p className="text-sm text-red-500 mb-3">{locationError}</p>
-              )}
-              
-              {locationEnabled && userLocation && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Distance: {distanceKm} km</span>
-                    <span className="text-xs text-gray-400">
-                      {distanceKm <= 5 ? 'Nearby' : distanceKm <= 15 ? 'Local Area' : distanceKm <= 30 ? 'Wider Area' : 'City-wide'}
-                    </span>
-                  </div>
-                  <Slider
-                    value={[distanceKm]}
-                    onValueChange={([value]) => setDistanceKm(value)}
-                    min={1}
-                    max={50}
-                    step={1}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-xs text-gray-400">
-                    <span>1 km</span>
-                    <span>25 km</span>
-                    <span>50 km</span>
-                  </div>
+                <div className="flex items-start gap-2 p-3 bg-red-50 rounded-lg mb-3">
+                  <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-700">{locationError}</p>
                 </div>
               )}
               
-              {!locationEnabled && !locationLoading && (
-                <p className="text-sm text-gray-500">
-                  Enable location to find services near you, sorted by distance.
+              {/* Always show the slider - disabled when location not enabled */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className={`text-sm ${locationEnabled ? 'text-gray-600' : 'text-gray-400'}`}>
+                    Distance: {distanceKm} km
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {distanceKm <= 5 ? 'Nearby' : distanceKm <= 15 ? 'Local Area' : distanceKm <= 30 ? 'Wider Area' : 'City-wide'}
+                  </span>
+                </div>
+                <Slider
+                  value={[distanceKm]}
+                  onValueChange={([value]) => setDistanceKm(value)}
+                  min={1}
+                  max={50}
+                  step={1}
+                  className={`w-full ${!locationEnabled ? 'opacity-50' : ''}`}
+                  disabled={!locationEnabled}
+                />
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>1 km</span>
+                  <span>25 km</span>
+                  <span>50 km</span>
+                </div>
+              </div>
+              
+              {!locationEnabled && !locationLoading && !locationError && (
+                <p className="text-sm text-gray-500 mt-3">
+                  {permissionState === 'denied' 
+                    ? 'Location access was denied. Please update your browser settings to enable distance-based search.'
+                    : 'Enable location to find services near you, sorted by distance.'
+                  }
                 </p>
               )}
             </div>

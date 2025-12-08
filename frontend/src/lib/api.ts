@@ -186,6 +186,11 @@ export const serviceAPI = {
   delete: async (id: string, signal?: AbortSignal): Promise<void> => {
     await apiClient.delete(`/services/${id}/`, { signal });
   },
+
+  report: async (id: string, type: string, description: string, signal?: AbortSignal): Promise<{ status: string; report_id: string; message: string }> => {
+    const response = await apiClient.post(`/services/${id}/report/`, { type, description }, { signal });
+    return response.data;
+  },
 };
 
 // Tag API
