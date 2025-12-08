@@ -129,11 +129,12 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     setShowDisputeModal(true);
   };
 
-  const handleResolveDispute = async (action: 'confirm_no_show' | 'dismiss', notes?: string) => {
-    if (!selectedReport) return;
-    setActionLoading(selectedReport.id);
+  const handleResolveDispute = async (action: 'confirm_no_show' | 'dismiss', notes?: string, report?: Report) => {
+    const targetReport = report || selectedReport;
+    if (!targetReport) return;
+    setActionLoading(targetReport.id);
     try {
-      await adminAPI.resolveReport(selectedReport.id, action, notes);
+      await adminAPI.resolveReport(targetReport.id, action, notes);
       setShowDisputeModal(false);
       setSelectedReport(null);
       fetchReports();
@@ -498,10 +499,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                                   size="sm"
                                   variant="outline"
                                   className="text-green-600 border-green-300 hover:bg-green-50"
-                                  onClick={() => {
-                                    setSelectedReport(report);
-                                    handleResolveDispute('dismiss');
-                                  }}
+                                  onClick={() => handleResolveDispute('dismiss', undefined, report)}
                                   disabled={actionLoading === report.id}
                                 >
                                   <XCircle className="w-4 h-4 mr-1" />

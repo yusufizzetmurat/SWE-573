@@ -124,7 +124,8 @@ def complete_timebank_transfer(handshake: Handshake) -> bool:
 def cancel_timebank_transfer(handshake: Handshake) -> bool:
     """Refund escrowed hours when a handshake is cancelled."""
     with transaction.atomic():
-        if handshake.status == "accepted":
+        # Refund for accepted, reported, or paused handshakes (all have escrowed hours)
+        if handshake.status in ("accepted", "reported", "paused"):
             _, receiver = get_provider_and_receiver(handshake)
             receiver = User.objects.select_for_update().get(id=receiver.id)
             hours = handshake.provisioned_hours
