@@ -22,7 +22,9 @@ from .views import (
     ExpressInterestView,
     TransactionHistoryViewSet,
     WikidataSearchView,
-    PublicChatViewSet
+    PublicChatViewSet,
+    CommentViewSet,
+    NegativeRepViewSet
 )
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .views import CustomTokenObtainPairView
@@ -105,6 +107,22 @@ public_chat_viewset = PublicChatViewSet.as_view({
     'post': 'create'
 })
 
+# Create viewset instances for comments
+comment_list_create = CommentViewSet.as_view({
+    'get': 'list',
+    'post': 'create'
+})
+
+comment_detail = CommentViewSet.as_view({
+    'patch': 'partial_update',
+    'delete': 'destroy'
+})
+
+# Create viewset instance for negative reputation
+negative_rep_create = NegativeRepViewSet.as_view({
+    'post': 'create'
+})
+
 urlpatterns = [
     path('health/', health_check, name='health_check'),
     path('auth/register/', UserRegistrationView.as_view(), name='register'),
@@ -115,7 +133,16 @@ urlpatterns = [
     path('services/<uuid:service_id>/interest/', 
          ExpressInterestView.as_view(),
          name='express-interest'),
+    # Comment endpoints nested under services
+    path('services/<uuid:service_id>/comments/', 
+         comment_list_create, 
+         name='service-comments'),
+    path('services/<uuid:service_id>/comments/<uuid:pk>/', 
+         comment_detail, 
+         name='service-comment-detail'),
     path('public-chat/<uuid:pk>/', public_chat_viewset, name='public-chat'),
+    # Negative reputation endpoint
+    path('reputation/negative/', negative_rep_create, name='negative-reputation'),
     path('wikidata/search/', WikidataSearchView.as_view(), name='wikidata-search'),
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
     path('docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),

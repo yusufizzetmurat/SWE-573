@@ -126,6 +126,7 @@ class Service(models.Model):
     schedule_type = models.CharField(max_length=10, choices=SCHEDULE_CHOICES)
     schedule_details = models.TextField(blank=True, null=True)
     tags = models.ManyToManyField(Tag, blank=True)
+    hot_score = models.FloatField(default=0.0, db_index=True, help_text='Ranking score for hot/trending services')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -190,6 +191,7 @@ class Service(models.Model):
             models.Index(fields=['status', 'created_at']),
             models.Index(fields=['status', 'type', 'created_at']),
             models.Index(fields=['location_type', 'location_area']),
+            models.Index(fields=['status', '-hot_score']),  # For hot sorting
         ]
         constraints = [
             models.CheckConstraint(
@@ -419,3 +421,64 @@ class PublicChatMessage(models.Model):
             models.Index(fields=['sender']),
         ]
         ordering = ['created_at']
+
+
+class Comment(models.Model):
+    """Comments on services with single-level threading (top-level + replies)"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='comments')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='comments')
+    parent = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='replies',
+        help_text='Parent comment for replies (null for top-level comments)'
+    )
+    body = models.TextField(max_length=2000)
+    is_deleted = models.BooleanField(default=False, help_text='Soft delete flag')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        prefix = "Reply" if self.parent else "Comment"
+        return f"{prefix} by {self.user.email} on {self.service.title[:30]}"
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['service', 'created_at']),
+            models.Index(fields=['user', 'created_at']),
+            models.Index(fields=['parent']),
+            models.Index(fields=['service', 'is_deleted', 'created_at']),
+        ]
+        ordering = ['created_at']
+
+
+class NegativeRep(models.Model):
+    """Negative reputation feedback for completed handshakes"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    handshake = models.ForeignKey(Handshake, on_delete=models.CASCADE, related_name='negative_reps')
+    giver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='given_negative_reps')
+    receiver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_negative_reps')
+    is_late = models.BooleanField(default=False, help_text='Was late or no-show')
+    is_unhelpful = models.BooleanField(default=False, help_text='Was unhelpful or uncooperative')
+    is_rude = models.BooleanField(default=False, help_text='Was rude or disrespectful')
+    comment = models.TextField(blank=True, null=True, help_text='Optional explanation')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Negative rep from {self.giver.email} to {self.receiver.email}"
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['receiver', 'created_at']),
+            models.Index(fields=['giver', 'created_at']),
+            models.Index(fields=['handshake']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['handshake', 'giver'],
+                name='unique_negative_rep_per_handshake_giver',
+            ),
+        ]

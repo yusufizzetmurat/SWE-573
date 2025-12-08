@@ -23,7 +23,7 @@ from .exceptions import create_error_response, ErrorCodes
 from .models import (
     User, Service, Tag, Handshake, ChatMessage,
     Notification, ReputationRep, Badge, Report, UserBadge, TransactionHistory,
-    ChatRoom, PublicChatMessage
+    ChatRoom, PublicChatMessage, Comment, NegativeRep
 )
 from .serializers import (
     UserRegistrationSerializer, 
@@ -37,7 +37,9 @@ from .serializers import (
     ReportSerializer,
     TransactionHistorySerializer,
     ChatRoomSerializer,
-    PublicChatMessageSerializer
+    PublicChatMessageSerializer,
+    CommentSerializer,
+    NegativeRepSerializer
 )
 from .utils import (
     can_user_post_offer, provision_timebank, complete_timebank_transfer,
@@ -404,6 +406,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
             'lat': request.query_params.get('lat'),
             'lng': request.query_params.get('lng'),
             'distance': request.query_params.get('distance'),
+            'sort': request.query_params.get('sort', 'latest'),
             'page': request.query_params.get('page', '1'),
             'page_size': request.query_params.get('page_size'),
         }
@@ -468,7 +471,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
         
         queryset = search_engine.search(queryset, search_params)
         
-        # Apply default ordering if not already ordered by distance
+        # Apply ordering based on sort parameter
         # Must validate that lat/lng are valid numbers, not just truthy strings
         def is_valid_coordinate(value: str | None) -> bool:
             if value is None:
@@ -481,8 +484,16 @@ class ServiceViewSet(viewsets.ModelViewSet):
         
         lat_param = self.request.query_params.get('lat')
         lng_param = self.request.query_params.get('lng')
+        sort_param = self.request.query_params.get('sort', 'latest')
         
-        if not (is_valid_coordinate(lat_param) and is_valid_coordinate(lng_param)):
+        # If location-based search, distance ordering takes priority
+        if is_valid_coordinate(lat_param) and is_valid_coordinate(lng_param):
+            pass  # Already ordered by distance from search_engine
+        elif sort_param == 'hot':
+            # Sort by hot score (descending - highest score first)
+            queryset = queryset.order_by('-hot_score', '-created_at')
+        else:
+            # Default: sort by latest (created_at descending)
             queryset = queryset.order_by('-created_at')
         
         return queryset
@@ -504,6 +515,14 @@ class ServiceViewSet(viewsets.ModelViewSet):
         
         response = super().create(request, *args, **kwargs)
         invalidate_service_lists()
+        
+        # Award karma for posting a service (+2)
+        request.user.karma_score += 2
+        request.user.save(update_fields=['karma_score'])
+        
+        # Check and assign badges for the user
+        check_and_assign_badges(request.user)
+        
         return response
     
     def perform_update(self, serializer):
@@ -2531,4 +2550,403 @@ class PublicChatViewSet(viewsets.ViewSet):
             logger.warning(f"Failed to broadcast public chat message: {e}")
 
         serializer = PublicChatMessageSerializer(message)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class CommentViewSet(viewsets.ViewSet):
+    """
+    Comment Management for Services
+    
+    Allows users to comment on services with single-level threading.
+    
+    **Endpoints:**
+    - GET /api/services/{service_id}/comments/ - List comments for a service
+    - POST /api/services/{service_id}/comments/ - Create a comment
+    - PATCH /api/services/{service_id}/comments/{comment_id}/ - Edit own comment
+    - DELETE /api/services/{service_id}/comments/{comment_id}/ - Soft delete own comment
+    
+    **Threading:**
+    - Comments can have replies (single level only)
+    - Replies cannot have replies (depth = 1)
+    """
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    throttle_classes = [UserRateThrottle]
+    pagination_class = StandardResultsSetPagination
+
+    def _get_service(self, service_id):
+        """Get service or raise 404"""
+        try:
+            return Service.objects.get(id=service_id)
+        except Service.DoesNotExist:
+            return None
+
+    @track_performance
+    def list(self, request, service_id=None):
+        """
+        List all comments for a service (paginated).
+        
+        Returns top-level comments with nested replies.
+        """
+        service = self._get_service(service_id)
+        if service is None:
+            return create_error_response(
+                'Service not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get top-level comments only (parent=None), prefetch replies
+        comments = Comment.objects.filter(
+            service=service,
+            parent__isnull=True,
+            is_deleted=False
+        ).select_related('user').prefetch_related(
+            Prefetch(
+                'replies',
+                queryset=Comment.objects.filter(is_deleted=False).select_related('user'),
+                to_attr='active_replies'
+            )
+        ).order_by('-created_at')
+
+        # Paginate
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(comments, request)
+        
+        if page is not None:
+            serializer = CommentSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+
+        serializer = CommentSerializer(comments, many=True)
+        return Response(serializer.data)
+
+    @track_performance
+    def create(self, request, service_id=None):
+        """
+        Create a new comment on a service.
+        
+        Request body:
+        - body (string, required): Comment text (max 2000 chars)
+        - parent_id (uuid, optional): Parent comment ID for replies
+        """
+        service = self._get_service(service_id)
+        if service is None:
+            return create_error_response(
+                'Service not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = CommentSerializer(data=request.data)
+        if not serializer.is_valid():
+            return create_error_response(
+                serializer.errors,
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Sanitize body
+        body = bleach.clean(
+            serializer.validated_data['body'],
+            tags=[],
+            strip=True
+        ).strip()[:2000]
+
+        if not body:
+            return create_error_response(
+                'Comment body is required',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Handle parent comment (for replies)
+        parent = None
+        parent_id = serializer.validated_data.get('parent_id')
+        if parent_id:
+            try:
+                parent = Comment.objects.get(id=parent_id, service=service, is_deleted=False)
+                # Enforce single-level threading
+                if parent.parent is not None:
+                    return create_error_response(
+                        'Cannot reply to a reply. Only top-level comments can have replies.',
+                        code=ErrorCodes.VALIDATION_ERROR,
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+            except Comment.DoesNotExist:
+                return create_error_response(
+                    'Parent comment not found',
+                    code=ErrorCodes.NOT_FOUND,
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+
+        # Create comment
+        comment = Comment.objects.create(
+            service=service,
+            user=request.user,
+            parent=parent,
+            body=body
+        )
+
+        # Award karma for posting a comment (+1)
+        request.user.karma_score += 1
+        request.user.save(update_fields=['karma_score'])
+
+        # Award karma to service owner for receiving a comment (+1)
+        if service.user != request.user:
+            service.user.karma_score += 1
+            service.user.save(update_fields=['karma_score'])
+
+        # Check and assign badges for the commenter
+        check_and_assign_badges(request.user)
+
+        # Notify service owner about new comment (if not self-comment)
+        if service.user != request.user:
+            comment_type = "reply" if parent else "comment"
+            create_notification(
+                user=service.user,
+                notification_type='new_comment',
+                title=f'New {comment_type} on your service',
+                message=f'{request.user.first_name} left a {comment_type} on "{service.title}"',
+                service=service
+            )
+
+        # Notify parent comment author about reply
+        if parent and parent.user != request.user:
+            create_notification(
+                user=parent.user,
+                notification_type='comment_reply',
+                title='New reply to your comment',
+                message=f'{request.user.first_name} replied to your comment on "{service.title}"',
+                service=service
+            )
+
+        serializer = CommentSerializer(comment)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @track_performance
+    def partial_update(self, request, service_id=None, pk=None):
+        """
+        Edit own comment.
+        
+        Only the comment author can edit their comment.
+        """
+        service = self._get_service(service_id)
+        if service is None:
+            return create_error_response(
+                'Service not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            comment = Comment.objects.get(id=pk, service=service)
+        except Comment.DoesNotExist:
+            return create_error_response(
+                'Comment not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        # Only author can edit
+        if comment.user != request.user:
+            return create_error_response(
+                'You can only edit your own comments',
+                code=ErrorCodes.PERMISSION_DENIED,
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+
+        # Cannot edit deleted comments
+        if comment.is_deleted:
+            return create_error_response(
+                'Cannot edit a deleted comment',
+                code=ErrorCodes.INVALID_STATE,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        body = request.data.get('body', '').strip()
+        if not body:
+            return create_error_response(
+                'Comment body is required',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Sanitize and update
+        comment.body = bleach.clean(body, tags=[], strip=True).strip()[:2000]
+        comment.save(update_fields=['body', 'updated_at'])
+
+        serializer = CommentSerializer(comment)
+        return Response(serializer.data)
+
+    @track_performance
+    def destroy(self, request, service_id=None, pk=None):
+        """
+        Soft delete own comment.
+        
+        Only the comment author or service owner can delete a comment.
+        """
+        service = self._get_service(service_id)
+        if service is None:
+            return create_error_response(
+                'Service not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            comment = Comment.objects.get(id=pk, service=service)
+        except Comment.DoesNotExist:
+            return create_error_response(
+                'Comment not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        # Only author or service owner can delete
+        if comment.user != request.user and service.user != request.user:
+            return create_error_response(
+                'You can only delete your own comments or comments on your services',
+                code=ErrorCodes.PERMISSION_DENIED,
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+
+        # Soft delete
+        comment.is_deleted = True
+        comment.save(update_fields=['is_deleted', 'updated_at'])
+
+        return Response({'status': 'deleted'}, status=status.HTTP_200_OK)
+
+
+class NegativeRepViewSet(viewsets.ViewSet):
+    """
+    Negative Reputation Management
+    
+    Submit negative feedback for completed handshakes.
+    
+    **Endpoint:** POST /api/reputation/negative/
+    
+    **Request Format:**
+    ```json
+    {
+        "handshake_id": "uuid",
+        "is_late": true,
+        "is_unhelpful": false,
+        "is_rude": false,
+        "comment": "Optional explanation"
+    }
+    ```
+    
+    **Business Rules:**
+    - Can only submit for completed handshakes
+    - Can only submit once per handshake
+    - Must be a participant in the handshake
+    - At least one negative trait must be selected
+    - Negative traits reduce karma by 2 each
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [ConfirmationThrottle]
+
+    @track_performance
+    def create(self, request):
+        """Submit negative reputation for a completed handshake"""
+        handshake_id = request.data.get('handshake_id')
+        
+        if not handshake_id:
+            return create_error_response(
+                'handshake_id is required',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            handshake = Handshake.objects.get(id=handshake_id, status='completed')
+        except Handshake.DoesNotExist:
+            return create_error_response(
+                'Handshake not found or not completed',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        user = request.user
+        
+        # Determine provider and receiver
+        from .utils import get_provider_and_receiver
+        provider, receiver = get_provider_and_receiver(handshake)
+        
+        # Check if user is a participant
+        if user not in [provider, receiver]:
+            return create_error_response(
+                'Not authorized - you are not a participant in this handshake',
+                code=ErrorCodes.PERMISSION_DENIED,
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+
+        # Determine who receives the negative rep (the other party)
+        target_user = receiver if user == provider else provider
+
+        # Check if negative rep already given
+        existing = NegativeRep.objects.filter(handshake=handshake, giver=user).first()
+        if existing:
+            return create_error_response(
+                'Negative reputation already submitted for this handshake',
+                code=ErrorCodes.ALREADY_EXISTS,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate that at least one negative trait is selected
+        is_late = request.data.get('is_late', False)
+        is_unhelpful = request.data.get('is_unhelpful', False)
+        is_rude = request.data.get('is_rude', False)
+
+        if not any([is_late, is_unhelpful, is_rude]):
+            return create_error_response(
+                'At least one negative trait must be selected',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create negative rep
+        try:
+            negative_rep = NegativeRep.objects.create(
+                handshake=handshake,
+                giver=user,
+                receiver=target_user,
+                is_late=is_late,
+                is_unhelpful=is_unhelpful,
+                is_rude=is_rude,
+                comment=request.data.get('comment', '')[:500] if request.data.get('comment') else None
+            )
+        except IntegrityError:
+            return create_error_response(
+                'Negative reputation already submitted',
+                code=ErrorCodes.ALREADY_EXISTS,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Apply karma penalty (-2 per negative trait)
+        karma_penalty = 0
+        if is_late:
+            karma_penalty += 2
+        if is_unhelpful:
+            karma_penalty += 2
+        if is_rude:
+            karma_penalty += 2
+
+        target_user.karma_score -= karma_penalty
+        target_user.save(update_fields=['karma_score'])
+
+        # Check badges for the receiver (might lose eligibility)
+        check_and_assign_badges(target_user)
+
+        # Notify the receiver about negative feedback (without specific details)
+        create_notification(
+            user=target_user,
+            notification_type='negative_feedback',
+            title='Feedback Received',
+            message=f'You received feedback for the service "{handshake.service.title}". '
+                    f'Your karma was adjusted.',
+            handshake=handshake,
+            service=handshake.service
+        )
+
+        serializer = NegativeRepSerializer(negative_rep)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
