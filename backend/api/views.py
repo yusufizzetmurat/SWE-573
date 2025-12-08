@@ -496,6 +496,8 @@ class ServiceViewSet(viewsets.ModelViewSet):
     @track_performance
     def list(self, request, *args, **kwargs):
         # Include all search parameters in cache key
+        # Include admin status since admins see hidden services (is_visible=False)
+        is_admin = request.user.is_authenticated and request.user.role == 'admin'
         cache_key_params = {
             'type': request.query_params.get('type'),
             'tag': request.query_params.get('tag'),
@@ -507,6 +509,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
             'sort': request.query_params.get('sort', 'latest'),
             'page': request.query_params.get('page', '1'),
             'page_size': request.query_params.get('page_size'),
+            'is_admin': str(is_admin),  # Different cache for admin vs non-admin
         }
         
         # Don't cache location-based queries (results vary by user location)

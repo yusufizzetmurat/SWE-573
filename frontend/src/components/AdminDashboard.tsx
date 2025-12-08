@@ -65,7 +65,9 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   };
 
   // Filter reports by tab
-  const contentReports = reports.filter(r => r.type !== 'no_show');
+  // No-show reports without a handshake can't be processed as TimeBank disputes,
+  // so show them in content reports where admins can still review them
+  const contentReports = reports.filter(r => r.type !== 'no_show' || !r.related_handshake);
   const disputeReports = reports.filter(r => r.type === 'no_show' && r.related_handshake);
 
   const handleWarnUser = async (report: Report) => {

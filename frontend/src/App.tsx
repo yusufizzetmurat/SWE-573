@@ -582,6 +582,19 @@ function AppContent() {
           </div>
         )}
 
+        {/* Prompt unauthenticated users to log in */}
+        {currentPage === 'admin' && !isAuthenticated && (
+          <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div className="text-center">
+              <h1 className="text-2xl font-bold text-gray-900 mb-4">Login Required</h1>
+              <p className="text-gray-600 mb-6">Please log in to access the moderator dashboard.</p>
+              <Button onClick={() => handleNavigate('login')} className="bg-amber-500 hover:bg-amber-600">
+                Log In
+              </Button>
+            </div>
+          </div>
+        )}
+
         {currentPage === 'report-detail' && isAuthenticated && user?.role === 'admin' && (
           <Suspense fallback={<LoadingFallback />}>
             <ReportDetail 
