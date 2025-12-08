@@ -67,10 +67,13 @@ def calculate_hot_score(service: Service) -> float:
     hours_since_creation = time_delta.total_seconds() / 3600
     
     # Apply the formula: Score = (P - N + C) / (T + 2)^1.5
+    # Clamp to minimum of 0 to avoid complex numbers from negative bases
+    # (can happen with future timestamps due to clock skew or testing)
     numerator = positive_count - negative_count + comment_count
-    denominator = (hours_since_creation + 2) ** 1.5
+    base = max(hours_since_creation + 2, 0)
+    denominator = base ** 1.5
     
-    # Prevent division by zero (shouldn't happen with +2, but be safe)
+    # Prevent division by zero
     if denominator == 0:
         return 0.0
     
@@ -143,7 +146,9 @@ def calculate_hot_scores_batch(services) -> dict:
         hours_since_creation = time_delta.total_seconds() / 3600
         
         numerator = positive_count - negative_count + comment_count
-        denominator = (hours_since_creation + 2) ** 1.5
+        # Clamp to minimum of 0 to avoid complex numbers from negative bases
+        base = max(hours_since_creation + 2, 0)
+        denominator = base ** 1.5
         
         if denominator == 0:
             scores[service.id] = 0.0

@@ -884,8 +884,9 @@ class CommentSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.INT)
     def get_reply_count(self, obj):
         """Return count of non-deleted replies"""
-        if hasattr(obj, '_prefetched_objects_cache') and 'replies' in obj._prefetched_objects_cache:
-            return len([r for r in obj.replies.all() if not r.is_deleted])
+        # Check for prefetched active_replies (already filtered for is_deleted=False)
+        if hasattr(obj, 'active_replies'):
+            return len(obj.active_replies)
         return obj.replies.filter(is_deleted=False).count()
 
     @extend_schema_field(OpenApiTypes.OBJECT)
@@ -895,9 +896,9 @@ class CommentSerializer(serializers.ModelSerializer):
         if obj.parent is not None:
             return []
         
-        # Use prefetched data if available
-        if hasattr(obj, '_prefetched_objects_cache') and 'replies' in obj._prefetched_objects_cache:
-            replies = [r for r in obj.replies.all() if not r.is_deleted]
+        # Use prefetched active_replies if available (already filtered for is_deleted=False)
+        if hasattr(obj, 'active_replies'):
+            replies = obj.active_replies
         else:
             replies = obj.replies.filter(is_deleted=False).select_related('user')
         
