@@ -517,8 +517,9 @@ class ServiceViewSet(viewsets.ModelViewSet):
         invalidate_service_lists()
         
         # Award karma for posting a service (+2)
-        request.user.karma_score += 2
+        request.user.karma_score = F("karma_score") + 2
         request.user.save(update_fields=['karma_score'])
+        request.user.refresh_from_db(fields=['karma_score'])
         
         # Check and assign badges for the user
         check_and_assign_badges(request.user)
@@ -2687,13 +2688,15 @@ class CommentViewSet(viewsets.ViewSet):
         )
 
         # Award karma for posting a comment (+1)
-        request.user.karma_score += 1
+        request.user.karma_score = F("karma_score") + 1
         request.user.save(update_fields=['karma_score'])
+        request.user.refresh_from_db(fields=['karma_score'])
 
         # Award karma to service owner for receiving a comment (+1)
         if service.user != request.user:
-            service.user.karma_score += 1
+            service.user.karma_score = F("karma_score") + 1
             service.user.save(update_fields=['karma_score'])
+            service.user.refresh_from_db(fields=['karma_score'])
 
         # Check and assign badges for the commenter
         check_and_assign_badges(request.user)
@@ -2931,8 +2934,9 @@ class NegativeRepViewSet(viewsets.ViewSet):
         if is_rude:
             karma_penalty += 2
 
-        target_user.karma_score -= karma_penalty
+        target_user.karma_score = F("karma_score") - karma_penalty
         target_user.save(update_fields=['karma_score'])
+        target_user.refresh_from_db(fields=['karma_score'])
 
         # Check badges for the receiver (might lose eligibility)
         check_and_assign_badges(target_user)
