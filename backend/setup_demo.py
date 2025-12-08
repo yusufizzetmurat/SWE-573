@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 """
 Demo setup script for The Hive
-Creates demo users, services, sample interactions, and forum content
+Cleans up existing demo data and creates fresh demo users, services, interactions, and forum content
+Run: docker compose run --rm backend python manage.py shell < backend/setup_demo.py
 """
 import os
+import sys
 import django
 
+# Setup Django
 if __name__ == "__main__":
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hive_project.settings')
     django.setup()
@@ -23,7 +26,10 @@ print("=" * 60)
 print("The Hive - Demo Data Setup")
 print("=" * 60)
 
-print("\n[1/4] Cleaning up existing demo data...")
+# ============================================================================
+# STEP 1: CLEANUP
+# ============================================================================
+print("\n[1/5] Cleaning up existing demo data...")
 
 demo_emails = [
     'elif@demo.com', 'cem@demo.com', 'sarah@demo.com',
@@ -45,15 +51,28 @@ if demo_users.exists():
 
 orphaned_handshakes = Handshake.objects.filter(service__isnull=True)
 if orphaned_handshakes.exists():
+    print(f"  Removing {orphaned_handshakes.count()} orphaned handshakes...")
     orphaned_handshakes.delete()
 
 orphaned_messages = ChatMessage.objects.filter(handshake__isnull=True)
 if orphaned_messages.exists():
+    print(f"  Removing {orphaned_messages.count()} orphaned chat messages...")
     orphaned_messages.delete()
 
-print("  Done")
+orphaned_notifications = Notification.objects.filter(
+    related_service__isnull=True,
+    related_handshake__isnull=True
+).exclude(type__in=['system', 'welcome'])
+if orphaned_notifications.exists():
+    print(f"  Removing {orphaned_notifications.count()} orphaned notifications...")
+    orphaned_notifications.delete()
 
-print("\n[2/4] Creating tags...")
+print("  ✅ Cleanup complete")
+
+# ============================================================================
+# STEP 2: CREATE TAGS
+# ============================================================================
+print("\n[2/5] Creating tags...")
 
 tags_data = [
     {'id': 'Q8476', 'name': 'Cooking'},
@@ -70,17 +89,20 @@ tags_data = [
 created_count = 0
 for tag_data in tags_data:
     try:
-        Tag.objects.get(name=tag_data['name'])
+        tag = Tag.objects.get(name=tag_data['name'])
     except Tag.DoesNotExist:
         try:
-            Tag.objects.get(id=tag_data['id'])
+            tag = Tag.objects.get(id=tag_data['id'])
         except Tag.DoesNotExist:
-            Tag.objects.create(id=tag_data['id'], name=tag_data['name'])
+            tag = Tag.objects.create(id=tag_data['id'], name=tag_data['name'])
             created_count += 1
 
-print(f"  Processed {len(tags_data)} tags ({created_count} created)")
+print(f"  ✅ Processed {len(tags_data)} tags ({created_count} created)")
 
-print("\n[3/4] Creating demo users...")
+# ============================================================================
+# STEP 3: CREATE DEMO USERS
+# ============================================================================
+print("\n[3/5] Creating demo users...")
 
 def create_or_update_user(email, first_name, last_name, bio, balance, karma):
     user, created = User.objects.get_or_create(
@@ -100,7 +122,7 @@ def create_or_update_user(email, first_name, last_name, bio, balance, karma):
         user.karma_score = karma
         user.set_password('demo123')
         user.save()
-    print(f"  {'Created' if created else 'Updated'}: {email} (Balance: {balance}h)")
+    print(f"  ✅ {'Created' if created else 'Updated'}: {email} (Balance: {balance}h)")
     return user
 
 elif_user = create_or_update_user(
@@ -139,7 +161,10 @@ ayse = create_or_update_user(
     Decimal('4.00'), 15
 )
 
-print("\n[4/4] Creating services...")
+# ============================================================================
+# STEP 4: CREATE SERVICES
+# ============================================================================
+print("\n[4/5] Creating services...")
 
 def get_tag(tag_id, tag_name):
     try:
@@ -168,7 +193,7 @@ elif_manti = Service.objects.create(
     status='Active',
 )
 elif_manti.tags.set([cooking_tag])
-print(f"  Created: {elif_manti.title}")
+print(f"  ✅ Created: {elif_manti.title}")
 
 elif_3d = Service.objects.create(
     user=elif_user,
@@ -184,7 +209,7 @@ elif_3d = Service.objects.create(
     status='Active',
 )
 elif_3d.tags.set([technology_tag])
-print(f"  Created: {elif_3d.title}")
+print(f"  ✅ Created: {elif_3d.title}")
 
 cem_chess = Service.objects.create(
     user=cem,
@@ -200,7 +225,7 @@ cem_chess = Service.objects.create(
     status='Active',
 )
 cem_chess.tags.set([chess_tag])
-print(f"  Created: {cem_chess.title}")
+print(f"  ✅ Created: {cem_chess.title}")
 
 cem_genealogy = Service.objects.create(
     user=cem,
@@ -215,7 +240,7 @@ cem_genealogy = Service.objects.create(
     status='Active',
 )
 cem_genealogy.tags.set([education_tag])
-print(f"  Created: {cem_genealogy.title}")
+print(f"  ✅ Created: {cem_genealogy.title}")
 
 ayse_gardening = Service.objects.create(
     user=ayse,
@@ -231,7 +256,7 @@ ayse_gardening = Service.objects.create(
     status='Active',
 )
 ayse_gardening.tags.set([gardening_tag])
-print(f"  Created: {ayse_gardening.title}")
+print(f"  ✅ Created: {ayse_gardening.title}")
 
 marcus_turkish = Service.objects.create(
     user=marcus,
@@ -246,7 +271,7 @@ marcus_turkish = Service.objects.create(
     status='Active',
 )
 marcus_turkish.tags.set([language_tag])
-print(f"  Created: {marcus_turkish.title}")
+print(f"  ✅ Created: {marcus_turkish.title}")
 
 # Multi-participant services for group chat testing
 print("\n  Creating multi-participant services...")
@@ -265,7 +290,7 @@ group_cooking = Service.objects.create(
     status='Active',
 )
 group_cooking.tags.set([cooking_tag])
-print(f"  Created: {group_cooking.title} (max 4 participants)")
+print(f"  ✅ Created: {group_cooking.title} (max 4 participants)")
 
 community_garden = Service.objects.create(
     user=ayse,
@@ -281,7 +306,7 @@ community_garden = Service.objects.create(
     status='Active',
 )
 community_garden.tags.set([gardening_tag])
-print(f"  Created: {community_garden.title} (max 5 participants)")
+print(f"  ✅ Created: {community_garden.title} (max 5 participants)")
 
 chess_tournament = Service.objects.create(
     user=cem,
@@ -297,13 +322,16 @@ chess_tournament = Service.objects.create(
     status='Active',
 )
 chess_tournament.tags.set([chess_tag, education_tag])
-print(f"  Created: {chess_tournament.title} (max 6 participants)")
+print(f"  ✅ Created: {chess_tournament.title} (max 6 participants)")
 
 print("\n  Assigning badges...")
 for user in [elif_user, cem, marcus, sarah, alex, ayse]:
     check_and_assign_badges(user)
-print("  Done")
+print("  ✅ Badges assigned")
 
+# ============================================================================
+# STEP 5: CREATE FORUM CONTENT
+# ============================================================================
 print("\n[5/5] Creating forum content...")
 
 # Get forum categories (assumes seed_forum_categories has been run)
@@ -336,7 +364,7 @@ Feel free to introduce yourself in the Introductions forum and don't hesitate to
 Happy exchanging! 🌟''',
         is_pinned=True
     )
-    print(f"  Created topic: {welcome_topic.title}")
+    print(f"  ✅ Created topic: {welcome_topic.title}")
     
     # Add replies to welcome topic
     ForumPost.objects.create(
@@ -376,7 +404,7 @@ I'm Elif, a freelance designer based in Besiktas. Outside of work, my biggest pa
 
 Looking forward to meeting you all through this amazing platform! 🌻'''
     )
-    print(f"  Created topic: {intro_topic.title}")
+    print(f"  ✅ Created topic: {intro_topic.title}")
     
     ForumPost.objects.create(
         topic=intro_topic,
@@ -408,7 +436,7 @@ After a few successful exchanges, I wanted to share some tips that have worked f
 
 What other tips do you have? Would love to hear from experienced members! 🤝'''
     )
-    print(f"  Created topic: {skills_topic.title}")
+    print(f"  ✅ Created topic: {skills_topic.title}")
     
     ForumPost.objects.create(
         topic=skills_topic,
@@ -437,7 +465,7 @@ If both people are having a great time and want to continue, you can always agre
     )
     print(f"    Added 3 replies to skills topic")
     
-    print("  Forum content created successfully!")
+    print("  ✅ Forum content created successfully!")
     
 except ForumCategory.DoesNotExist:
     print("  Skipping forum content (run 'python manage.py seed_forum_categories' first)")
