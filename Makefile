@@ -42,8 +42,6 @@ demo: build
 	@sleep 5
 	@echo "Running migrations..."
 	docker compose exec backend python manage.py migrate
-	@echo "Seeding forum categories..."
-	docker compose exec backend python manage.py seed_forum_categories
 	@echo "Setting up demo data..."
 	docker compose exec backend bash -c "cd /code && DJANGO_SETTINGS_MODULE=hive_project.settings python setup_demo.py"
 	@echo ""
