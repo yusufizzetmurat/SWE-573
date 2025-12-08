@@ -541,3 +541,85 @@ export const publicChatAPI = {
     return response.data;
   },
 };
+
+// Comment API
+export interface CommentReply {
+  id: string;
+  user_id: string;
+  user_name: string;
+  user_avatar_url?: string;
+  body: string;
+  is_deleted: boolean;
+  is_verified_review: boolean;
+  handshake_hours?: number;
+  handshake_completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Comment {
+  id: string;
+  service: string;
+  user_id: string;
+  user_name: string;
+  user_avatar_url?: string;
+  parent?: string;
+  body: string;
+  is_deleted: boolean;
+  is_verified_review: boolean;
+  handshake_hours?: number;
+  handshake_completed_at?: string;
+  reply_count: number;
+  replies: CommentReply[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReviewableHandshake {
+  id: string;
+  provisioned_hours: number;
+  completed_at: string;
+}
+
+export interface CommentsResponse {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: Comment[];
+}
+
+export const commentAPI = {
+  list: async (serviceId: string, page?: number, signal?: AbortSignal): Promise<CommentsResponse> => {
+    const params = page ? { page } : {};
+    const response = await apiClient.get(`/services/${serviceId}/comments/`, { params, signal });
+    return response.data;
+  },
+
+  create: async (
+    serviceId: string, 
+    body: string, 
+    parentId?: string, 
+    handshakeId?: string, 
+    signal?: AbortSignal
+  ): Promise<Comment> => {
+    const payload: { body: string; parent_id?: string; handshake_id?: string } = { body };
+    if (parentId) payload.parent_id = parentId;
+    if (handshakeId) payload.handshake_id = handshakeId;
+    const response = await apiClient.post(`/services/${serviceId}/comments/`, payload, { signal });
+    return response.data;
+  },
+
+  update: async (serviceId: string, commentId: string, body: string, signal?: AbortSignal): Promise<Comment> => {
+    const response = await apiClient.patch(`/services/${serviceId}/comments/${commentId}/`, { body }, { signal });
+    return response.data;
+  },
+
+  delete: async (serviceId: string, commentId: string, signal?: AbortSignal): Promise<void> => {
+    await apiClient.delete(`/services/${serviceId}/comments/${commentId}/`, { signal });
+  },
+
+  getReviewableHandshakes: async (serviceId: string, signal?: AbortSignal): Promise<ReviewableHandshake[]> => {
+    const response = await apiClient.get(`/services/${serviceId}/comments/reviewable/`, { signal });
+    return response.data.handshakes || [];
+  },
+};

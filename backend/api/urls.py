@@ -119,6 +119,10 @@ comment_detail = CommentViewSet.as_view({
     'delete': 'destroy'
 })
 
+comment_reviewable = CommentViewSet.as_view({
+    'get': 'reviewable_handshakes'
+})
+
 # Create viewset instance for negative reputation
 negative_rep_create = NegativeRepViewSet.as_view({
     'post': 'create'
@@ -142,6 +146,9 @@ urlpatterns = [
     path('services/<uuid:service_id>/comments/<uuid:pk>/', 
          comment_detail, 
          name='service-comment-detail'),
+    path('services/<uuid:service_id>/comments/reviewable/', 
+         comment_reviewable, 
+         name='service-comments-reviewable'),
     path('public-chat/<uuid:pk>/', public_chat_viewset, name='public-chat'),
     # Negative reputation endpoint
     path('reputation/negative/', negative_rep_create, name='negative-reputation'),
