@@ -182,3 +182,4 @@ class SearchEngine:
             queryset = strategy.apply(queryset, params)
         
         return queryset
+

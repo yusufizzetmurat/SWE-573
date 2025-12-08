@@ -271,3 +271,4 @@ class HandshakeServiceTestCase(TestCase):
         self.assertIsNotNone(handshake2)
         self.assertEqual(handshake2.requester, self.user2)
         self.assertEqual(handshake2.service, self.service_offer)
+

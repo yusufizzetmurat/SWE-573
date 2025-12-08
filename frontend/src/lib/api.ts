@@ -19,6 +19,23 @@ export interface User {
   badges?: string[];
   date_joined?: string;
   featured_badge?: string | null;
+  // Profile trust enhancement fields
+  video_intro_url?: string;
+  video_intro_file?: string;
+  video_intro_file_url?: string;
+  portfolio_images?: string[];
+  show_history?: boolean;
+}
+
+export interface UserHistoryItem {
+  service_title: string;
+  service_type: 'Offer' | 'Need';
+  duration: number;
+  partner_name: string;
+  partner_id: string;
+  partner_avatar_url?: string;
+  completed_date: string;
+  was_provider: boolean;
 }
 
 export interface Service {
@@ -118,6 +135,11 @@ export const userAPI = {
 
   getUser: async (id: string, signal?: AbortSignal): Promise<User> => {
     const response = await apiClient.get(`/users/${id}/`, { signal });
+    return response.data;
+  },
+
+  getHistory: async (userId: string, signal?: AbortSignal): Promise<UserHistoryItem[]> => {
+    const response = await apiClient.get(`/users/${userId}/history/`, { signal });
     return response.data;
   },
 };

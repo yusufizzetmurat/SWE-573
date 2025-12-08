@@ -37,3 +37,4 @@ class IntersectionObserverMock {
   disconnect() {}
 }
 window.IntersectionObserver = IntersectionObserverMock as any;
+

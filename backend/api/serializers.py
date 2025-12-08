@@ -416,18 +416,38 @@ class UserProfileSerializer(serializers.ModelSerializer):
     last_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
     avatar_url = serializers.CharField(allow_blank=True, required=False)
     banner_url = serializers.CharField(allow_blank=True, required=False)
+    video_intro_url = serializers.CharField(allow_blank=True, required=False, allow_null=True)
+    portfolio_images = serializers.JSONField(required=False, default=list)
+    show_history = serializers.BooleanField(required=False, default=True)
+    video_intro_file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'email', 'first_name', 'last_name', 'bio', 'avatar_url',
             'banner_url', 'timebank_balance', 'karma_score', 'services',
-            'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined'
+            'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined',
+            'video_intro_url', 'video_intro_file', 'video_intro_file_url',
+            'portfolio_images', 'show_history'
         ]
         read_only_fields = [
             'id', 'email', 'timebank_balance', 'karma_score', 'services',
-            'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined'
+            'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined',
+            'video_intro_file_url'
         ]
+        extra_kwargs = {
+            'video_intro_file': {'write_only': True, 'required': False}
+        }
+    
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_video_intro_file_url(self, obj):
+        """Return full URL for uploaded video intro file"""
+        if obj.video_intro_file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.video_intro_file.url)
+            return obj.video_intro_file.url
+        return None
     
     def validate_avatar_url(self, value):
         """Validate avatar URL format - allow data URLs for file uploads and regular URLs"""
@@ -446,6 +466,26 @@ class UserProfileSerializer(serializers.ModelSerializer):
         if value and len(value) > 1000:
             raise serializers.ValidationError('Bio must be 1000 characters or less')
         return value
+    
+    def validate_video_intro_url(self, value):
+        """Validate video intro URL - must be YouTube, Vimeo, or valid URL"""
+        if value:
+            import re
+            youtube_pattern = r'(youtube\.com|youtu\.be)'
+            vimeo_pattern = r'vimeo\.com'
+            if not (re.search(youtube_pattern, value) or 
+                    re.search(vimeo_pattern, value) or 
+                    value.startswith(('http://', 'https://'))):
+                raise serializers.ValidationError(
+                    'Video URL must be a valid YouTube, Vimeo, or direct video URL'
+                )
+        return value
+    
+    def validate_portfolio_images(self, value):
+        """Validate portfolio images array - max 5 items"""
+        if value and len(value) > 5:
+            raise serializers.ValidationError('Maximum 5 portfolio images allowed')
+        return value
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_badges(self, obj):
@@ -457,18 +497,27 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
     helpful_count = serializers.IntegerField(read_only=True)
     kind_count = serializers.IntegerField(read_only=True)
     badges = serializers.SerializerMethodField()
+    video_intro_file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'first_name', 'last_name', 'bio', 'avatar_url',
             'banner_url', 'karma_score', 'services',
-            'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined'
+            'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined',
+            'video_intro_url', 'video_intro_file_url', 'portfolio_images', 'show_history'
         ]
-        read_only_fields = [
-            'id', 'karma_score', 'services',
-            'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined'
-        ]
+        read_only_fields = fields
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_video_intro_file_url(self, obj):
+        """Return full URL for uploaded video intro file"""
+        if obj.video_intro_file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.video_intro_file.url)
+            return obj.video_intro_file.url
+        return None
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_badges(self, obj):
@@ -1012,3 +1061,34 @@ class NegativeRepSerializer(serializers.ModelSerializer):
             )
         
         return data
+
+
+# User History Serializer
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'User History Item Example',
+            value={
+                'service_title': 'Web Development Help',
+                'service_type': 'Offer',
+                'duration': 2.5,
+                'partner_name': 'Jane Smith',
+                'partner_id': '123e4567-e89b-12d3-a456-426614174003',
+                'partner_avatar_url': 'https://example.com/avatars/jane.jpg',
+                'completed_date': '2024-01-01T12:00:00Z',
+                'was_provider': True
+            },
+            response_only=True
+        )
+    ]
+)
+class UserHistorySerializer(serializers.Serializer):
+    """Serializer for user's completed transaction history"""
+    service_title = serializers.CharField()
+    service_type = serializers.CharField()
+    duration = serializers.DecimalField(max_digits=5, decimal_places=2)
+    partner_name = serializers.CharField()
+    partner_id = serializers.UUIDField()
+    partner_avatar_url = serializers.CharField(allow_null=True)
+    completed_date = serializers.DateTimeField()
+    was_provider = serializers.BooleanField()

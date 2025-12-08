@@ -283,3 +283,4 @@ class PublicChatAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Room should be recreated
         self.assertTrue(ChatRoom.objects.filter(related_service=self.service).exists())
+

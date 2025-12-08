@@ -334,8 +334,19 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Provider Card */}
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h3 className="text-gray-900 mb-4">{service.type === 'Offer' ? 'Service Provider' : 'Service Receiver'}</h3>
+            <div 
+              className="bg-white rounded-xl border border-gray-200 p-6 cursor-pointer hover:border-amber-300 hover:shadow-md transition-all"
+              onClick={() => {
+                const providerId = typeof service.user === 'object' ? service.user?.id : service.user;
+                if (providerId) {
+                  onNavigate('public-profile', { userId: providerId });
+                }
+              }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-gray-900">{service.type === 'Offer' ? 'Service Provider' : 'Service Receiver'}</h3>
+                <span className="text-xs text-amber-600 font-medium">View Profile →</span>
+              </div>
               
               <div className="flex items-start gap-4 mb-4">
                 <Avatar className="w-16 h-16">

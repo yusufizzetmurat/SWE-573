@@ -328,6 +328,92 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
             return PublicUserProfileSerializer
         return UserProfileSerializer
 
+
+class UserHistoryView(APIView):
+    """
+    User Transaction History
+    
+    Get a user's completed transaction history (successful exchanges).
+    
+    **GET /api/users/{id}/history/** - Get user's transaction history
+    
+    **Privacy:**
+    - If the user has `show_history=False`, returns empty list for other users
+    - Users can always see their own history
+    
+    **Response Format:**
+    ```json
+    [
+        {
+            "service_title": "Web Development Help",
+            "service_type": "Offer",
+            "duration": 2.5,
+            "partner_name": "Jane Smith",
+            "partner_id": "uuid",
+            "partner_avatar_url": "https://example.com/avatar.jpg",
+            "completed_date": "2024-01-01T12:00:00Z",
+            "was_provider": true
+        }
+    ]
+    ```
+    
+    **Authentication:** Optional (required to view private histories or own history)
+    """
+    permission_classes = [permissions.AllowAny]
+    
+    def get(self, request, id):
+        from .serializers import UserHistorySerializer
+        from .utils import get_provider_and_receiver
+        
+        try:
+            target_user = User.objects.get(id=id)
+        except User.DoesNotExist:
+            return Response(
+                {'detail': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check privacy - if not showing history and not the owner, return empty
+        is_owner = request.user.is_authenticated and str(request.user.id) == str(id)
+        if not target_user.show_history and not is_owner:
+            return Response([])
+        
+        # Get completed handshakes where this user participated
+        # User could be service owner OR requester
+        completed_handshakes = Handshake.objects.filter(
+            status='completed'
+        ).filter(
+            Q(service__user=target_user) | Q(requester=target_user)
+        ).select_related(
+            'service', 'service__user', 'requester'
+        ).order_by('-updated_at')[:50]  # Limit to last 50
+        
+        history = []
+        for handshake in completed_handshakes:
+            provider, receiver = get_provider_and_receiver(handshake)
+            was_provider = provider.id == target_user.id
+            
+            # Determine partner (the other party)
+            if was_provider:
+                partner = receiver
+            else:
+                partner = provider
+            
+            history.append({
+                'service_title': handshake.service.title,
+                'service_type': handshake.service.type,
+                'duration': handshake.provisioned_hours,
+                'partner_name': f"{partner.first_name} {partner.last_name}".strip(),
+                'partner_id': partner.id,
+                'partner_avatar_url': partner.avatar_url,
+                'completed_date': handshake.updated_at,
+                'was_provider': was_provider
+            })
+        
+        serializer = UserHistorySerializer(history, many=True)
+        return Response(serializer.data)
+
+
 class ServiceViewSet(viewsets.ModelViewSet):
     """
     Service Management

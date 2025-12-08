@@ -37,6 +37,28 @@ class User(AbstractUser):
     karma_score = models.IntegerField(default=0)
     role = models.CharField(max_length=20, choices=[('member', 'Member'), ('admin', 'Admin')], default='member')
     date_joined = models.DateTimeField(auto_now_add=True)
+    
+    # Profile trust enhancement fields
+    video_intro_url = models.TextField(
+        blank=True, 
+        null=True,
+        help_text='External video URL (YouTube, Vimeo, etc.)'
+    )
+    video_intro_file = models.FileField(
+        upload_to='videos/intros/',
+        blank=True,
+        null=True,
+        help_text='Uploaded video intro file'
+    )
+    portfolio_images = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Array of portfolio image URLs/paths (max 5)'
+    )
+    show_history = models.BooleanField(
+        default=True,
+        help_text='Whether to show transaction history publicly'
+    )
 
     objects = CustomUserManager()
 

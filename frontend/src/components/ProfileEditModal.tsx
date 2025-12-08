@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Plus, Trash2, Video, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -21,6 +21,9 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
     banner_url: '',
     first_name: '',
     last_name: '',
+    video_intro_url: '',
+    portfolio_images: [] as string[],
+    show_history: true,
   });
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
@@ -35,6 +38,9 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
         banner_url: user.banner_url || '',
         first_name: user.first_name || '',
         last_name: user.last_name || '',
+        video_intro_url: user.video_intro_url || '',
+        portfolio_images: user.portfolio_images || [],
+        show_history: user.show_history !== false, // Default to true
       });
     }
   }, [user]);
@@ -57,6 +63,27 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
     }
   };
 
+  const handlePortfolioImageAdd = (file: File | null) => {
+    if (file && formData.portfolio_images.length < 5) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        setFormData({
+          ...formData,
+          portfolio_images: [...formData.portfolio_images, dataUrl]
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePortfolioImageRemove = (index: number) => {
+    setFormData({
+      ...formData,
+      portfolio_images: formData.portfolio_images.filter((_, i) => i !== index)
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -66,15 +93,18 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
       // Filter out empty values to avoid validation errors
       // Always include name fields (required), include bio (can be empty), 
       // only include URLs if they have a value
-      const updateData: Record<string, string> = {
+      const updateData: Record<string, unknown> = {
         first_name: formData.first_name,
         last_name: formData.last_name,
         bio: formData.bio || '', // Allow empty bio
+        show_history: formData.show_history,
+        portfolio_images: formData.portfolio_images,
       };
       
       // Only include URLs if they're not empty (to avoid validation errors)
       if (formData.avatar_url) updateData.avatar_url = formData.avatar_url;
       if (formData.banner_url) updateData.banner_url = formData.banner_url;
+      if (formData.video_intro_url) updateData.video_intro_url = formData.video_intro_url;
 
       await userAPI.updateMe(updateData);
       onUpdate();
@@ -176,6 +206,96 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
                 </div>
               )}
             </div>
+
+            {/* Video Intro Section */}
+            <div className="border-t pt-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Video className="w-5 h-5 text-amber-600" />
+                <h3 className="font-semibold text-gray-900">Video Introduction</h3>
+              </div>
+              
+              <div>
+                <Label htmlFor="video_intro_url">Video URL (YouTube or Vimeo)</Label>
+                <Input
+                  id="video_intro_url"
+                  type="url"
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  value={formData.video_intro_url}
+                  onChange={(e) => setFormData({ ...formData, video_intro_url: e.target.value })}
+                  className="mt-2"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Paste a YouTube or Vimeo link to introduce yourself to the community
+                </p>
+              </div>
+            </div>
+
+            {/* Portfolio Images Section */}
+            <div className="border-t pt-6">
+              <div className="flex items-center gap-2 mb-4">
+                <ImageIcon className="w-5 h-5 text-amber-600" />
+                <h3 className="font-semibold text-gray-900">Portfolio Images</h3>
+                <span className="text-xs text-gray-500">({formData.portfolio_images.length}/5)</span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                {formData.portfolio_images.map((img, idx) => (
+                  <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 group">
+                    <img src={img} alt={`Portfolio ${idx + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => handlePortfolioImageRemove(idx)}
+                      className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                
+                {formData.portfolio_images.length < 5 && (
+                  <label className="aspect-square rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 hover:bg-amber-50 transition-colors">
+                    <Plus className="w-6 h-6 text-gray-400" />
+                    <span className="text-xs text-gray-500 mt-1">Add Image</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handlePortfolioImageAdd(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Upload up to 5 images showcasing your work or skills
+              </p>
+            </div>
+
+            {/* Privacy Settings Section */}
+            <div className="border-t pt-6">
+              <div className="flex items-center gap-2 mb-4">
+                {formData.show_history ? (
+                  <Eye className="w-5 h-5 text-amber-600" />
+                ) : (
+                  <EyeOff className="w-5 h-5 text-gray-400" />
+                )}
+                <h3 className="font-semibold text-gray-900">Privacy Settings</h3>
+              </div>
+
+              <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={formData.show_history}
+                  onChange={(e) => setFormData({ ...formData, show_history: e.target.checked })}
+                  className="w-5 h-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                />
+                <div>
+                  <p className="font-medium text-gray-900">Show Transaction History</p>
+                  <p className="text-xs text-gray-500">
+                    Allow other users to see your completed exchanges on your public profile
+                  </p>
+                </div>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -193,4 +313,3 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
     </Dialog>
   );
 }
-
