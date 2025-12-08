@@ -516,17 +516,24 @@ function AppContent() {
       </ErrorBoundary>
 
       <ErrorBoundary>
-        {currentPage === 'public-profile' && pageData && 'userId' in pageData && (
-          <Suspense fallback={<LoadingFallback />}>
-            <PublicProfile 
-              onNavigate={handleNavigate}
-              userId={pageData.userId as string}
-              userBalance={userBalance}
-              unreadNotifications={unreadNotifications}
-              onLogout={handleLogout}
-            />
-          </Suspense>
-        )}
+        {currentPage === 'public-profile' && (() => {
+          // Get userId from pageData or fallback to URL path for direct navigation
+          const userId = pageData && 'userId' in pageData 
+            ? pageData.userId as string 
+            : window.location.pathname.split('/').pop();
+          
+          return userId ? (
+            <Suspense fallback={<LoadingFallback />}>
+              <PublicProfile 
+                onNavigate={handleNavigate}
+                userId={userId}
+                userBalance={userBalance}
+                unreadNotifications={unreadNotifications}
+                onLogout={handleLogout}
+              />
+            </Suspense>
+          ) : null;
+        })()}
       </ErrorBoundary>
 
       <ErrorBoundary>

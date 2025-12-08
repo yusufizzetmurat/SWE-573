@@ -470,7 +470,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def validate_video_intro_url(self, value):
         """Validate video intro URL - must be YouTube, Vimeo, or valid URL"""
         if value:
-            import re
             youtube_pattern = r'(youtube\.com|youtu\.be)'
             vimeo_pattern = r'vimeo\.com'
             if not (re.search(youtube_pattern, value) or 

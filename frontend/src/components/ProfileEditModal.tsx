@@ -52,10 +52,10 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
       reader.onloadend = () => {
         const dataUrl = reader.result as string;
         if (type === 'avatar') {
-          setFormData({ ...formData, avatar_url: dataUrl });
+          setFormData(prev => ({ ...prev, avatar_url: dataUrl }));
           setAvatarFile(file);
         } else {
-          setFormData({ ...formData, banner_url: dataUrl });
+          setFormData(prev => ({ ...prev, banner_url: dataUrl }));
           setBannerFile(file);
         }
       };
@@ -68,20 +68,20 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUrl = reader.result as string;
-        setFormData({
-          ...formData,
-          portfolio_images: [...formData.portfolio_images, dataUrl]
-        });
+        setFormData(prev => ({
+          ...prev,
+          portfolio_images: [...prev.portfolio_images, dataUrl]
+        }));
       };
       reader.readAsDataURL(file);
     }
   };
 
   const handlePortfolioImageRemove = (index: number) => {
-    setFormData({
-      ...formData,
-      portfolio_images: formData.portfolio_images.filter((_, i) => i !== index)
-    });
+    setFormData(prev => ({
+      ...prev,
+      portfolio_images: prev.portfolio_images.filter((_, i) => i !== index)
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -104,7 +104,8 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
       // Only include URLs if they're not empty (to avoid validation errors)
       if (formData.avatar_url) updateData.avatar_url = formData.avatar_url;
       if (formData.banner_url) updateData.banner_url = formData.banner_url;
-      if (formData.video_intro_url) updateData.video_intro_url = formData.video_intro_url;
+      // Allow clearing video intro URL by explicitly setting to null
+      updateData.video_intro_url = formData.video_intro_url || null;
 
       await userAPI.updateMe(updateData);
       onUpdate();

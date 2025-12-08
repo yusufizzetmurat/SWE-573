@@ -70,9 +70,12 @@ export function PublicProfile({
           setUserServices(filtered);
         }
 
-        // Fetch history if visible
-        const historyData = await userAPI.getHistory(userId);
-        setHistory(historyData);
+        // Fetch history only if visible (user enabled it or viewing own profile)
+        const isOwn = currentUser && currentUser.id === userId;
+        if (user.show_history || isOwn) {
+          const historyData = await userAPI.getHistory(userId);
+          setHistory(historyData);
+        }
 
       } catch (err) {
         console.error('Failed to fetch profile:', err);
@@ -437,9 +440,9 @@ export function PublicProfile({
                   Completed Exchanges
                 </h3>
                 <div className="space-y-3">
-                  {history.slice(0, 10).map((item, idx) => (
+                  {history.slice(0, 10).map((item) => (
                     <div 
-                      key={idx}
+                      key={`${item.partner_id}-${item.completed_date}`}
                       className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg"
                     >
                       <Avatar className="w-10 h-10">
