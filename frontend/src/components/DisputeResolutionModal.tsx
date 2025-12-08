@@ -22,6 +22,11 @@ export function DisputeResolutionModal({
   const hours = report.handshake_hours || 0;
   const reporterName = report.reporter_name || 'Reporter';
   const reportedName = report.reported_user_name || 'Reported User';
+  
+  // Determine the financial action based on who no-showed
+  // If receiver no-showed: complete transfer (pay provider)
+  // If provider no-showed: cancel transfer (refund receiver)
+  const isReceiverNoShow = report.reported_user_is_receiver === true;
 
   const handleConfirm = () => {
     if (selectedAction) {
@@ -108,7 +113,11 @@ export function DisputeResolutionModal({
                     <ul className="space-y-1 text-red-700">
                       <li className="flex items-center gap-2">
                         <ArrowRight className="w-3 h-3" />
-                        Refund <strong>{hours} hours</strong> to the service receiver
+                        {isReceiverNoShow ? (
+                          <>Transfer <strong>{hours} hours</strong> to the provider (who showed up)</>
+                        ) : (
+                          <>Refund <strong>{hours} hours</strong> to the receiver (who showed up)</>
+                        )}
                       </li>
                       <li className="flex items-center gap-2">
                         <ArrowRight className="w-3 h-3" />
@@ -116,7 +125,7 @@ export function DisputeResolutionModal({
                       </li>
                       <li className="flex items-center gap-2">
                         <ArrowRight className="w-3 h-3" />
-                        Cancel the handshake
+                        {isReceiverNoShow ? 'Complete the handshake' : 'Cancel the handshake'}
                       </li>
                     </ul>
                   </div>

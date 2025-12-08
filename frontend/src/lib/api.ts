@@ -435,6 +435,7 @@ export interface Report {
   handshake_hours?: number;
   handshake_scheduled_time?: string;
   handshake_status?: string;
+  reported_user_is_receiver?: boolean;
   type: 'no_show' | 'inappropriate_content' | 'service_issue' | 'spam';
   status: 'pending' | 'resolved' | 'dismissed';
   description: string;

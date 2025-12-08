@@ -763,6 +763,7 @@ class ReportSerializer(serializers.ModelSerializer):
     handshake_hours = serializers.SerializerMethodField()
     handshake_scheduled_time = serializers.SerializerMethodField()
     handshake_status = serializers.SerializerMethodField()
+    reported_user_is_receiver = serializers.SerializerMethodField()
 
     class Meta:
         model = Report
@@ -770,6 +771,7 @@ class ReportSerializer(serializers.ModelSerializer):
             'id', 'reporter', 'reporter_name', 'reported_user', 'reported_user_name',
             'reported_service', 'reported_service_title', 'related_handshake',
             'handshake_hours', 'handshake_scheduled_time', 'handshake_status',
+            'reported_user_is_receiver',
             'type', 'status', 'description', 'admin_notes', 
             'created_at', 'resolved_at', 'resolved_by'
         ]
@@ -807,6 +809,19 @@ class ReportSerializer(serializers.ModelSerializer):
         if obj.related_handshake:
             return obj.related_handshake.status
         return None
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_reported_user_is_receiver(self, obj):
+        """
+        Determine if the reported user is the receiver in the handshake.
+        This affects the financial action: if receiver no-showed, hours go to provider.
+        """
+        if not obj.related_handshake or not obj.reported_user:
+            return None
+        
+        from .utils import get_provider_and_receiver
+        _, receiver = get_provider_and_receiver(obj.related_handshake)
+        return obj.reported_user.id == receiver.id
 
 # Transaction History Serializer
 @extend_schema_serializer(
