@@ -262,6 +262,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     """
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
 
     def get_queryset(self):
         badge_prefetch = Prefetch(
