@@ -468,22 +468,32 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return value
     
     def validate_video_intro_url(self, value):
-        """Validate video intro URL - must be YouTube, Vimeo, or valid URL"""
+        """Validate video intro URL - must be YouTube, Vimeo, or valid URL with safe scheme"""
         if value:
+            # First, ensure URL starts with safe scheme to prevent XSS (e.g., javascript:)
+            if not value.startswith(('http://', 'https://')):
+                raise serializers.ValidationError(
+                    'Video URL must start with http:// or https://'
+                )
+            # Then check if it's a recognized video platform or direct URL
             youtube_pattern = r'(youtube\.com|youtu\.be)'
             vimeo_pattern = r'vimeo\.com'
-            if not (re.search(youtube_pattern, value) or 
-                    re.search(vimeo_pattern, value) or 
-                    value.startswith(('http://', 'https://'))):
-                raise serializers.ValidationError(
-                    'Video URL must be a valid YouTube, Vimeo, or direct video URL'
-                )
+            if not (re.search(youtube_pattern, value) or re.search(vimeo_pattern, value)):
+                # Allow any https URL as a direct video link
+                pass  # URL scheme already validated above
         return value
     
     def validate_portfolio_images(self, value):
-        """Validate portfolio images array - max 5 items"""
-        if value and len(value) > 5:
-            raise serializers.ValidationError('Maximum 5 portfolio images allowed')
+        """Validate portfolio images array - max 5 items with safe URL schemes"""
+        if value:
+            if len(value) > 5:
+                raise serializers.ValidationError('Maximum 5 portfolio images allowed')
+            # Validate each URL has a safe scheme (consistent with avatar/banner validation)
+            for idx, url in enumerate(value):
+                if url and not url.startswith(('http://', 'https://', 'data:', '/')):
+                    raise serializers.ValidationError(
+                        f'Portfolio image {idx + 1} must be a valid URL (http://, https://, data:, or /)'
+                    )
         return value
 
     @extend_schema_field(OpenApiTypes.OBJECT)

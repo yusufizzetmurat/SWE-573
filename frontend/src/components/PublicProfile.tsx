@@ -86,7 +86,7 @@ export function PublicProfile({
     };
 
     fetchData();
-  }, [userId]);
+  }, [userId, currentUser]);
 
   if (isLoading) {
     return (
@@ -175,19 +175,23 @@ export function PublicProfile({
         );
       }
 
-      // External URL - show link
-      return (
-        <a 
-          href={videoUrl} 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 p-4 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-        >
-          <Play className="w-5 h-5 text-amber-600" />
-          <span className="text-gray-700">Watch Video Introduction</span>
-          <ExternalLink className="w-4 h-4 text-gray-400 ml-auto" />
-        </a>
-      );
+      // External URL - show link only if it's a safe URL scheme
+      if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
+        return (
+          <a 
+            href={videoUrl} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 p-4 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            <Play className="w-5 h-5 text-amber-600" />
+            <span className="text-gray-700">Watch Video Introduction</span>
+            <ExternalLink className="w-4 h-4 text-gray-400 ml-auto" />
+          </a>
+        );
+      }
+      // Unsafe URL scheme - don't render as link
+      return null;
     }
 
     // Uploaded file
