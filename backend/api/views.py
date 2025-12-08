@@ -1514,16 +1514,17 @@ class HandshakeViewSet(viewsets.ModelViewSet):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-        cancel_timebank_transfer(handshake)
+        with transaction.atomic():
+            cancel_timebank_transfer(handshake)
 
-        create_notification(
-            user=handshake.requester,
-            notification_type='handshake_cancelled',
-            title='Service Cancelled',
-            message=f"The service '{handshake.service.title}' has been cancelled.",
-            handshake=handshake,
-            service=handshake.service
-        )
+            create_notification(
+                user=handshake.requester,
+                notification_type='handshake_cancelled',
+                title='Service Cancelled',
+                message=f"The service '{handshake.service.title}' has been cancelled.",
+                handshake=handshake,
+                service=handshake.service
+            )
 
         serializer = self.get_serializer(handshake)
         return Response(serializer.data)
@@ -1641,21 +1642,22 @@ class HandshakeViewSet(viewsets.ModelViewSet):
         invalidate_conversations(str(handshake.requester.id))
 
         if handshake.provider_confirmed_complete and handshake.receiver_confirmed_complete:
-            complete_timebank_transfer(handshake)
-            create_notification(
-                user=handshake.service.user,
-                notification_type='positive_rep',
-                title='Leave Feedback',
-                message=f"Service completed! Would you like to leave positive feedback for {handshake.requester.first_name}?",
-                handshake=handshake
-            )
-            create_notification(
-                user=handshake.requester,
-                notification_type='positive_rep',
-                title='Leave Feedback',
-                message=f"Service completed! Would you like to leave positive feedback for {handshake.service.user.first_name}?",
-                handshake=handshake
-            )
+            with transaction.atomic():
+                complete_timebank_transfer(handshake)
+                create_notification(
+                    user=handshake.service.user,
+                    notification_type='positive_rep',
+                    title='Leave Feedback',
+                    message=f"Service completed! Would you like to leave positive feedback for {handshake.requester.first_name}?",
+                    handshake=handshake
+                )
+                create_notification(
+                    user=handshake.requester,
+                    notification_type='positive_rep',
+                    title='Leave Feedback',
+                    message=f"Service completed! Would you like to leave positive feedback for {handshake.service.user.first_name}?",
+                    handshake=handshake
+                )
 
         serializer = self.get_serializer(handshake)
         return Response(serializer.data)
@@ -2349,7 +2351,12 @@ class AdminReportViewSet(viewsets.ReadOnlyModelViewSet):
                     )
                 
                 # Notify the other party (who showed up)
-                showed_up_user = receiver if noshow_user and noshow_user.id == provider.id else provider
+                # When noshow_user is None, we default to provider no-show (refund receiver),
+                # so receiver is the one who showed up
+                if noshow_user and noshow_user.id == receiver.id:
+                    showed_up_user = provider
+                else:
+                    showed_up_user = receiver
                 showed_up_msg = receiver_msg if showed_up_user.id == receiver.id else provider_msg
                 if not noshow_user or noshow_user.id != showed_up_user.id:
                     create_notification(
