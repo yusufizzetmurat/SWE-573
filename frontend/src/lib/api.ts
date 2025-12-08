@@ -55,6 +55,7 @@ export interface Service {
   schedule_details?: string;
   created_at: string;
   tags?: Tag[];
+  is_visible?: boolean;
 }
 
 export interface Tag {
@@ -207,7 +208,7 @@ export interface Handshake {
   requester: string;
   requester_name: string;
   provider_name: string;
-  status: 'pending' | 'accepted' | 'denied' | 'cancelled' | 'completed' | 'reported';
+  status: 'pending' | 'accepted' | 'denied' | 'cancelled' | 'completed' | 'reported' | 'paused';
   provisioned_hours: number;
   provider_confirmed_complete: boolean;
   receiver_confirmed_complete: boolean;
@@ -429,9 +430,13 @@ export interface Report {
   reported_user?: string;
   reported_user_name?: string;
   reported_service?: string;
+  reported_service_title?: string;
   related_handshake?: string;
-  type: string;
-  status: string;
+  handshake_hours?: number;
+  handshake_scheduled_time?: string;
+  handshake_status?: string;
+  type: 'no_show' | 'inappropriate_content' | 'service_issue' | 'spam';
+  status: 'pending' | 'resolved' | 'dismissed';
   description: string;
   admin_notes?: string;
   created_at: string;
@@ -440,16 +445,27 @@ export interface Report {
 }
 
 export const adminAPI = {
-  getReports: async (signal?: AbortSignal): Promise<Report[]> => {
-    const response = await apiClient.get('/admin/reports/', { signal });
+  getReports: async (status?: string, signal?: AbortSignal): Promise<Report[]> => {
+    const params = status ? { status } : {};
+    const response = await apiClient.get('/admin/reports/', { params, signal });
     return response.data;
   },
 
-  resolveReport: async (reportId: string, action: string, adminNotes?: string, signal?: AbortSignal): Promise<Report> => {
+  resolveReport: async (
+    reportId: string, 
+    action: 'confirm_no_show' | 'dismiss', 
+    adminNotes?: string, 
+    signal?: AbortSignal
+  ): Promise<Report> => {
     const response = await apiClient.post(`/admin/reports/${reportId}/resolve/`, {
       action,
       admin_notes: adminNotes
     }, { signal });
+    return response.data;
+  },
+
+  pauseHandshake: async (reportId: string, signal?: AbortSignal): Promise<{status: string, message: string, handshake_status: string}> => {
+    const response = await apiClient.post(`/admin/reports/${reportId}/pause/`, {}, { signal });
     return response.data;
   },
 
@@ -465,6 +481,11 @@ export const adminAPI = {
 
   adjustKarma: async (userId: string, adjustment: number, signal?: AbortSignal): Promise<{status: string, new_karma: number, message: string}> => {
     const response = await apiClient.post(`/admin/users/${userId}/adjust-karma/`, { adjustment }, { signal });
+    return response.data;
+  },
+
+  toggleServiceVisibility: async (serviceId: string, signal?: AbortSignal): Promise<{id: string, is_visible: boolean, message: string}> => {
+    const response = await apiClient.post(`/services/${serviceId}/toggle-visibility/`, {}, { signal });
     return response.data;
   },
 };

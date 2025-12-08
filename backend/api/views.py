@@ -2,6 +2,7 @@ from rest_framework import generics, viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.views import APIView
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle, ScopedRateThrottle
 from rest_framework.pagination import PageNumberPagination
@@ -544,6 +545,10 @@ class ServiceViewSet(viewsets.ModelViewSet):
             .prefetch_related('tags', user_badges_prefetch)
         )
         
+        # Filter by visibility - admins can see all, others only visible
+        if not (self.request.user.is_authenticated and self.request.user.role == 'admin'):
+            queryset = queryset.filter(is_visible=True)
+        
         # Apply search engine filters (Strategy Pattern)
         search_engine = SearchEngine()
         search_params = {
@@ -620,6 +625,54 @@ class ServiceViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         super().perform_destroy(instance)
         invalidate_service_lists()
+
+    @action(detail=True, methods=['post'], url_path='toggle-visibility')
+    def toggle_visibility(self, request, pk=None):
+        """
+        Toggle Service Visibility (Admin Only)
+        
+        Flip the is_visible flag to hide/show a service [REQ-ADM-004].
+        Hidden services won't appear in public listings.
+        
+        **Endpoint:** POST /api/services/{id}/toggle-visibility/
+        
+        **Response:**
+        ```json
+        {
+            "id": "uuid",
+            "is_visible": false,
+            "message": "Service has been hidden"
+        }
+        ```
+        
+        **Error Scenarios:**
+        - 403 Forbidden: Admin role required
+        - 404 Not Found: Service does not exist
+        """
+        if request.user.role != 'admin':
+            raise PermissionDenied('Admin access required')
+        
+        service = self.get_object()
+        service.is_visible = not service.is_visible
+        service.save(update_fields=['is_visible'])
+        
+        # Notify service owner
+        action_text = 'hidden' if not service.is_visible else 'restored'
+        create_notification(
+            user=service.user,
+            notification_type='admin_warning',
+            title=f'Service {action_text.capitalize()}',
+            message=f'Your service "{service.title}" has been {action_text} by a moderator.',
+            service=service
+        )
+        
+        invalidate_service_lists()
+        
+        return Response({
+            'id': str(service.id),
+            'is_visible': service.is_visible,
+            'message': f'Service has been {action_text}'
+        })
 
 class TagViewSet(viewsets.ModelViewSet):
     """
@@ -2201,7 +2254,13 @@ class AdminReportViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='resolve', throttle_classes=[ConfirmationThrottle])
     def resolve_report(self, request, pk=None):
-        """REQ-ADM-007: Resolve a report"""
+        """
+        REQ-ADM-007: Resolve a report with TimeBank dispute logic
+        
+        Actions:
+        - confirm_no_show: Refund receiver, apply karma penalty, notify both parties
+        - dismiss: Complete transfer to provider, notify both parties
+        """
         if request.user.role != 'admin':
             return create_error_response(
                 'Admin access required',
@@ -2210,35 +2269,162 @@ class AdminReportViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         report = self.get_object()
-        action_type = request.data.get('action')  # 'confirm_no_show', 'dismiss', etc.
+        action_type = request.data.get('action')  # 'confirm_no_show', 'dismiss'
+        admin_notes = request.data.get('admin_notes', '')
+        
+        from .utils import get_provider_and_receiver
+        from django.utils import timezone
 
         if action_type == 'confirm_no_show':
-            # REQ-ADM-008: Apply karma penalty
-            if report.reported_user:
-                report.reported_user.karma_score -= 20
-                report.reported_user.save()
-
-            # Cancel TimeBank transfer
-            if report.related_handshake:
-                cancel_timebank_transfer(report.related_handshake)
+            # REQ-ADM-007: Cancel transfer - refund hours to receiver
+            # REQ-ADM-008: Apply karma penalty to no-show user
+            
+            handshake = report.related_handshake
+            if handshake and handshake.status in ['accepted', 'reported', 'paused']:
+                with transaction.atomic():
+                    # Cancel transfer - refunds receiver
+                    cancel_timebank_transfer(handshake)
+                    
+                    # Get provider and receiver for notifications
+                    provider, receiver = get_provider_and_receiver(handshake)
+                    hours = handshake.provisioned_hours
+                    
+                    # Determine who was the no-show (reported user)
+                    noshow_user = report.reported_user
+                    
+                    # Apply karma penalty (-5) atomically
+                    if noshow_user:
+                        noshow_user.karma_score = F('karma_score') - 5
+                        noshow_user.save(update_fields=['karma_score'])
+                        noshow_user.refresh_from_db(fields=['karma_score'])
+                    
+                    # Notify the no-show user
+                    if noshow_user:
+                        create_notification(
+                            user=noshow_user,
+                            notification_type='dispute_resolved',
+                            title='No-Show Confirmed',
+                            message=f'A no-show report against you has been confirmed. {hours} hours have been refunded to the other party and your karma has been reduced.',
+                            handshake=handshake
+                        )
+                    
+                    # Notify the reporter (who got refunded)
+                    create_notification(
+                        user=report.reporter,
+                        notification_type='dispute_resolved',
+                        title='Dispute Resolved in Your Favor',
+                        message=f'Your no-show report has been confirmed. {hours} hours have been refunded to your account.',
+                        handshake=handshake
+                    )
 
             report.status = 'resolved'
             report.resolved_by = request.user
-            report.admin_notes = request.data.get('admin_notes', 'No-show confirmed')
+            report.resolved_at = timezone.now()
+            report.admin_notes = admin_notes or 'No-show confirmed after investigation'
             report.save()
 
         elif action_type == 'dismiss':
-            # Complete transfer as normal
-            if report.related_handshake:
-                complete_timebank_transfer(report.related_handshake)
+            # Complete transfer normally - hours go to provider
+            handshake = report.related_handshake
+            if handshake and handshake.status in ['accepted', 'reported', 'paused']:
+                with transaction.atomic():
+                    # Complete transfer - pays provider
+                    complete_timebank_transfer(handshake)
+                    
+                    # Get provider and receiver for notifications
+                    provider, receiver = get_provider_and_receiver(handshake)
+                    hours = handshake.provisioned_hours
+                    
+                    # Notify the reported user (cleared)
+                    if report.reported_user:
+                        create_notification(
+                            user=report.reported_user,
+                            notification_type='dispute_resolved',
+                            title='Report Dismissed',
+                            message=f'A report against you has been dismissed. The service has been completed normally.',
+                            handshake=handshake
+                        )
+                    
+                    # Notify the reporter
+                    create_notification(
+                        user=report.reporter,
+                        notification_type='dispute_resolved',
+                        title='Report Dismissed',
+                        message=f'Your report has been reviewed and dismissed. The service has been marked as completed.',
+                        handshake=handshake
+                    )
 
             report.status = 'dismissed'
             report.resolved_by = request.user
-            report.admin_notes = request.data.get('admin_notes', 'Report dismissed')
+            report.resolved_at = timezone.now()
+            report.admin_notes = admin_notes or 'Report dismissed after investigation'
             report.save()
+        
+        else:
+            return create_error_response(
+                'Invalid action. Use "confirm_no_show" or "dismiss".',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         serializer = self.get_serializer(report)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='pause', throttle_classes=[ConfirmationThrottle])
+    def pause_handshake(self, request, pk=None):
+        """
+        Pause a handshake during dispute investigation
+        
+        Sets the related handshake to 'paused' status to prevent
+        either party from completing/cancelling while under review.
+        
+        **Endpoint:** POST /api/admin/reports/{id}/pause/
+        """
+        if request.user.role != 'admin':
+            return create_error_response(
+                'Admin access required',
+                code=ErrorCodes.PERMISSION_DENIED,
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+
+        report = self.get_object()
+        handshake = report.related_handshake
+        
+        if not handshake:
+            return create_error_response(
+                'This report has no related handshake to pause.',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if handshake.status not in ['accepted', 'reported']:
+            return create_error_response(
+                f'Cannot pause handshake with status "{handshake.status}".',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        handshake.status = 'paused'
+        handshake.save(update_fields=['status'])
+        
+        # Notify both parties
+        from .utils import get_provider_and_receiver
+        provider, receiver = get_provider_and_receiver(handshake)
+        
+        for user in [provider, receiver]:
+            create_notification(
+                user=user,
+                notification_type='admin_warning',
+                title='Service Under Review',
+                message=f'The service "{handshake.service.title}" has been paused while a dispute is being investigated.',
+                handshake=handshake
+            )
+        
+        return Response({
+            'status': 'success',
+            'message': 'Handshake has been paused for investigation',
+            'handshake_status': handshake.status
+        })
 
 class AdminUserViewSet(viewsets.ViewSet):
     """

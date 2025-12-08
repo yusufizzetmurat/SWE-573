@@ -561,7 +561,7 @@ function AppContent() {
       </ErrorBoundary>
 
       <ErrorBoundary>
-        {currentPage === 'admin' && (
+        {currentPage === 'admin' && isAuthenticated && user?.role === 'admin' && (
           <Suspense fallback={<LoadingFallback />}>
             <AdminDashboard 
               onNavigate={handleNavigate}
@@ -569,7 +569,20 @@ function AppContent() {
           </Suspense>
         )}
 
-        {currentPage === 'report-detail' && (
+        {/* Redirect non-admin users trying to access admin page */}
+        {currentPage === 'admin' && isAuthenticated && user?.role !== 'admin' && (
+          <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div className="text-center">
+              <h1 className="text-2xl font-bold text-gray-900 mb-4">Access Denied</h1>
+              <p className="text-gray-600 mb-6">You do not have permission to access the moderator dashboard.</p>
+              <Button onClick={() => handleNavigate('dashboard')} className="bg-amber-500 hover:bg-amber-600">
+                Go to Dashboard
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {currentPage === 'report-detail' && isAuthenticated && user?.role === 'admin' && (
           <Suspense fallback={<LoadingFallback />}>
             <ReportDetail 
               onNavigate={handleNavigate}

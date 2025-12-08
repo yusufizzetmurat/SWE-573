@@ -149,6 +149,7 @@ class Service(models.Model):
     schedule_details = models.TextField(blank=True, null=True)
     tags = models.ManyToManyField(Tag, blank=True)
     hot_score = models.FloatField(default=0.0, db_index=True, help_text='Ranking score for hot/trending services')
+    is_visible = models.BooleanField(default=True, help_text='Admin can hide inappropriate services')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -234,6 +235,7 @@ class Handshake(models.Model):
         ('cancelled', 'Cancelled'),
         ('completed', 'Completed'),
         ('reported', 'Reported'),
+        ('paused', 'Paused'),  # Interim state during dispute investigation
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
