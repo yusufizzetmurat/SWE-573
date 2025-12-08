@@ -3275,22 +3275,12 @@ class CommentViewSet(viewsets.ViewSet):
             )
 
         # Get completed handshakes for this service where user is a participant
-        if service.type == 'Offer':
-            # For Offer: service.user is provider, requester is receiver
-            handshakes = Handshake.objects.filter(
-                service=service,
-                status='completed'
-            ).filter(
-                Q(requester=request.user) | Q(service__user=request.user)
-            )
-        else:
-            # For Need: requester is provider, service.user is receiver
-            handshakes = Handshake.objects.filter(
-                service=service,
-                status='completed'
-            ).filter(
-                Q(requester=request.user) | Q(service__user=request.user)
-            )
+        handshakes = Handshake.objects.filter(
+            service=service,
+            status='completed'
+        ).filter(
+            Q(requester=request.user) | Q(service__user=request.user)
+        )
 
         # Exclude handshakes already reviewed by this user
         # Exclude handshakes with active (non-deleted) verified reviews

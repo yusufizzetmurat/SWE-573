@@ -69,6 +69,9 @@ export function ForumTopicDetail({
       if (topicData.posts) {
         setPosts(topicData.posts);
       }
+      // Calculate total pages from reply_count (20 posts per page)
+      const calculatedPages = Math.ceil(topicData.reply_count / 20);
+      setTotalPages(calculatedPages > 0 ? calculatedPages : 1);
     } catch (err) {
       console.error('Failed to fetch topic:', err);
       setError('Failed to load topic. Please try again later.');
