@@ -155,6 +155,7 @@ def cancel_timebank_transfer(handshake: Handshake) -> bool:
         invalidate_conversations(str(receiver.id))
         invalidate_conversations(str(provider.id))
         invalidate_transactions(str(receiver.id))
+        invalidate_transactions(str(provider.id))
 
     handshake.status = "cancelled"
     handshake.save(update_fields=["status"])

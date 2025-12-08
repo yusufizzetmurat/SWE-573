@@ -3038,6 +3038,14 @@ class CommentViewSet(viewsets.ViewSet):
         related_handshake = None
         handshake_id = serializer.validated_data.get('handshake_id')
         
+        # Verified reviews must be top-level comments (not replies)
+        if handshake_id and parent:
+            return create_error_response(
+                'Verified reviews must be top-level comments, not replies',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
         if handshake_id:
             try:
                 handshake = Handshake.objects.select_related('service', 'requester').get(id=handshake_id)
@@ -3080,11 +3088,12 @@ class CommentViewSet(viewsets.ViewSet):
                     status_code=status.HTTP_403_FORBIDDEN
                 )
             
-            # Check for duplicate verified review
+            # Check for duplicate verified review (exclude soft-deleted reviews)
             existing_review = Comment.objects.filter(
                 related_handshake=handshake,
                 user=request.user,
-                is_verified_review=True
+                is_verified_review=True,
+                is_deleted=False
             ).exists()
             
             if existing_review:

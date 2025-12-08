@@ -494,7 +494,7 @@ class Comment(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=['related_handshake', 'user'],
-                condition=models.Q(is_verified_review=True),
+                condition=models.Q(is_verified_review=True, is_deleted=False),
                 name='unique_verified_review_per_handshake_user',
             ),
         ]
