@@ -25,7 +25,10 @@ from .views import (
     WikidataSearchView,
     PublicChatViewSet,
     CommentViewSet,
-    NegativeRepViewSet
+    NegativeRepViewSet,
+    ForumCategoryViewSet,
+    ForumTopicViewSet,
+    ForumPostViewSet
 )
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .views import CustomTokenObtainPairView
@@ -128,6 +131,47 @@ negative_rep_create = NegativeRepViewSet.as_view({
     'post': 'create'
 })
 
+# Forum viewset instances
+forum_category_list = ForumCategoryViewSet.as_view({
+    'get': 'list',
+    'post': 'create'
+})
+
+forum_category_detail = ForumCategoryViewSet.as_view({
+    'get': 'retrieve',
+    'patch': 'partial_update',
+    'delete': 'destroy'
+})
+
+forum_topic_list = ForumTopicViewSet.as_view({
+    'get': 'list',
+    'post': 'create'
+})
+
+forum_topic_detail = ForumTopicViewSet.as_view({
+    'get': 'retrieve',
+    'patch': 'partial_update',
+    'delete': 'destroy'
+})
+
+forum_topic_pin = ForumTopicViewSet.as_view({
+    'post': 'pin'
+})
+
+forum_topic_lock = ForumTopicViewSet.as_view({
+    'post': 'lock'
+})
+
+forum_post_list_create = ForumPostViewSet.as_view({
+    'get': 'list',
+    'post': 'create'
+})
+
+forum_post_detail = ForumPostViewSet.as_view({
+    'patch': 'partial_update',
+    'delete': 'destroy'
+})
+
 urlpatterns = [
     path('health/', health_check, name='health_check'),
     path('auth/register/', UserRegistrationView.as_view(), name='register'),
@@ -153,6 +197,15 @@ urlpatterns = [
     # Negative reputation endpoint
     path('reputation/negative/', negative_rep_create, name='negative-reputation'),
     path('wikidata/search/', WikidataSearchView.as_view(), name='wikidata-search'),
+    # Forum endpoints
+    path('forum/categories/', forum_category_list, name='forum-category-list'),
+    path('forum/categories/<slug:slug>/', forum_category_detail, name='forum-category-detail'),
+    path('forum/topics/', forum_topic_list, name='forum-topic-list'),
+    path('forum/topics/<uuid:pk>/', forum_topic_detail, name='forum-topic-detail'),
+    path('forum/topics/<uuid:pk>/pin/', forum_topic_pin, name='forum-topic-pin'),
+    path('forum/topics/<uuid:pk>/lock/', forum_topic_lock, name='forum-topic-lock'),
+    path('forum/topics/<uuid:topic_id>/posts/', forum_post_list_create, name='forum-post-list'),
+    path('forum/posts/<uuid:pk>/', forum_post_detail, name='forum-post-detail'),
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
     path('docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),

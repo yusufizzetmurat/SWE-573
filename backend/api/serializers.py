@@ -4,7 +4,8 @@ from rest_framework import serializers
 from .models import (
     User, Service, Tag, Handshake, ChatMessage, 
     Notification, ReputationRep, Badge, UserBadge, Report, TransactionHistory,
-    ChatRoom, PublicChatMessage, Comment, NegativeRep
+    ChatRoom, PublicChatMessage, Comment, NegativeRep,
+    ForumCategory, ForumTopic, ForumPost
 )
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.password_validation import validate_password
@@ -1196,3 +1197,254 @@ class UserHistorySerializer(serializers.Serializer):
     partner_avatar_url = serializers.CharField(allow_null=True)
     completed_date = serializers.DateTimeField()
     was_provider = serializers.BooleanField()
+
+
+# Forum Serializers
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Forum Category Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174020',
+                'name': 'General Discussion',
+                'description': 'General community chat and announcements',
+                'slug': 'general-discussion',
+                'icon': 'message-square',
+                'color': 'blue',
+                'display_order': 1,
+                'is_active': True,
+                'topic_count': 127,
+                'post_count': 1453,
+                'last_activity': '2024-01-01T12:00:00Z',
+                'created_at': '2024-01-01T00:00:00Z'
+            },
+            response_only=True
+        ),
+        OpenApiExample(
+            'Create Forum Category Request',
+            value={
+                'name': 'General Discussion',
+                'description': 'General community chat and announcements',
+                'slug': 'general-discussion',
+                'icon': 'message-square',
+                'color': 'blue',
+                'display_order': 1
+            },
+            request_only=True
+        )
+    ]
+)
+class ForumCategorySerializer(serializers.ModelSerializer):
+    topic_count = serializers.SerializerMethodField()
+    post_count = serializers.SerializerMethodField()
+    last_activity = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ForumCategory
+        fields = [
+            'id', 'name', 'description', 'slug', 'icon', 'color',
+            'display_order', 'is_active', 'topic_count', 'post_count',
+            'last_activity', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_topic_count(self, obj):
+        """Return count of topics in this category"""
+        if hasattr(obj, 'topic_count_annotated'):
+            return obj.topic_count_annotated
+        return obj.topics.count()
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_post_count(self, obj):
+        """Return count of all posts across topics in this category"""
+        if hasattr(obj, 'post_count_annotated'):
+            return obj.post_count_annotated
+        return ForumPost.objects.filter(topic__category=obj, is_deleted=False).count()
+
+    @extend_schema_field(OpenApiTypes.DATETIME)
+    def get_last_activity(self, obj):
+        """Return timestamp of most recent activity in this category"""
+        if hasattr(obj, 'last_activity_annotated'):
+            return obj.last_activity_annotated
+        
+        # Check most recent post
+        latest_post = ForumPost.objects.filter(
+            topic__category=obj, is_deleted=False
+        ).order_by('-created_at').first()
+        
+        # Check most recent topic
+        latest_topic = obj.topics.order_by('-created_at').first()
+        
+        if latest_post and latest_topic:
+            return max(latest_post.created_at, latest_topic.created_at)
+        elif latest_post:
+            return latest_post.created_at
+        elif latest_topic:
+            return latest_topic.created_at
+        return obj.created_at
+
+
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Forum Topic Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174021',
+                'category': '123e4567-e89b-12d3-a456-426614174020',
+                'category_name': 'General Discussion',
+                'category_slug': 'general-discussion',
+                'author_id': '123e4567-e89b-12d3-a456-426614174000',
+                'author_name': 'John Doe',
+                'author_avatar_url': 'https://example.com/avatars/john.jpg',
+                'title': 'Welcome to the community!',
+                'body': 'Hello everyone, excited to be here...',
+                'is_pinned': True,
+                'is_locked': False,
+                'view_count': 523,
+                'reply_count': 42,
+                'last_activity': '2024-01-01T14:30:00Z',
+                'created_at': '2024-01-01T12:00:00Z'
+            },
+            response_only=True
+        ),
+        OpenApiExample(
+            'Create Forum Topic Request',
+            value={
+                'category': '123e4567-e89b-12d3-a456-426614174020',
+                'title': 'Welcome to the community!',
+                'body': 'Hello everyone, excited to be here...'
+            },
+            request_only=True
+        )
+    ]
+)
+class ForumTopicSerializer(serializers.ModelSerializer):
+    author_id = serializers.UUIDField(source='author.id', read_only=True)
+    author_name = serializers.SerializerMethodField()
+    author_avatar_url = serializers.SerializerMethodField()
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    category_slug = serializers.CharField(source='category.slug', read_only=True)
+    reply_count = serializers.SerializerMethodField()
+    last_activity = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ForumTopic
+        fields = [
+            'id', 'category', 'category_name', 'category_slug',
+            'author_id', 'author_name', 'author_avatar_url',
+            'title', 'body', 'is_pinned', 'is_locked', 'view_count',
+            'reply_count', 'last_activity', 'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'author_id', 'is_pinned', 'is_locked', 
+            'view_count', 'created_at', 'updated_at'
+        ]
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_author_name(self, obj):
+        return f"{obj.author.first_name} {obj.author.last_name}".strip()
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_author_avatar_url(self, obj):
+        return obj.author.avatar_url
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_reply_count(self, obj):
+        """Return count of non-deleted posts in this topic"""
+        if hasattr(obj, 'reply_count_annotated'):
+            return obj.reply_count_annotated
+        return obj.posts.filter(is_deleted=False).count()
+
+    @extend_schema_field(OpenApiTypes.DATETIME)
+    def get_last_activity(self, obj):
+        """Return timestamp of most recent post or topic creation"""
+        if hasattr(obj, 'last_activity_annotated'):
+            return obj.last_activity_annotated
+        
+        latest_post = obj.posts.filter(is_deleted=False).order_by('-created_at').first()
+        if latest_post:
+            return latest_post.created_at
+        return obj.created_at
+
+    def validate_title(self, value):
+        """Sanitize and validate title"""
+        cleaned = bleach.clean(value, tags=[], strip=True).strip()
+        if len(cleaned) < 5:
+            raise serializers.ValidationError('Title must be at least 5 characters long')
+        return cleaned
+
+    def validate_body(self, value):
+        """Sanitize body text"""
+        return bleach.clean(value, tags=[], strip=True)
+
+
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            'Forum Post Example',
+            value={
+                'id': '123e4567-e89b-12d3-a456-426614174022',
+                'topic': '123e4567-e89b-12d3-a456-426614174021',
+                'author_id': '123e4567-e89b-12d3-a456-426614174000',
+                'author_name': 'John Doe',
+                'author_avatar_url': 'https://example.com/avatars/john.jpg',
+                'body': 'Thanks for the welcome! Happy to be here.',
+                'is_deleted': False,
+                'created_at': '2024-01-01T12:30:00Z',
+                'updated_at': '2024-01-01T12:30:00Z'
+            },
+            response_only=True
+        ),
+        OpenApiExample(
+            'Create Forum Post Request',
+            value={
+                'body': 'Thanks for the welcome! Happy to be here.'
+            },
+            request_only=True
+        )
+    ]
+)
+class ForumPostSerializer(serializers.ModelSerializer):
+    author_id = serializers.UUIDField(source='author.id', read_only=True)
+    author_name = serializers.SerializerMethodField()
+    author_avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ForumPost
+        fields = [
+            'id', 'topic', 'author_id', 'author_name', 'author_avatar_url',
+            'body', 'is_deleted', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'topic', 'author_id', 'is_deleted', 'created_at', 'updated_at']
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_author_name(self, obj):
+        return f"{obj.author.first_name} {obj.author.last_name}".strip()
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_author_avatar_url(self, obj):
+        return obj.author.avatar_url
+
+    def validate_body(self, value):
+        """Sanitize and validate body text"""
+        cleaned = bleach.clean(value, tags=[], strip=True).strip()
+        if len(cleaned) < 1:
+            raise serializers.ValidationError('Post body cannot be empty')
+        return cleaned
+
+
+class ForumTopicDetailSerializer(ForumTopicSerializer):
+    """Extended serializer for topic detail view with posts"""
+    posts = serializers.SerializerMethodField()
+
+    class Meta(ForumTopicSerializer.Meta):
+        fields = ForumTopicSerializer.Meta.fields + ['posts']
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_posts(self, obj):
+        """Return paginated posts for this topic"""
+        # Posts will be handled by the view with pagination
+        # This is just for the initial load
+        posts = obj.posts.filter(is_deleted=False).select_related('author')[:20]
+        return ForumPostSerializer(posts, many=True).data

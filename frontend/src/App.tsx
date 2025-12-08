@@ -22,6 +22,9 @@ const TransactionHistoryPage = lazy(() => import('./components/TransactionHistor
 const AdminDashboard = lazy(() => import('./components/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const ReportDetail = lazy(() => import('./components/ReportDetail').then(m => ({ default: m.ReportDetail })));
 const ForumCategories = lazy(() => import('./components/ForumCategories').then(m => ({ default: m.ForumCategories })));
+const ForumTopicList = lazy(() => import('./components/ForumTopicList').then(m => ({ default: m.ForumTopicList })));
+const ForumTopicDetail = lazy(() => import('./components/ForumTopicDetail').then(m => ({ default: m.ForumTopicDetail })));
+const ForumCreateTopic = lazy(() => import('./components/ForumCreateTopic').then(m => ({ default: m.ForumCreateTopic })));
 const PublicProfile = lazy(() => import('./components/PublicProfile').then(m => ({ default: m.PublicProfile })));
 const WelcomeModal = lazy(() => import('./components/WelcomeModal').then(m => ({ default: m.WelcomeModal })));
 const ServiceConfirmationModal = lazy(() => import('./components/ServiceConfirmationModal').then(m => ({ default: m.ServiceConfirmationModal })));
@@ -51,7 +54,10 @@ type Page =
   | 'transaction-history'
   | 'admin'
   | 'report-detail'
-  | 'forum';
+  | 'forum'
+  | 'forum-category'
+  | 'forum-topic'
+  | 'forum-create-topic';
 
 const pageToPath: Record<Page, string> = {
   home: '/',
@@ -68,6 +74,9 @@ const pageToPath: Record<Page, string> = {
   admin: '/admin',
   'report-detail': '/report-detail',
   forum: '/forum',
+  'forum-category': '/forum/category',
+  'forum-topic': '/forum/topic',
+  'forum-create-topic': '/forum/new',
 };
 
 const resolvePageFromPath = (path: string): Page => {
@@ -80,6 +89,19 @@ const resolvePageFromPath = (path: string): Page => {
   }
   if (path.startsWith('/public-profile/') || path === '/public-profile') {
     return 'public-profile';
+  }
+  // Forum routes
+  if (path === '/forum/new') {
+    return 'forum-create-topic';
+  }
+  if (path.startsWith('/forum/topic/')) {
+    return 'forum-topic';
+  }
+  if (path.startsWith('/forum/category/')) {
+    return 'forum-category';
+  }
+  if (path === '/forum') {
+    return 'forum';
   }
   
   const entry = Object.entries(pageToPath).find(([, mappedPath]) => mappedPath === path);
@@ -174,6 +196,10 @@ function AppContent() {
       targetPath = `/report-detail/${data.id}`;
     } else if (resolvedPage === 'public-profile' && data && 'userId' in data) {
       targetPath = `/public-profile/${data.userId}`;
+    } else if (resolvedPage === 'forum-category' && data && 'categorySlug' in data) {
+      targetPath = `/forum/category/${data.categorySlug}`;
+    } else if (resolvedPage === 'forum-topic' && data && 'topicId' in data) {
+      targetPath = `/forum/topic/${data.topicId}`;
     }
     
     startTransition(() => {
@@ -633,13 +659,72 @@ function AppContent() {
 
       <ErrorBoundary>
         {currentPage === 'forum' && (
-          <ForumCategories 
-            onNavigate={handleNavigate}
-            userBalance={userBalance}
-            unreadNotifications={unreadNotifications}
-            onLogout={handleLogout}
-            isAuthenticated={isAuthenticated}
-          />
+          <Suspense fallback={<LoadingFallback />}>
+            <ForumCategories 
+              onNavigate={handleNavigate}
+              userBalance={userBalance}
+              unreadNotifications={unreadNotifications}
+              onLogout={handleLogout}
+              isAuthenticated={isAuthenticated}
+            />
+          </Suspense>
+        )}
+
+        {currentPage === 'forum-category' && (() => {
+          const categorySlug = pageData && 'categorySlug' in pageData 
+            ? pageData.categorySlug as string 
+            : window.location.pathname.split('/').pop();
+          const categoryName = pageData && 'categoryName' in pageData 
+            ? pageData.categoryName as string 
+            : undefined;
+          
+          return categorySlug ? (
+            <Suspense fallback={<LoadingFallback />}>
+              <ForumTopicList 
+                onNavigate={handleNavigate}
+                categorySlug={categorySlug}
+                categoryName={categoryName}
+                userBalance={userBalance}
+                unreadNotifications={unreadNotifications}
+                onLogout={handleLogout}
+              />
+            </Suspense>
+          ) : null;
+        })()}
+
+        {currentPage === 'forum-topic' && (() => {
+          const topicId = pageData && 'topicId' in pageData 
+            ? pageData.topicId as string 
+            : window.location.pathname.split('/').pop();
+          const topicTitle = pageData && 'topicTitle' in pageData 
+            ? pageData.topicTitle as string 
+            : undefined;
+          
+          return topicId ? (
+            <Suspense fallback={<LoadingFallback />}>
+              <ForumTopicDetail 
+                onNavigate={handleNavigate}
+                topicId={topicId}
+                topicTitle={topicTitle}
+                userBalance={userBalance}
+                unreadNotifications={unreadNotifications}
+                onLogout={handleLogout}
+              />
+            </Suspense>
+          ) : null;
+        })()}
+
+        {currentPage === 'forum-create-topic' && (
+          <Suspense fallback={<LoadingFallback />}>
+            <ForumCreateTopic 
+              onNavigate={handleNavigate}
+              categorySlug={pageData && 'categorySlug' in pageData ? pageData.categorySlug as string : undefined}
+              categoryName={pageData && 'categoryName' in pageData ? pageData.categoryName as string : undefined}
+              userBalance={userBalance}
+              unreadNotifications={unreadNotifications}
+              onLogout={handleLogout}
+            />
+          </Suspense>
         )}
       </ErrorBoundary>
 

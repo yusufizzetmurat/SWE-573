@@ -527,3 +527,107 @@ class NegativeRep(models.Model):
                 name='unique_negative_rep_per_handshake_giver',
             ),
         ]
+
+
+class ForumCategory(models.Model):
+    """Forum categories for organizing community discussions"""
+    COLOR_CHOICES = (
+        ('blue', 'Blue'),
+        ('green', 'Green'),
+        ('purple', 'Purple'),
+        ('amber', 'Amber'),
+        ('orange', 'Orange'),
+        ('pink', 'Pink'),
+        ('red', 'Red'),
+        ('teal', 'Teal'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    slug = models.SlugField(max_length=100, unique=True)
+    icon = models.CharField(
+        max_length=50, 
+        blank=True, 
+        default='message-square',
+        help_text='Lucide icon name (e.g., message-square, users, book-open)'
+    )
+    color = models.CharField(max_length=20, choices=COLOR_CHOICES, default='blue')
+    display_order = models.IntegerField(default=0, help_text='Lower numbers appear first')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ['display_order', 'name']
+        indexes = [
+            models.Index(fields=['slug']),
+            models.Index(fields=['is_active', 'display_order']),
+        ]
+        verbose_name_plural = 'Forum Categories'
+
+
+class ForumTopic(models.Model):
+    """Forum topics (threads) within categories"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    category = models.ForeignKey(
+        ForumCategory, 
+        on_delete=models.CASCADE, 
+        related_name='topics'
+    )
+    author = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='forum_topics'
+    )
+    title = models.CharField(max_length=200)
+    body = models.TextField(max_length=10000)
+    is_pinned = models.BooleanField(default=False, help_text='Pinned topics appear at the top')
+    is_locked = models.BooleanField(default=False, help_text='Locked topics cannot receive new posts')
+    view_count = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.title
+
+    class Meta:
+        ordering = ['-is_pinned', '-created_at']
+        indexes = [
+            models.Index(fields=['category', '-is_pinned', '-created_at']),
+            models.Index(fields=['author', 'created_at']),
+            models.Index(fields=['category', 'is_pinned']),
+        ]
+
+
+class ForumPost(models.Model):
+    """Replies/posts within a forum topic"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    topic = models.ForeignKey(
+        ForumTopic, 
+        on_delete=models.CASCADE, 
+        related_name='posts'
+    )
+    author = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='forum_posts'
+    )
+    body = models.TextField(max_length=5000)
+    is_deleted = models.BooleanField(default=False, help_text='Soft delete flag')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Post by {self.author.email} in {self.topic.title[:30]}"
+
+    class Meta:
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['topic', 'created_at']),
+            models.Index(fields=['author', 'created_at']),
+            models.Index(fields=['topic', 'is_deleted', 'created_at']),
+        ]

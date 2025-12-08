@@ -202,3 +202,73 @@ export function isAuthError(error: unknown): boolean {
   return false;
 }
 
+// Forum Types
+export type ForumCategoryColor = 'blue' | 'green' | 'purple' | 'amber' | 'orange' | 'pink' | 'red' | 'teal';
+
+export interface ForumCategory {
+  id: string;
+  name: string;
+  description: string;
+  slug: string;
+  icon: string;
+  color: ForumCategoryColor;
+  display_order: number;
+  is_active: boolean;
+  topic_count: number;
+  post_count: number;
+  last_activity: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForumTopic {
+  id: string;
+  category: string;
+  category_name: string;
+  category_slug: string;
+  author_id: string;
+  author_name: string;
+  author_avatar_url: string | null;
+  title: string;
+  body: string;
+  is_pinned: boolean;
+  is_locked: boolean;
+  view_count: number;
+  reply_count: number;
+  last_activity: string;
+  created_at: string;
+  updated_at: string;
+  posts?: ForumPost[];
+}
+
+export interface ForumPost {
+  id: string;
+  topic: string;
+  author_id: string;
+  author_name: string;
+  author_avatar_url: string | null;
+  body: string;
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateForumTopicData {
+  category: string;
+  title: string;
+  body: string;
+}
+
+export interface CreateForumPostData {
+  body: string;
+}
+
+export interface CreateForumCategoryData {
+  name: string;
+  description: string;
+  slug: string;
+  icon: string;
+  color: ForumCategoryColor;
+  display_order: number;
+}
+
