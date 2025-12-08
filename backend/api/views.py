@@ -24,7 +24,8 @@ from .exceptions import create_error_response, ErrorCodes
 from .models import (
     User, Service, Tag, Handshake, ChatMessage,
     Notification, ReputationRep, Badge, Report, UserBadge, TransactionHistory,
-    ChatRoom, PublicChatMessage, Comment, NegativeRep
+    ChatRoom, PublicChatMessage, Comment, NegativeRep,
+    ForumCategory, ForumTopic, ForumPost
 )
 from .serializers import (
     UserRegistrationSerializer, 
@@ -40,7 +41,11 @@ from .serializers import (
     ChatRoomSerializer,
     PublicChatMessageSerializer,
     CommentSerializer,
-    NegativeRepSerializer
+    NegativeRepSerializer,
+    ForumCategorySerializer,
+    ForumTopicSerializer,
+    ForumTopicDetailSerializer,
+    ForumPostSerializer
 )
 from .utils import (
     can_user_post_offer, provision_timebank, complete_timebank_transfer,
@@ -3270,22 +3275,12 @@ class CommentViewSet(viewsets.ViewSet):
             )
 
         # Get completed handshakes for this service where user is a participant
-        if service.type == 'Offer':
-            # For Offer: service.user is provider, requester is receiver
-            handshakes = Handshake.objects.filter(
-                service=service,
-                status='completed'
-            ).filter(
-                Q(requester=request.user) | Q(service__user=request.user)
-            )
-        else:
-            # For Need: requester is provider, service.user is receiver
-            handshakes = Handshake.objects.filter(
-                service=service,
-                status='completed'
-            ).filter(
-                Q(requester=request.user) | Q(service__user=request.user)
-            )
+        handshakes = Handshake.objects.filter(
+            service=service,
+            status='completed'
+        ).filter(
+            Q(requester=request.user) | Q(service__user=request.user)
+        )
 
         # Exclude handshakes already reviewed by this user
         # Exclude handshakes with active (non-deleted) verified reviews
@@ -3445,3 +3440,437 @@ class NegativeRepViewSet(viewsets.ViewSet):
 
         serializer = NegativeRepSerializer(negative_rep)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class ForumCategoryViewSet(viewsets.ModelViewSet):
+    """
+    Forum Categories API
+    
+    Manage forum categories for community discussions.
+    
+    **Permissions:**
+    - List/Retrieve: Public (AllowAny)
+    - Create/Update/Delete: Admin only
+    
+    **Endpoints:**
+    - GET /api/forum/categories/ - List all active categories
+    - GET /api/forum/categories/{slug}/ - Get category details
+    - POST /api/forum/categories/ - Create category (admin)
+    - PATCH /api/forum/categories/{id}/ - Update category (admin)
+    - DELETE /api/forum/categories/{id}/ - Delete category (admin)
+    """
+    serializer_class = ForumCategorySerializer
+    pagination_class = None  # No pagination for categories
+    lookup_field = 'slug'
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
+    
+    def get_queryset(self):
+        queryset = ForumCategory.objects.all()
+        
+        # For public views, only show active categories
+        if not self.request.user.is_staff:
+            queryset = queryset.filter(is_active=True)
+        
+        # Annotate with counts for efficiency
+        queryset = queryset.annotate(
+            topic_count_annotated=Count('topics', distinct=True),
+            post_count_annotated=Count('topics__posts', filter=Q(topics__posts__is_deleted=False), distinct=True)
+        )
+        
+        return queryset.order_by('display_order', 'name')
+    
+    @track_performance
+    def list(self, request):
+        """List all active forum categories with topic/post counts"""
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @track_performance
+    def retrieve(self, request, slug=None):
+        """Get a specific category by slug"""
+        try:
+            category = self.get_queryset().get(slug=slug)
+        except ForumCategory.DoesNotExist:
+            return create_error_response(
+                'Category not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = self.get_serializer(category)
+        return Response(serializer.data)
+    
+    @track_performance
+    def create(self, request):
+        """Create a new forum category (admin only)"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    @track_performance
+    def partial_update(self, request, slug=None):
+        """Update a forum category (admin only)"""
+        try:
+            category = ForumCategory.objects.get(slug=slug)
+        except ForumCategory.DoesNotExist:
+            return create_error_response(
+                'Category not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = self.get_serializer(category, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+    
+    @track_performance
+    def destroy(self, request, slug=None):
+        """Delete a forum category (admin only)"""
+        try:
+            category = ForumCategory.objects.get(slug=slug)
+        except ForumCategory.DoesNotExist:
+            return create_error_response(
+                'Category not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Soft delete by deactivating
+        category.is_active = False
+        category.save(update_fields=['is_active'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ForumTopicViewSet(viewsets.ModelViewSet):
+    """
+    Forum Topics API
+    
+    Manage forum topics within categories.
+    
+    **Permissions:**
+    - List/Retrieve: Public (AllowAny)
+    - Create: Authenticated users
+    - Update/Delete: Author or Admin
+    - Pin/Lock: Admin only
+    
+    **Endpoints:**
+    - GET /api/forum/topics/ - List topics (filter by category)
+    - GET /api/forum/topics/{id}/ - Get topic with posts
+    - POST /api/forum/topics/ - Create new topic
+    - PATCH /api/forum/topics/{id}/ - Update topic
+    - DELETE /api/forum/topics/{id}/ - Delete topic
+    - POST /api/forum/topics/{id}/pin/ - Pin/unpin topic (admin)
+    - POST /api/forum/topics/{id}/lock/ - Lock/unlock topic (admin)
+    """
+    serializer_class = ForumTopicSerializer
+    pagination_class = StandardResultsSetPagination
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        elif self.action in ['pin', 'lock']:
+            return [permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
+    
+    def get_queryset(self):
+        queryset = ForumTopic.objects.select_related('author', 'category')
+        
+        # Filter by category if provided
+        category_slug = self.request.query_params.get('category')
+        if category_slug:
+            queryset = queryset.filter(category__slug=category_slug, category__is_active=True)
+        else:
+            # Only show topics from active categories
+            queryset = queryset.filter(category__is_active=True)
+        
+        # Annotate with reply count
+        queryset = queryset.annotate(
+            reply_count_annotated=Count('posts', filter=Q(posts__is_deleted=False))
+        )
+        
+        return queryset.order_by('-is_pinned', '-created_at')
+    
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return ForumTopicDetailSerializer
+        return ForumTopicSerializer
+    
+    @track_performance
+    def list(self, request):
+        """List forum topics with optional category filter"""
+        queryset = self.get_queryset()
+        
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @track_performance
+    def retrieve(self, request, pk=None):
+        """Get a specific topic with its posts"""
+        try:
+            topic = self.get_queryset().get(pk=pk)
+        except ForumTopic.DoesNotExist:
+            return create_error_response(
+                'Topic not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Increment view count (use F() to avoid race conditions)
+        ForumTopic.objects.filter(pk=pk).update(view_count=F('view_count') + 1)
+        topic.refresh_from_db(fields=['view_count'])
+        
+        serializer = self.get_serializer(topic)
+        return Response(serializer.data)
+    
+    @track_performance
+    def create(self, request):
+        """Create a new forum topic"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Verify category exists and is active
+        category_id = request.data.get('category')
+        try:
+            category = ForumCategory.objects.get(id=category_id, is_active=True)
+        except ForumCategory.DoesNotExist:
+            return create_error_response(
+                'Category not found or inactive',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer.save(author=request.user, category=category)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    @track_performance
+    def partial_update(self, request, pk=None):
+        """Update a forum topic (author or admin only)"""
+        try:
+            topic = ForumTopic.objects.get(pk=pk)
+        except ForumTopic.DoesNotExist:
+            return create_error_response(
+                'Topic not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check permissions
+        if topic.author != request.user and not request.user.is_staff:
+            return create_error_response(
+                'Not authorized to edit this topic',
+                code=ErrorCodes.PERMISSION_DENIED,
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Only allow editing title and body
+        allowed_fields = {'title', 'body'}
+        update_data = {k: v for k, v in request.data.items() if k in allowed_fields}
+        
+        serializer = self.get_serializer(topic, data=update_data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+    
+    @track_performance
+    def destroy(self, request, pk=None):
+        """Delete a forum topic (author or admin only)"""
+        try:
+            topic = ForumTopic.objects.get(pk=pk)
+        except ForumTopic.DoesNotExist:
+            return create_error_response(
+                'Topic not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check permissions
+        if topic.author != request.user and not request.user.is_staff:
+            return create_error_response(
+                'Not authorized to delete this topic',
+                code=ErrorCodes.PERMISSION_DENIED,
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        topic.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    @action(detail=True, methods=['post'])
+    @track_performance
+    def pin(self, request, pk=None):
+        """Pin or unpin a topic (admin only)"""
+        try:
+            topic = ForumTopic.objects.get(pk=pk)
+        except ForumTopic.DoesNotExist:
+            return create_error_response(
+                'Topic not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        topic.is_pinned = not topic.is_pinned
+        topic.save(update_fields=['is_pinned'])
+        
+        serializer = self.get_serializer(topic)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    @track_performance
+    def lock(self, request, pk=None):
+        """Lock or unlock a topic (admin only)"""
+        try:
+            topic = ForumTopic.objects.get(pk=pk)
+        except ForumTopic.DoesNotExist:
+            return create_error_response(
+                'Topic not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        topic.is_locked = not topic.is_locked
+        topic.save(update_fields=['is_locked'])
+        
+        serializer = self.get_serializer(topic)
+        return Response(serializer.data)
+
+
+class ForumPostViewSet(viewsets.ViewSet):
+    """
+    Forum Posts API
+    
+    Manage posts (replies) within forum topics.
+    
+    **Permissions:**
+    - List: Public (AllowAny)
+    - Create: Authenticated users (topic must not be locked)
+    - Update/Delete: Author or Admin
+    
+    **Endpoints:**
+    - GET /api/forum/topics/{topic_id}/posts/ - List posts in topic
+    - POST /api/forum/topics/{topic_id}/posts/ - Create new post
+    - PATCH /api/forum/posts/{id}/ - Update post
+    - DELETE /api/forum/posts/{id}/ - Delete post
+    """
+    pagination_class = StandardResultsSetPagination
+    
+    def get_permissions(self):
+        if self.action == 'list':
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
+    
+    @track_performance
+    def list(self, request, topic_id=None):
+        """List posts in a forum topic"""
+        try:
+            topic = ForumTopic.objects.get(pk=topic_id, category__is_active=True)
+        except ForumTopic.DoesNotExist:
+            return create_error_response(
+                'Topic not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        posts = ForumPost.objects.filter(
+            topic=topic, is_deleted=False
+        ).select_related('author').order_by('created_at')
+        
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(posts, request)
+        
+        if page is not None:
+            serializer = ForumPostSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+        
+        serializer = ForumPostSerializer(posts, many=True)
+        return Response(serializer.data)
+    
+    @track_performance
+    def create(self, request, topic_id=None):
+        """Create a new post in a forum topic"""
+        try:
+            topic = ForumTopic.objects.get(pk=topic_id, category__is_active=True)
+        except ForumTopic.DoesNotExist:
+            return create_error_response(
+                'Topic not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if topic is locked
+        if topic.is_locked:
+            return create_error_response(
+                'This topic is locked and cannot receive new posts',
+                code=ErrorCodes.PERMISSION_DENIED,
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = ForumPostSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(topic=topic, author=request.user)
+        
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    @track_performance
+    def partial_update(self, request, pk=None):
+        """Update a forum post (author or admin only)"""
+        try:
+            post = ForumPost.objects.get(pk=pk, is_deleted=False)
+        except ForumPost.DoesNotExist:
+            return create_error_response(
+                'Post not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check permissions
+        if post.author != request.user and not request.user.is_staff:
+            return create_error_response(
+                'Not authorized to edit this post',
+                code=ErrorCodes.PERMISSION_DENIED,
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Only allow editing body
+        if 'body' in request.data:
+            serializer = ForumPostSerializer(post, data={'body': request.data['body']}, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
+        
+        return Response(ForumPostSerializer(post).data)
+    
+    @track_performance
+    def destroy(self, request, pk=None):
+        """Delete a forum post (soft delete, author or admin only)"""
+        try:
+            post = ForumPost.objects.get(pk=pk, is_deleted=False)
+        except ForumPost.DoesNotExist:
+            return create_error_response(
+                'Post not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check permissions
+        if post.author != request.user and not request.user.is_staff:
+            return create_error_response(
+                'Not authorized to delete this post',
+                code=ErrorCodes.PERMISSION_DENIED,
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Soft delete
+        post.is_deleted = True
+        post.save(update_fields=['is_deleted'])
+        return Response(status=status.HTTP_204_NO_CONTENT)

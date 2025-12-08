@@ -623,3 +623,99 @@ export const commentAPI = {
     return response.data.handshakes || [];
   },
 };
+
+// Forum API
+import type { 
+  ForumCategory, 
+  ForumTopic, 
+  ForumPost, 
+  CreateForumTopicData, 
+  CreateForumPostData,
+  CreateForumCategoryData 
+} from './types';
+
+export const forumAPI = {
+  // Categories
+  getCategories: async (signal?: AbortSignal): Promise<ForumCategory[]> => {
+    const response = await apiClient.get('/forum/categories/', { signal });
+    return response.data;
+  },
+
+  getCategory: async (slug: string, signal?: AbortSignal): Promise<ForumCategory> => {
+    const response = await apiClient.get(`/forum/categories/${slug}/`, { signal });
+    return response.data;
+  },
+
+  createCategory: async (data: CreateForumCategoryData, signal?: AbortSignal): Promise<ForumCategory> => {
+    const response = await apiClient.post('/forum/categories/', data, { signal });
+    return response.data;
+  },
+
+  updateCategory: async (slug: string, data: Partial<CreateForumCategoryData>, signal?: AbortSignal): Promise<ForumCategory> => {
+    const response = await apiClient.patch(`/forum/categories/${slug}/`, data, { signal });
+    return response.data;
+  },
+
+  deleteCategory: async (slug: string, signal?: AbortSignal): Promise<void> => {
+    await apiClient.delete(`/forum/categories/${slug}/`, { signal });
+  },
+
+  // Topics
+  getTopics: async (categorySlug?: string, page?: number, signal?: AbortSignal): Promise<PaginatedResponse<ForumTopic>> => {
+    const params: { category?: string; page?: number } = {};
+    if (categorySlug) params.category = categorySlug;
+    if (page) params.page = page;
+    const response = await apiClient.get('/forum/topics/', { params, signal });
+    return response.data;
+  },
+
+  getTopic: async (id: string, signal?: AbortSignal): Promise<ForumTopic> => {
+    const response = await apiClient.get(`/forum/topics/${id}/`, { signal });
+    return response.data;
+  },
+
+  createTopic: async (data: CreateForumTopicData, signal?: AbortSignal): Promise<ForumTopic> => {
+    const response = await apiClient.post('/forum/topics/', data, { signal });
+    return response.data;
+  },
+
+  updateTopic: async (id: string, data: { title?: string; body?: string }, signal?: AbortSignal): Promise<ForumTopic> => {
+    const response = await apiClient.patch(`/forum/topics/${id}/`, data, { signal });
+    return response.data;
+  },
+
+  deleteTopic: async (id: string, signal?: AbortSignal): Promise<void> => {
+    await apiClient.delete(`/forum/topics/${id}/`, { signal });
+  },
+
+  pinTopic: async (id: string, signal?: AbortSignal): Promise<ForumTopic> => {
+    const response = await apiClient.post(`/forum/topics/${id}/pin/`, {}, { signal });
+    return response.data;
+  },
+
+  lockTopic: async (id: string, signal?: AbortSignal): Promise<ForumTopic> => {
+    const response = await apiClient.post(`/forum/topics/${id}/lock/`, {}, { signal });
+    return response.data;
+  },
+
+  // Posts
+  getPosts: async (topicId: string, page?: number, signal?: AbortSignal): Promise<PaginatedResponse<ForumPost>> => {
+    const params = page ? { page } : {};
+    const response = await apiClient.get(`/forum/topics/${topicId}/posts/`, { params, signal });
+    return response.data;
+  },
+
+  createPost: async (topicId: string, data: CreateForumPostData, signal?: AbortSignal): Promise<ForumPost> => {
+    const response = await apiClient.post(`/forum/topics/${topicId}/posts/`, data, { signal });
+    return response.data;
+  },
+
+  updatePost: async (id: string, body: string, signal?: AbortSignal): Promise<ForumPost> => {
+    const response = await apiClient.patch(`/forum/posts/${id}/`, { body }, { signal });
+    return response.data;
+  },
+
+  deletePost: async (id: string, signal?: AbortSignal): Promise<void> => {
+    await apiClient.delete(`/forum/posts/${id}/`, { signal });
+  },
+};
