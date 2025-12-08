@@ -108,7 +108,7 @@ export function DisputeResolutionModal({
                     <ul className="space-y-1 text-red-700">
                       <li className="flex items-center gap-2">
                         <ArrowRight className="w-3 h-3" />
-                        Return <strong>{hours} hours</strong> to {reporterName}
+                        Refund <strong>{hours} hours</strong> to the service receiver
                       </li>
                       <li className="flex items-center gap-2">
                         <ArrowRight className="w-3 h-3" />

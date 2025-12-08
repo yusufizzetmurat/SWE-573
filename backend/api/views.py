@@ -270,10 +270,20 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
             'badges',
             queryset=UserBadge.objects.select_related('badge')
         )
+        
+        # Filter services by visibility - admins can see all, others only visible
+        is_admin = self.request.user.is_authenticated and self.request.user.role == 'admin'
+        if is_admin:
+            services_prefetch = Prefetch('services', queryset=Service.objects.prefetch_related('tags'))
+        else:
+            services_prefetch = Prefetch(
+                'services',
+                queryset=Service.objects.filter(is_visible=True).prefetch_related('tags')
+            )
 
         return (
             User.objects
-            .prefetch_related('services', 'services__tags', badge_prefetch)
+            .prefetch_related(services_prefetch, badge_prefetch)
             .annotate(
                 punctual_count=Count('received_reps', filter=Q(received_reps__is_punctual=True)),
                 helpful_count=Count('received_reps', filter=Q(received_reps__is_helpful=True)),
@@ -2280,85 +2290,121 @@ class AdminReportViewSet(viewsets.ReadOnlyModelViewSet):
             # REQ-ADM-008: Apply karma penalty to no-show user
             
             handshake = report.related_handshake
-            if handshake and handshake.status in ['accepted', 'reported', 'paused']:
-                with transaction.atomic():
-                    # Cancel transfer - refunds receiver
-                    cancel_timebank_transfer(handshake)
-                    
-                    # Get provider and receiver for notifications
-                    provider, receiver = get_provider_and_receiver(handshake)
-                    hours = handshake.provisioned_hours
-                    
-                    # Determine who was the no-show (reported user)
-                    noshow_user = report.reported_user
-                    
-                    # Apply karma penalty (-5) atomically
-                    if noshow_user:
-                        noshow_user.karma_score = F('karma_score') - 5
-                        noshow_user.save(update_fields=['karma_score'])
-                        noshow_user.refresh_from_db(fields=['karma_score'])
-                    
-                    # Notify the no-show user
-                    if noshow_user:
-                        create_notification(
-                            user=noshow_user,
-                            notification_type='dispute_resolved',
-                            title='No-Show Confirmed',
-                            message=f'A no-show report against you has been confirmed. {hours} hours have been refunded to the other party and your karma has been reduced.',
-                            handshake=handshake
-                        )
-                    
-                    # Notify the reporter (who got refunded)
+            if not handshake:
+                return create_error_response(
+                    'This report has no related handshake. Cannot process TimeBank dispute.',
+                    code=ErrorCodes.VALIDATION_ERROR,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if handshake.status not in ['accepted', 'reported', 'paused']:
+                return create_error_response(
+                    f'Cannot resolve dispute for handshake with status "{handshake.status}". Expected: accepted, reported, or paused.',
+                    code=ErrorCodes.VALIDATION_ERROR,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            with transaction.atomic():
+                # Cancel transfer - refunds receiver
+                cancel_timebank_transfer(handshake)
+                
+                # Get provider and receiver for notifications
+                provider, receiver = get_provider_and_receiver(handshake)
+                hours = handshake.provisioned_hours
+                
+                # Determine who was the no-show (reported user)
+                noshow_user = report.reported_user
+                
+                # Apply karma penalty (-5) atomically
+                if noshow_user:
+                    noshow_user.karma_score = F('karma_score') - 5
+                    noshow_user.save(update_fields=['karma_score'])
+                    noshow_user.refresh_from_db(fields=['karma_score'])
+                
+                # Notify the no-show user
+                if noshow_user:
+                    create_notification(
+                        user=noshow_user,
+                        notification_type='dispute_resolved',
+                        title='No-Show Confirmed',
+                        message=f'A no-show report against you has been confirmed. {hours} hours have been refunded to the other party and your karma has been reduced.',
+                        handshake=handshake
+                    )
+                
+                # Notify the receiver (who actually got refunded by cancel_timebank_transfer)
+                create_notification(
+                    user=receiver,
+                    notification_type='dispute_resolved',
+                    title='Dispute Resolved - Hours Refunded',
+                    message=f'The no-show report has been confirmed. {hours} hours have been refunded to your account.',
+                    handshake=handshake
+                )
+                
+                # If reporter is different from receiver, also notify them
+                if report.reporter.id != receiver.id:
                     create_notification(
                         user=report.reporter,
                         notification_type='dispute_resolved',
-                        title='Dispute Resolved in Your Favor',
-                        message=f'Your no-show report has been confirmed. {hours} hours have been refunded to your account.',
+                        title='Your Report Has Been Resolved',
+                        message=f'Your no-show report has been confirmed and the dispute has been resolved.',
                         handshake=handshake
                     )
 
-            report.status = 'resolved'
-            report.resolved_by = request.user
-            report.resolved_at = timezone.now()
-            report.admin_notes = admin_notes or 'No-show confirmed after investigation'
-            report.save()
+                report.status = 'resolved'
+                report.resolved_by = request.user
+                report.resolved_at = timezone.now()
+                report.admin_notes = admin_notes or 'No-show confirmed after investigation'
+                report.save()
 
         elif action_type == 'dismiss':
             # Complete transfer normally - hours go to provider
             handshake = report.related_handshake
-            if handshake and handshake.status in ['accepted', 'reported', 'paused']:
-                with transaction.atomic():
-                    # Complete transfer - pays provider
-                    complete_timebank_transfer(handshake)
-                    
-                    # Get provider and receiver for notifications
-                    provider, receiver = get_provider_and_receiver(handshake)
-                    hours = handshake.provisioned_hours
-                    
-                    # Notify the reported user (cleared)
-                    if report.reported_user:
-                        create_notification(
-                            user=report.reported_user,
-                            notification_type='dispute_resolved',
-                            title='Report Dismissed',
-                            message=f'A report against you has been dismissed. The service has been completed normally.',
-                            handshake=handshake
-                        )
-                    
-                    # Notify the reporter
+            if not handshake:
+                return create_error_response(
+                    'This report has no related handshake. Cannot process TimeBank dispute.',
+                    code=ErrorCodes.VALIDATION_ERROR,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if handshake.status not in ['accepted', 'reported', 'paused']:
+                return create_error_response(
+                    f'Cannot resolve dispute for handshake with status "{handshake.status}". Expected: accepted, reported, or paused.',
+                    code=ErrorCodes.VALIDATION_ERROR,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            with transaction.atomic():
+                # Complete transfer - pays provider
+                complete_timebank_transfer(handshake)
+                
+                # Get provider and receiver for notifications
+                provider, receiver = get_provider_and_receiver(handshake)
+                hours = handshake.provisioned_hours
+                
+                # Notify the reported user (cleared)
+                if report.reported_user:
                     create_notification(
-                        user=report.reporter,
+                        user=report.reported_user,
                         notification_type='dispute_resolved',
                         title='Report Dismissed',
-                        message=f'Your report has been reviewed and dismissed. The service has been marked as completed.',
+                        message=f'A report against you has been dismissed. The service has been completed normally.',
                         handshake=handshake
                     )
+                
+                # Notify the reporter
+                create_notification(
+                    user=report.reporter,
+                    notification_type='dispute_resolved',
+                    title='Report Dismissed',
+                    message=f'Your report has been reviewed and dismissed. The service has been marked as completed.',
+                    handshake=handshake
+                )
 
-            report.status = 'dismissed'
-            report.resolved_by = request.user
-            report.resolved_at = timezone.now()
-            report.admin_notes = admin_notes or 'Report dismissed after investigation'
-            report.save()
+                report.status = 'dismissed'
+                report.resolved_by = request.user
+                report.resolved_at = timezone.now()
+                report.admin_notes = admin_notes or 'Report dismissed after investigation'
+                report.save()
         
         else:
             return create_error_response(

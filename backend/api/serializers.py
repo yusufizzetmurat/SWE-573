@@ -488,19 +488,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
         if value:
             if len(value) > 5:
                 raise serializers.ValidationError('Maximum 5 portfolio images allowed')
-<<<<<<< HEAD
             # Validate each URL has a safe scheme (http/https/data only - no relative paths)
             for idx, url in enumerate(value):
                 if url and not url.startswith(('http://', 'https://', 'data:')):
                     raise serializers.ValidationError(
                         f'Portfolio image {idx + 1} must be a valid URL (http://, https://, or data:)'
-=======
-            # Validate each URL has a safe scheme (consistent with avatar/banner validation)
-            for idx, url in enumerate(value):
-                if url and not url.startswith(('http://', 'https://', 'data:', '/')):
-                    raise serializers.ValidationError(
-                        f'Portfolio image {idx + 1} must be a valid URL (http://, https://, data:, or /)'
->>>>>>> origin/main
                     )
         return value
 
