@@ -53,6 +53,8 @@ demo: build
 	@sleep 5
 	@echo "🔄 Running migrations..."
 	docker compose exec backend python manage.py migrate
+	@echo "📚 Seeding forum categories..."
+	docker compose exec backend python manage.py seed_forum_categories
 	@echo "🎭 Setting up demo data..."
 	docker compose exec backend bash -c "cd /code && DJANGO_SETTINGS_MODULE=hive_project.settings python setup_demo.py"
 	@echo ""
@@ -179,6 +181,10 @@ test-frontend:
 
 test-e2e:
 	@echo "🧪 Running E2E tests..."
+	@echo "  Checking services are running..."
+	@curl -sf http://localhost:5173 > /dev/null 2>&1 || (echo "❌ Frontend not running. Run 'make demo' first" && exit 1)
+	@curl -sf http://localhost:8000/api/health/ > /dev/null 2>&1 || (echo "❌ Backend not running. Run 'make demo' first" && exit 1)
+	@echo "  ✅ Services ready"
 	cd frontend && npm run test:e2e
 	@echo "✅ E2E tests complete!"
 

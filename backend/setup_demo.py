@@ -1,22 +1,22 @@
 #!/usr/bin/env python
 """
 Demo setup script for The Hive
-Cleans up existing demo data and creates fresh demo users, services, and interactions
-Run: docker compose run --rm backend python manage.py shell < backend/setup_demo.py
+Creates demo users, services, forum content, and sample interactions
 """
 import os
 import sys
 import django
 
-# Setup Django
 if __name__ == "__main__":
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hive_project.settings')
     django.setup()
 
 from api.models import (
-    Badge, ChatMessage, Handshake, Notification, ReputationRep, Service, Tag, User, UserBadge
+    Badge, ChatMessage, Handshake, Notification, ReputationRep, 
+    Service, Tag, User, UserBadge, Comment,
+    ForumCategory, ForumTopic, ForumPost
 )
-from api.badge_utils import assign_badge, check_and_assign_badges
+from api.badge_utils import check_and_assign_badges
 from django.contrib.auth.hashers import make_password
 from django.db.models import Q
 from django.utils import timezone
@@ -30,7 +30,7 @@ print("=" * 60)
 # ============================================================================
 # STEP 1: CLEANUP
 # ============================================================================
-print("\n[1/4] Cleaning up existing demo data...")
+print("\n[1/6] Cleaning up existing demo data...")
 
 demo_emails = [
     'elif@demo.com', 'cem@demo.com', 'sarah@demo.com',
@@ -41,6 +41,9 @@ demo_users = User.objects.filter(email__in=demo_emails)
 if demo_users.exists():
     print(f"  Removing data for {demo_users.count()} demo users...")
     user_ids = list(demo_users.values_list('id', flat=True))
+    Comment.objects.filter(user_id__in=user_ids).delete()
+    ForumPost.objects.filter(author_id__in=user_ids).delete()
+    ForumTopic.objects.filter(author_id__in=user_ids).delete()
     Service.objects.filter(user_id__in=user_ids).delete()
     Handshake.objects.filter(Q(requester_id__in=user_ids) | Q(service__user_id__in=user_ids)).delete()
     Notification.objects.filter(user_id__in=user_ids).delete()
@@ -50,28 +53,18 @@ if demo_users.exists():
 
 orphaned_handshakes = Handshake.objects.filter(service__isnull=True)
 if orphaned_handshakes.exists():
-    print(f"  Removing {orphaned_handshakes.count()} orphaned handshakes...")
     orphaned_handshakes.delete()
 
 orphaned_messages = ChatMessage.objects.filter(handshake__isnull=True)
 if orphaned_messages.exists():
-    print(f"  Removing {orphaned_messages.count()} orphaned chat messages...")
     orphaned_messages.delete()
-
-orphaned_notifications = Notification.objects.filter(
-    related_service__isnull=True,
-    related_handshake__isnull=True
-).exclude(type__in=['system', 'welcome'])
-if orphaned_notifications.exists():
-    print(f"  Removing {orphaned_notifications.count()} orphaned notifications...")
-    orphaned_notifications.delete()
 
 print("  ✅ Cleanup complete")
 
 # ============================================================================
 # STEP 2: CREATE TAGS
 # ============================================================================
-print("\n[2/4] Creating tags...")
+print("\n[2/6] Creating tags...")
 
 tags_data = [
     {'id': 'Q8476', 'name': 'Cooking'},
@@ -88,12 +81,12 @@ tags_data = [
 created_count = 0
 for tag_data in tags_data:
     try:
-        tag = Tag.objects.get(name=tag_data['name'])
+        Tag.objects.get(name=tag_data['name'])
     except Tag.DoesNotExist:
         try:
-            tag = Tag.objects.get(id=tag_data['id'])
+            Tag.objects.get(id=tag_data['id'])
         except Tag.DoesNotExist:
-            tag = Tag.objects.create(id=tag_data['id'], name=tag_data['name'])
+            Tag.objects.create(id=tag_data['id'], name=tag_data['name'])
             created_count += 1
 
 print(f"  ✅ Processed {len(tags_data)} tags ({created_count} created)")
@@ -101,146 +94,87 @@ print(f"  ✅ Processed {len(tags_data)} tags ({created_count} created)")
 # ============================================================================
 # STEP 3: CREATE DEMO USERS
 # ============================================================================
-print("\n[3/4] Creating demo users...")
+print("\n[3/6] Creating demo users...")
 
-elif_user, created = User.objects.get_or_create(
-    email='elif@demo.com',
-    defaults={
-        'password': make_password('demo123'),
-        'first_name': 'Elif',
-        'last_name': 'Yılmaz',
-        'bio': 'Freelance designer and cooking enthusiast. Love sharing traditional Turkish recipes and learning new skills from neighbors!',
-        'timebank_balance': Decimal('5.00'),
-        'karma_score': 20,
-        'role': 'member',
-    }
-)
-if not created:
-    elif_user.timebank_balance = Decimal('5.00')
-    elif_user.karma_score = 20
-    elif_user.set_password('demo123')
-    elif_user.save()
-print(f"  ✅ {'Created' if created else 'Updated'}: {elif_user.email} (Balance: {elif_user.timebank_balance}h)")
+def create_or_update_user(email, first_name, last_name, bio, balance, karma):
+    user, created = User.objects.get_or_create(
+        email=email,
+        defaults={
+            'password': make_password('demo123'),
+            'first_name': first_name,
+            'last_name': last_name,
+            'bio': bio,
+            'timebank_balance': balance,
+            'karma_score': karma,
+            'role': 'member',
+        }
+    )
+    if not created:
+        user.timebank_balance = balance
+        user.karma_score = karma
+        user.set_password('demo123')
+        user.save()
+    print(f"  ✅ {'Created' if created else 'Updated'}: {email} (Balance: {balance}h)")
+    return user
 
-cem, created = User.objects.get_or_create(
-    email='cem@demo.com',
-    defaults={
-        'password': make_password('demo123'),
-        'first_name': 'Cem',
-        'last_name': 'Demir',
-        'bio': 'University student passionate about chess and genealogy. Always happy to teach beginners!',
-        'timebank_balance': Decimal('2.00'),
-        'karma_score': 8,
-        'role': 'member',
-    }
+elif_user = create_or_update_user(
+    'elif@demo.com', 'Elif', 'Yılmaz',
+    'Freelance designer and cooking enthusiast. Love sharing traditional Turkish recipes!',
+    Decimal('5.00'), 20
 )
-if not created:
-    cem.timebank_balance = Decimal('2.00')
-    cem.karma_score = 8
-    cem.set_password('demo123')
-    cem.save()
-print(f"  ✅ {'Created' if created else 'Updated'}: {cem.email} (Balance: {cem.timebank_balance}h)")
 
-sarah, created = User.objects.get_or_create(
-    email='sarah@demo.com',
-    defaults={
-        'password': make_password('demo123'),
-        'first_name': 'Sarah',
-        'last_name': 'Chen',
-        'bio': 'Food enthusiast exploring Turkish cuisine. Excited to learn and share cooking skills!',
-        'timebank_balance': Decimal('1.00'),
-        'karma_score': 5,
-        'role': 'member',
-    }
+cem = create_or_update_user(
+    'cem@demo.com', 'Cem', 'Demir',
+    'University student passionate about chess and genealogy. Always happy to teach beginners!',
+    Decimal('2.00'), 8
 )
-if not created:
-    sarah.timebank_balance = Decimal('1.00')
-    sarah.karma_score = 5
-    sarah.set_password('demo123')
-    sarah.save()
-print(f"  ✅ {'Created' if created else 'Updated'}: {sarah.email} (Balance: {sarah.timebank_balance}h)")
 
-marcus, created = User.objects.get_or_create(
-    email='marcus@demo.com',
-    defaults={
-        'password': make_password('demo123'),
-        'first_name': 'Marcus',
-        'last_name': 'Weber',
-        'bio': 'Tech professional and language learner. Enjoy helping others with technology and learning Turkish.',
-        'timebank_balance': Decimal('3.00'),
-        'karma_score': 12,
-        'role': 'member',
-    }
+sarah = create_or_update_user(
+    'sarah@demo.com', 'Sarah', 'Chen',
+    'Food enthusiast exploring Turkish cuisine. Excited to learn and share cooking skills!',
+    Decimal('1.00'), 5
 )
-if not created:
-    marcus.timebank_balance = Decimal('3.00')
-    marcus.karma_score = 12
-    marcus.set_password('demo123')
-    marcus.save()
-print(f"  ✅ {'Created' if created else 'Updated'}: {marcus.email} (Balance: {marcus.timebank_balance}h)")
 
-alex, created = User.objects.get_or_create(
-    email='alex@demo.com',
-    defaults={
-        'password': make_password('demo123'),
-        'first_name': 'Alex',
-        'last_name': 'Johnson',
-        'bio': 'Chess player and genealogy researcher. Love connecting with people through shared interests!',
-        'timebank_balance': Decimal('1.00'),
-        'karma_score': 6,
-        'role': 'member',
-    }
+marcus = create_or_update_user(
+    'marcus@demo.com', 'Marcus', 'Weber',
+    'Tech professional and language learner. Enjoy helping others with technology.',
+    Decimal('3.00'), 12
 )
-if not created:
-    alex.timebank_balance = Decimal('1.00')
-    alex.karma_score = 6
-    alex.set_password('demo123')
-    alex.save()
-print(f"  ✅ {'Created' if created else 'Updated'}: {alex.email} (Balance: {alex.timebank_balance}h)")
 
-ayse, created = User.objects.get_or_create(
-    email='ayse@demo.com',
-    defaults={
-        'password': make_password('demo123'),
-        'first_name': 'Ayşe',
-        'last_name': 'Kaya',
-        'bio': 'Gardening enthusiast and community organizer. Passionate about sustainable living and sharing knowledge.',
-        'timebank_balance': Decimal('4.00'),
-        'karma_score': 15,
-        'role': 'member',
-    }
+alex = create_or_update_user(
+    'alex@demo.com', 'Alex', 'Johnson',
+    'Chess player and genealogy researcher. Love connecting with people through shared interests!',
+    Decimal('1.00'), 6
 )
-if not created:
-    ayse.timebank_balance = Decimal('4.00')
-    ayse.karma_score = 15
-    ayse.set_password('demo123')
-    ayse.save()
-print(f"  ✅ {'Created' if created else 'Updated'}: {ayse.email} (Balance: {ayse.timebank_balance}h)")
+
+ayse = create_or_update_user(
+    'ayse@demo.com', 'Ayşe', 'Kaya',
+    'Gardening enthusiast and community organizer. Passionate about sustainable living.',
+    Decimal('4.00'), 15
+)
 
 # ============================================================================
-# STEP 4: CREATE SERVICES, HANDSHAKES, AND INTERACTIONS
+# STEP 4: CREATE SERVICES
 # ============================================================================
-print("\n[4/4] Creating services and interactions...")
+print("\n[4/6] Creating services...")
 
-def get_tag_by_id_or_name(tag_id, tag_name):
+def get_tag(tag_id, tag_name):
     try:
         return Tag.objects.get(id=tag_id)
     except Tag.DoesNotExist:
         return Tag.objects.get(name=tag_name)
 
-cooking_tag = get_tag_by_id_or_name('Q8476', 'Cooking')
-music_tag = get_tag_by_id_or_name('Q11424', 'Music')
-chess_tag = get_tag_by_id_or_name('Q7186', 'Chess')
-education_tag = get_tag_by_id_or_name('Q11465', 'Education')
-technology_tag = get_tag_by_id_or_name('Q11466', 'Technology')
-gardening_tag = get_tag_by_id_or_name('Q11467', 'Gardening')
-language_tag = get_tag_by_id_or_name('Q2013', 'Language')
+cooking_tag = get_tag('Q8476', 'Cooking')
+chess_tag = get_tag('Q7186', 'Chess')
+education_tag = get_tag('Q11465', 'Education')
+technology_tag = get_tag('Q11466', 'Technology')
+gardening_tag = get_tag('Q11467', 'Gardening')
+language_tag = get_tag('Q2013', 'Language')
 
-# Elif's Manti Cooking Offer
 elif_manti = Service.objects.create(
     user=elif_user,
     title='Manti Cooking Lesson',
-    description='Learn to make traditional Turkish manti from scratch. We\'ll cover dough preparation, filling, folding techniques, and cooking methods. Perfect for beginners!',
+    description='Learn to make traditional Turkish manti from scratch. We\'ll cover dough preparation, filling, folding techniques, and cooking methods.',
     type='Offer',
     duration=Decimal('3.00'),
     location_type='In-Person',
@@ -251,13 +185,12 @@ elif_manti = Service.objects.create(
     status='Active',
 )
 elif_manti.tags.set([cooking_tag])
-print(f"  ✅ Created: {elif_manti.title} by {elif_user.first_name}")
+print(f"  ✅ Created: {elif_manti.title}")
 
-# Elif's 3D Printing Need
 elif_3d = Service.objects.create(
     user=elif_user,
     title='Help with 3D Printer Setup',
-    description='I just got a 3D printer but struggling with initial setup and calibration. Looking for someone with experience to help me get started.',
+    description='I just got a 3D printer but struggling with initial setup. Looking for someone with experience to help me get started.',
     type='Need',
     duration=Decimal('2.00'),
     location_type='In-Person',
@@ -268,13 +201,12 @@ elif_3d = Service.objects.create(
     status='Active',
 )
 elif_3d.tags.set([technology_tag])
-print(f"  ✅ Created: {elif_3d.title} by {elif_user.first_name}")
+print(f"  ✅ Created: {elif_3d.title}")
 
-# Cem's Chess Need
 cem_chess = Service.objects.create(
     user=cem,
     title='Looking for a Casual Chess Partner',
-    description='Looking for someone to play casual chess with. I\'m still learning, so this would be relaxed and friendly. Maybe we can meet at a cafe or park.',
+    description='Looking for someone to play casual chess with. I\'m still learning, so this would be relaxed and friendly.',
     type='Need',
     duration=Decimal('1.00'),
     location_type='In-Person',
@@ -285,13 +217,12 @@ cem_chess = Service.objects.create(
     status='Active',
 )
 cem_chess.tags.set([chess_tag])
-print(f"  ✅ Created: {cem_chess.title} by {cem.first_name}")
+print(f"  ✅ Created: {cem_chess.title}")
 
-# Cem's Genealogy Offer
 cem_genealogy = Service.objects.create(
     user=cem,
     title='Introduction to Genealogical Research',
-    description='I can help you get started with genealogical research. I\'ll show you how to use online databases, organize your findings, and trace your family tree. Perfect for beginners!',
+    description='I can help you get started with genealogical research. I\'ll show you how to use online databases and trace your family tree.',
     type='Offer',
     duration=Decimal('1.50'),
     location_type='Online',
@@ -301,13 +232,12 @@ cem_genealogy = Service.objects.create(
     status='Active',
 )
 cem_genealogy.tags.set([education_tag])
-print(f"  ✅ Created: {cem_genealogy.title} by {cem.first_name}")
+print(f"  ✅ Created: {cem_genealogy.title}")
 
-# Ayşe's Gardening Offer
 ayse_gardening = Service.objects.create(
     user=ayse,
     title='Urban Gardening Workshop',
-    description='Learn how to grow vegetables and herbs in small spaces. We\'ll cover container gardening, soil preparation, and basic plant care. Great for apartment dwellers!',
+    description='Learn how to grow vegetables and herbs in small spaces. We\'ll cover container gardening, soil preparation, and basic plant care.',
     type='Offer',
     duration=Decimal('2.00'),
     location_type='In-Person',
@@ -318,13 +248,12 @@ ayse_gardening = Service.objects.create(
     status='Active',
 )
 ayse_gardening.tags.set([gardening_tag])
-print(f"  ✅ Created: {ayse_gardening.title} by {ayse.first_name}")
+print(f"  ✅ Created: {ayse_gardening.title}")
 
-# Marcus's Turkish Language Need
 marcus_turkish = Service.objects.create(
     user=marcus,
     title='Turkish Conversation Practice',
-    description='Looking for a patient Turkish speaker to practice conversation with. I\'m at intermediate level and want to improve my speaking skills.',
+    description='Looking for a patient Turkish speaker to practice conversation with. I\'m at intermediate level.',
     type='Need',
     duration=Decimal('1.00'),
     location_type='Online',
@@ -334,23 +263,136 @@ marcus_turkish = Service.objects.create(
     status='Active',
 )
 marcus_turkish.tags.set([language_tag])
-print(f"  ✅ Created: {marcus_turkish.title} by {marcus.first_name}")
+print(f"  ✅ Created: {marcus_turkish.title}")
 
-# No handshakes or chat messages in demo - users will create these through normal flow
-print("\n  Skipping handshakes and chat messages (users will create these through normal flow)")
+# ============================================================================
+# STEP 5: CREATE COMMENTS ON SERVICES
+# ============================================================================
+print("\n[5/6] Creating service comments...")
 
-# No reputation data in demo - users will create these through normal flow
-print("\n  Skipping reputation data (users will create these through normal flow)")
+Comment.objects.create(
+    service=elif_manti,
+    user=sarah,
+    body='This sounds amazing! I\'ve always wanted to learn how to make manti. Is this suitable for complete beginners?'
+)
+Comment.objects.create(
+    service=elif_manti,
+    user=elif_user,
+    body='Yes, absolutely! I\'ll guide you through every step. We start from scratch with the dough.',
+    parent=Comment.objects.filter(service=elif_manti, user=sarah).first()
+)
+Comment.objects.create(
+    service=elif_manti,
+    user=marcus,
+    body='I attended one of Elif\'s sessions last month. Highly recommended - the manti was delicious!'
+)
 
-# Assign badges based on stats
+Comment.objects.create(
+    service=ayse_gardening,
+    user=cem,
+    body='Do I need to bring any tools or supplies for the workshop?'
+)
+Comment.objects.create(
+    service=ayse_gardening,
+    user=ayse,
+    body='I\'ll provide everything you need! Just bring yourself and enthusiasm for learning.',
+    parent=Comment.objects.filter(service=ayse_gardening, user=cem).first()
+)
+
+Comment.objects.create(
+    service=cem_genealogy,
+    user=alex,
+    body='This is exactly what I\'ve been looking for! I\'ve hit a wall with my family research.'
+)
+
+Comment.objects.create(
+    service=marcus_turkish,
+    user=elif_user,
+    body='I\'d be happy to help with Turkish practice! I\'m a native speaker.'
+)
+
+print("  ✅ Created 7 comments on services")
+
+# ============================================================================
+# STEP 6: CREATE FORUM TOPICS AND POSTS
+# ============================================================================
+print("\n[6/6] Creating forum content...")
+
+try:
+    general_cat = ForumCategory.objects.get(slug='general-discussion')
+    collab_cat = ForumCategory.objects.get(slug='project-collaboration')
+    stories_cat = ForumCategory.objects.get(slug='storytelling-circle')
+    skills_cat = ForumCategory.objects.get(slug='skills-learning')
+
+    welcome_topic = ForumTopic.objects.create(
+        category=general_cat,
+        author=ayse,
+        title='Welcome to The Hive Community!',
+        body='Hello everyone! Welcome to The Hive, our community timebank platform. This is a place where we share skills, help each other, and build meaningful connections. Feel free to introduce yourself and let us know what skills you can offer or what you\'d like to learn!',
+        is_pinned=True
+    )
+    ForumPost.objects.create(
+        topic=welcome_topic,
+        author=elif_user,
+        body='Thanks for the warm welcome! I\'m Elif, and I love teaching traditional Turkish cooking. Looking forward to meeting everyone!'
+    )
+    ForumPost.objects.create(
+        topic=welcome_topic,
+        author=marcus,
+        body='Great to be here! I\'m Marcus, a tech professional looking to learn Turkish while helping others with technology.'
+    )
+
+    garden_topic = ForumTopic.objects.create(
+        category=collab_cat,
+        author=ayse,
+        title='Community Garden Project - Looking for Partners',
+        body='I\'m thinking of starting a small community garden in Üsküdar. Would anyone be interested in collaborating? We could share knowledge, seeds, and the harvest! Looking for 3-4 people to get started.'
+    )
+    ForumPost.objects.create(
+        topic=garden_topic,
+        author=sarah,
+        body='This sounds wonderful! I\'d love to be part of this. I don\'t have much experience but I\'m eager to learn.'
+    )
+
+    story_topic = ForumTopic.objects.create(
+        category=stories_cat,
+        author=cem,
+        title='My First TimeBank Exchange - A Great Experience!',
+        body='Just wanted to share my first timebank experience. I helped Alex with some genealogical research last week, and it was so rewarding! Not only did I earn hours, but I also made a new friend who shares my passion for history. This platform is amazing!'
+    )
+    ForumPost.objects.create(
+        topic=story_topic,
+        author=alex,
+        body='Cem was incredibly helpful! He showed me databases I didn\'t even know existed. Can\'t wait for our next session!'
+    )
+
+    tips_topic = ForumTopic.objects.create(
+        category=skills_cat,
+        author=marcus,
+        title='Tips for Getting Started with TimeBank',
+        body='Here are some tips I\'ve learned:\n\n1. Start by offering what you\'re comfortable with\n2. Be clear about your availability\n3. Don\'t be afraid to reach out to others\n4. Communication is key - be responsive\n\nWhat tips would you add?'
+    )
+    ForumPost.objects.create(
+        topic=tips_topic,
+        author=elif_user,
+        body='Great tips! I\'d add: take photos of your work to build trust, and always follow through on your commitments.'
+    )
+    ForumPost.objects.create(
+        topic=tips_topic,
+        author=ayse,
+        body='I agree! Also, don\'t underestimate "simple" skills - everyone has something valuable to offer.'
+    )
+
+    print("  ✅ Created 4 forum topics with 7 replies")
+
+except ForumCategory.DoesNotExist:
+    print("  ⚠️  Forum categories not found. Run 'python manage.py seed_forum_categories' first.")
+
+# Assign badges
 print("\n  Assigning badges...")
-check_and_assign_badges(elif_user)
-check_and_assign_badges(cem)
-check_and_assign_badges(marcus)
-print(f"  ✅ Badges assigned")
-
-# No notifications in demo - users will create these through normal flow
-print("\n  Skipping notifications (users will create these through normal flow)")
+for user in [elif_user, cem, marcus, sarah, alex, ayse]:
+    check_and_assign_badges(user)
+print("  ✅ Badges assigned")
 
 # ============================================================================
 # SUMMARY
@@ -361,13 +403,9 @@ print("=" * 60)
 print(f"\n📊 Summary:")
 print(f"  Users: {User.objects.filter(email__in=demo_emails).count()}")
 print(f"  Services: {Service.objects.filter(user__email__in=demo_emails).count()}")
-print(f"  Handshakes: {Handshake.objects.filter(Q(requester__email__in=demo_emails) | Q(service__user__email__in=demo_emails)).count()}")
+print(f"  Comments: {Comment.objects.filter(user__email__in=demo_emails).count()}")
+print(f"  Forum Topics: {ForumTopic.objects.filter(author__email__in=demo_emails).count()}")
 print(f"\n🔑 Demo Accounts (password: demo123):")
-print(f"  • Elif: elif@demo.com (Balance: {elif_user.timebank_balance}h)")
-print(f"  • Cem: cem@demo.com (Balance: {cem.timebank_balance}h)")
-print(f"  • Sarah: sarah@demo.com (Balance: {sarah.timebank_balance}h)")
-print(f"  • Marcus: marcus@demo.com (Balance: {marcus.timebank_balance}h)")
-print(f"  • Alex: alex@demo.com (Balance: {alex.timebank_balance}h)")
-print(f"  • Ayşe: ayse@demo.com (Balance: {ayse.timebank_balance}h)")
+for user in [elif_user, cem, sarah, marcus, alex, ayse]:
+    print(f"  • {user.first_name}: {user.email} (Balance: {user.timebank_balance}h)")
 print("\n" + "=" * 60)
-

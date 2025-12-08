@@ -36,8 +36,9 @@ ENV PATH=/root/.local/bin:$PATH
 # Copy application code
 COPY . .
 
-# Create non-root user for security
-RUN useradd -m -u 1000 appuser && \
+# Create logs directory and non-root user for security
+RUN mkdir -p /app/logs && \
+    useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 
 # Switch to non-root user
