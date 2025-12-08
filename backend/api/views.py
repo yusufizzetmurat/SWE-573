@@ -2289,7 +2289,7 @@ class AdminReportViewSet(viewsets.ReadOnlyModelViewSet):
         from django.utils import timezone
 
         if action_type == 'confirm_no_show':
-            # REQ-ADM-007: Cancel transfer - refund hours to receiver
+            # REQ-ADM-007: Handle no-show with correct financial action
             # REQ-ADM-008: Apply karma penalty to no-show user
             
             handshake = report.related_handshake
@@ -2308,15 +2308,28 @@ class AdminReportViewSet(viewsets.ReadOnlyModelViewSet):
                 )
             
             with transaction.atomic():
-                # Cancel transfer - refunds receiver
-                cancel_timebank_transfer(handshake)
-                
-                # Get provider and receiver for notifications
+                # Get provider and receiver for correct financial action
                 provider, receiver = get_provider_and_receiver(handshake)
                 hours = handshake.provisioned_hours
                 
                 # Determine who was the no-show (reported user)
                 noshow_user = report.reported_user
+                
+                # Choose correct financial action based on who no-showed:
+                # - Provider no-show: cancel transfer (refund receiver)
+                # - Receiver no-show: complete transfer (pay provider who showed up)
+                if noshow_user and noshow_user.id == receiver.id:
+                    # Receiver was the no-show - pay the provider who showed up
+                    complete_timebank_transfer(handshake)
+                    financial_action = 'completed'
+                    receiver_msg = f'A no-show report against you has been confirmed. {hours} hours have been transferred to the provider.'
+                    provider_msg = f'The no-show report has been confirmed. {hours} hours have been transferred to your account.'
+                else:
+                    # Provider was the no-show (or unknown) - refund the receiver
+                    cancel_timebank_transfer(handshake)
+                    financial_action = 'refunded'
+                    receiver_msg = f'The no-show report has been confirmed. {hours} hours have been refunded to your account.'
+                    provider_msg = f'A no-show report against you has been confirmed. {hours} hours have been refunded to the receiver.'
                 
                 # Apply karma penalty (-5) atomically
                 if noshow_user:
@@ -2326,25 +2339,29 @@ class AdminReportViewSet(viewsets.ReadOnlyModelViewSet):
                 
                 # Notify the no-show user
                 if noshow_user:
+                    noshow_msg = provider_msg if noshow_user.id == provider.id else receiver_msg
                     create_notification(
                         user=noshow_user,
                         notification_type='dispute_resolved',
                         title='No-Show Confirmed',
-                        message=f'A no-show report against you has been confirmed. {hours} hours have been refunded to the other party and your karma has been reduced.',
+                        message=f'{noshow_msg} Your karma has been reduced.',
                         handshake=handshake
                     )
                 
-                # Notify the receiver (who actually got refunded by cancel_timebank_transfer)
-                create_notification(
-                    user=receiver,
-                    notification_type='dispute_resolved',
-                    title='Dispute Resolved - Hours Refunded',
-                    message=f'The no-show report has been confirmed. {hours} hours have been refunded to your account.',
-                    handshake=handshake
-                )
+                # Notify the other party (who showed up)
+                showed_up_user = receiver if noshow_user and noshow_user.id == provider.id else provider
+                showed_up_msg = receiver_msg if showed_up_user.id == receiver.id else provider_msg
+                if not noshow_user or noshow_user.id != showed_up_user.id:
+                    create_notification(
+                        user=showed_up_user,
+                        notification_type='dispute_resolved',
+                        title=f'Dispute Resolved - Hours {financial_action.capitalize()}',
+                        message=showed_up_msg,
+                        handshake=handshake
+                    )
                 
-                # If reporter is different from receiver, also notify them
-                if report.reporter.id != receiver.id:
+                # If reporter is different from both parties, also notify them
+                if report.reporter.id not in [provider.id, receiver.id]:
                     create_notification(
                         user=report.reporter,
                         notification_type='dispute_resolved',
@@ -2356,7 +2373,7 @@ class AdminReportViewSet(viewsets.ReadOnlyModelViewSet):
                 report.status = 'resolved'
                 report.resolved_by = request.user
                 report.resolved_at = timezone.now()
-                report.admin_notes = admin_notes or 'No-show confirmed after investigation'
+                report.admin_notes = admin_notes or f'No-show confirmed - hours {financial_action} after investigation'
                 report.save()
 
         elif action_type == 'dismiss':

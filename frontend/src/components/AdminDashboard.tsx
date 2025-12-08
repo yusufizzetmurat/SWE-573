@@ -43,7 +43,12 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [showDisputeModal, setShowDisputeModal] = useState(false);
 
-  // Fetch reports when reports section is active
+  // Fetch reports on mount and when reports section is active
+  useEffect(() => {
+    fetchReports();
+  }, []);
+
+  // Refresh reports when navigating to reports section
   useEffect(() => {
     if (activeSection === 'reports') {
       fetchReports();
