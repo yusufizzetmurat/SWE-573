@@ -79,3 +79,8 @@ logs/
 *.bak
 *.backup
 *.sql
+
+frontend/test-results/
+frontend/playwright-report/
+
+/docs/*

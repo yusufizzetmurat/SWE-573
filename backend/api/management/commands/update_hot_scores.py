@@ -101,3 +101,4 @@ class Command(BaseCommand):
                 f'(out of {total_count} active services)'
             )
         )
+

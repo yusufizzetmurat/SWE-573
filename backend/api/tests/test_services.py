@@ -272,3 +272,4 @@ class HandshakeServiceTestCase(TestCase):
         self.assertEqual(handshake2.requester, self.user2)
         self.assertEqual(handshake2.service, self.service_offer)
 
+

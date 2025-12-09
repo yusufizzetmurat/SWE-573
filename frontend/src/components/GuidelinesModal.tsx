@@ -132,3 +132,4 @@ export function GuidelinesModal({ open, onClose }: GuidelinesModalProps) {
     </Dialog>
   );
 }
+

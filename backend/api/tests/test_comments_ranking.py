@@ -747,3 +747,4 @@ class ServiceHotScoreSortingTest(TestCase):
         # Most recently created (service3) should be first
         self.assertEqual(len(our_services), 3)
         self.assertEqual(our_services[0]['title'], '[HS] Medium Score Service')
+
