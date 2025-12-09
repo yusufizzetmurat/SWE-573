@@ -52,7 +52,7 @@ test.describe('Authentication', () => {
     
     await page.waitForTimeout(3000);
     
-    const isLoggedIn = await page.locator('nav button.bg-amber-100').isVisible({ timeout: 15000 }).catch(() => false);
+    const isLoggedIn = await page.locator('nav button:has([class*="bg-amber-100"])').isVisible({ timeout: 15000 }).catch(() => false);
     const isDashboard = await page.getByRole('heading', { name: /browse services/i }).isVisible({ timeout: 5000 }).catch(() => false);
     
     expect(isLoggedIn || isDashboard).toBeTruthy();
@@ -70,6 +70,6 @@ test.describe('Authentication', () => {
     await page.reload();
     
     await expect(page.getByRole('heading', { name: /browse services/i })).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('nav button.bg-amber-100')).toBeVisible();
+    await expect(page.locator('nav button:has([class*="bg-amber-100"])')).toBeVisible();
   });
 });

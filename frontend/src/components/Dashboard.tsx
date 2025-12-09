@@ -37,23 +37,45 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
   
   // Debounce timer ref for distance slider
   const distanceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref to store requestLocation function to avoid stale closure
+  const requestLocationRef = useRef<(() => void) | null>(null);
   
   // Check geolocation permission status on mount
   useEffect(() => {
+    let permissionStatus: PermissionStatus | null = null;
+    let cleanup: (() => void) | null = null;
+
     const checkPermission = async () => {
       if ('permissions' in navigator) {
         try {
           const result = await navigator.permissions.query({ name: 'geolocation' });
+          permissionStatus = result;
           setPermissionState(result.state);
           
           // Listen for permission changes
-          result.addEventListener('change', () => {
-            setPermissionState(result.state);
+          const handleChange = () => {
+            if (!permissionStatus) return;
+            setPermissionState(permissionStatus.state);
             // If permission was just granted, try to get location
-            if (result.state === 'granted' && !userLocation) {
-              requestLocation();
+            if (permissionStatus.state === 'granted') {
+              // Use current state via functional update to avoid stale closure
+              setUserLocation(current => {
+                if (!current && requestLocationRef.current) {
+                  requestLocationRef.current();
+                }
+                return current;
+              });
             }
-          });
+          };
+          
+          result.addEventListener('change', handleChange);
+          
+          // Return cleanup function
+          cleanup = () => {
+            if (permissionStatus) {
+              permissionStatus.removeEventListener('change', handleChange);
+            }
+          };
         } catch {
           // Permission API not supported for geolocation
           setPermissionState(null);
@@ -62,6 +84,13 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
     };
     
     checkPermission();
+    
+    // Return cleanup function
+    return () => {
+      if (cleanup) {
+        cleanup();
+      }
+    };
   }, []);
   
   // Debounce distanceKm changes to prevent excessive API calls while dragging slider
@@ -133,6 +162,11 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
       }
     );
   }, []);
+  
+  // Update ref whenever requestLocation changes
+  useEffect(() => {
+    requestLocationRef.current = requestLocation;
+  }, [requestLocation]);
   
   // Toggle location-based search
   const toggleLocationSearch = useCallback(() => {

@@ -12,7 +12,7 @@ test.describe('TimeBank Balance Verification', () => {
   test('displays balance on user profile', async ({ page }) => {
     await login(page, 'elif');
     
-    await page.locator('nav button.bg-amber-100').click();
+    await page.locator('nav button:has([class*="bg-amber-100"])').click();
     await page.getByRole('menuitem', { name: /profile/i }).click();
     
     await page.waitForTimeout(2000);
@@ -40,7 +40,7 @@ test.describe('TimeBank Balance Verification', () => {
   test('transaction history page shows balance changes', async ({ page }) => {
     await login(page, 'elif');
     
-    await page.locator('nav button.bg-amber-100').click();
+    await page.locator('nav button:has([class*="bg-amber-100"])').click();
     
     const historyItem = page.getByRole('menuitem', { name: /history|transaction/i });
     if (await historyItem.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -87,7 +87,7 @@ test.describe('Balance Display Consistency', () => {
     await expect(navBalance).toBeVisible({ timeout: 5000 });
     const balanceBefore = await navBalance.textContent();
     
-    await page.locator('nav button.bg-amber-100').click();
+    await page.locator('nav button:has([class*="bg-amber-100"])').click();
     await page.getByRole('menuitem', { name: /profile/i }).click();
     
     await page.waitForTimeout(2000);

@@ -692,7 +692,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
             'message': f'Service has been {action_text}'
         })
 
-    @action(detail=True, methods=['post'], url_path='report')
+    @action(detail=True, methods=['post'], url_path='report', throttle_classes=[ConfirmationThrottle])
     def report(self, request, pk=None):
         """
         Report a Service Listing
@@ -749,6 +749,20 @@ class ServiceViewSet(viewsets.ModelViewSet):
             return create_error_response(
                 'You cannot report your own service',
                 code=ErrorCodes.INVALID_STATE,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check for duplicate reports
+        existing_report = Report.objects.filter(
+            reporter=request.user,
+            reported_service=service,
+            status='pending'
+        ).exists()
+        
+        if existing_report:
+            return create_error_response(
+                'You already have a pending report for this service',
+                code=ErrorCodes.ALREADY_EXISTS,
                 status_code=status.HTTP_400_BAD_REQUEST
             )
         
@@ -3785,7 +3799,9 @@ class ForumTopicViewSet(viewsets.ModelViewSet):
             tags = Tag.objects.filter(id__in=tag_ids)
             topic.tags.set(tags)
         
-        return Response(serializer.data)
+        # Re-serialize to include updated tags in response
+        response_serializer = self.get_serializer(topic)
+        return Response(response_serializer.data)
     
     @track_performance
     def destroy(self, request, pk=None):

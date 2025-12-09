@@ -40,8 +40,6 @@ demo: build
 	@echo "Starting development environment..."
 	docker compose up -d
 	@sleep 5
-	@echo "Creating migrations..."
-	docker compose exec backend python manage.py makemigrations
 	@echo "Running migrations..."
 	docker compose exec backend python manage.py migrate
 	@echo "Seeding forum categories..."
@@ -75,8 +73,6 @@ prod-demo: prod-build
 	@echo "Starting production environment..."
 	docker compose -f docker-compose.prod.yml up -d
 	@sleep 10
-	@echo "Creating migrations..."
-	docker compose -f docker-compose.prod.yml exec backend python manage.py makemigrations
 	@echo "Running migrations..."
 	docker compose -f docker-compose.prod.yml exec backend python manage.py migrate --noinput
 	@echo "Collecting static files..."

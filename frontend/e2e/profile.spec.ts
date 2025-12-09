@@ -58,7 +58,7 @@ test.describe('Public Profile', () => {
   });
 
   test('should view own profile with edit button', async ({ page }) => {
-    const navButton = page.locator('nav button.bg-amber-100');
+    const navButton = page.locator('nav button:has([class*="bg-amber-100"])');
     await navButton.click();
     
     const profileMenuItem = page.getByRole('menuitem', { name: /profile/i });
@@ -73,7 +73,7 @@ test.describe('Profile Edit Modal', () => {
   test.beforeEach(async ({ page }) => {
     await login(page, 'elif');
     
-    const navButton = page.locator('nav button.bg-amber-100');
+    const navButton = page.locator('nav button:has([class*="bg-amber-100"])');
     await navButton.click();
     const profileMenuItem = page.getByRole('menuitem', { name: /profile/i });
     await expect(profileMenuItem).toBeVisible({ timeout: 3000 });
@@ -159,7 +159,7 @@ test.describe('Transaction History Privacy', () => {
   test('should show completed exchanges on public profile when enabled', async ({ page }) => {
     await login(page, 'elif');
 
-    const navButton = page.locator('nav button.bg-amber-100');
+    const navButton = page.locator('nav button:has([class*="bg-amber-100"])');
     await navButton.click();
     const profileMenuItem = page.getByRole('menuitem', { name: /profile/i });
     await expect(profileMenuItem).toBeVisible({ timeout: 3000 });

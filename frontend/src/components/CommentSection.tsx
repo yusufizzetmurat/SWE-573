@@ -296,6 +296,13 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
 
   // Filter to only show verified reviews
   const verifiedReviews = comments.filter(c => c.is_verified_review);
+  
+  // Track pagination for verified reviews
+  // Since we filter client-side, we need to be smart about when to show "Load More"
+  // Show if: hasMore is true AND (we have verified reviews OR we're early in pagination)
+  // This ensures we check at least a few pages for verified reviews before giving up
+  const hasVerifiedReviews = verifiedReviews.length > 0;
+  const shouldShowLoadMore = hasMore && (hasVerifiedReviews || page <= 2);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6">
@@ -434,7 +441,7 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
             />
           ))}
 
-          {hasMore && (
+          {shouldShowLoadMore && (
             <div className="text-center pt-4">
               <Button
                 variant="outline"

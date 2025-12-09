@@ -23,7 +23,9 @@ export async function login(page: Page, user: DemoUser | { email: string; passwo
 }
 
 export async function logout(page: Page) {
-  await page.locator('nav button.bg-amber-100').click();
+  // Find the user profile dropdown trigger (Avatar button in Navbar)
+  // The AvatarFallback has bg-amber-100 class, so we find the button containing an element with that class
+  await page.locator('nav button:has([class*="bg-amber-100"])').click();
   await page.getByRole('menuitem', { name: /log out/i }).click();
   await expect(page.getByRole('button', { name: /log in/i }).first()).toBeVisible({ timeout: 10000 });
 }
