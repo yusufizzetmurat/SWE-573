@@ -142,3 +142,5 @@ Bad examples:
   - "Fix scrolling behavior in chat component to handle edge cases" (too verbose)
   - "Update files" (too vague)
   - "Fix bug." (uninformative)
+
+NEVER USE EMOJIS.
