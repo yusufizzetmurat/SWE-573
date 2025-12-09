@@ -1,121 +1,158 @@
 .PHONY: help build delete demo logs migrate superuser shell lint prod-build prod-delete prod-demo prod-logs db-backup db-restore test test-backend test-frontend test-e2e test-all
 
+# Default target
 help:
-	@echo "The Hive - Development & Production Commands"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "🐝 The Hive - Development & Production Commands"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo ""
-	@echo "Development:"
+	@echo "📦 Development:"
 	@echo "  make build       - Build development containers"
-	@echo "  make demo        - Build + setup demo data"
+	@echo "  make demo        - Build (if needed) + setup demo data"
 	@echo "  make delete      - Delete containers, volumes & databases"
 	@echo "  make logs        - View development logs"
 	@echo ""
-	@echo "Production:"
+	@echo "🚀 Production:"
 	@echo "  make prod-build  - Build production containers"
-	@echo "  make prod-demo   - Build + setup demo data"
+	@echo "  make prod-demo   - Build (if needed) + setup demo data"
 	@echo "  make prod-delete - Delete containers, volumes & databases"
 	@echo "  make prod-logs   - View production logs"
 	@echo ""
-	@echo "Database:"
+	@echo "💾 Database:"
 	@echo "  make db-backup   - Backup database to backups/"
 	@echo "  make db-restore  - Restore database (use: FILE=backup.sql.gz)"
 	@echo ""
-	@echo "Testing:"
-	@echo "  make test          - Run backend + frontend unit tests"
+	@echo "🧪 Testing:"
+	@echo "  make test        - Run all tests (backend + frontend unit)"
 	@echo "  make test-backend  - Run backend Django tests"
 	@echo "  make test-frontend - Run frontend Vitest tests"
 	@echo "  make test-e2e      - Run Playwright E2E tests"
 	@echo "  make test-all      - Run all tests including E2E"
 	@echo ""
-	@echo "Utilities:"
+	@echo "🔧 Utilities:"
 	@echo "  make migrate     - Run database migrations"
 	@echo "  make superuser   - Create Django superuser"
 	@echo "  make shell       - Open Django shell"
 	@echo "  make lint        - Check for errors"
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# ============================================================================
+# DEVELOPMENT COMMANDS
+# ============================================================================
 
 build:
-	@echo "Building development containers..."
+	@echo "🔨 Building development containers..."
 	docker compose build
+	@echo "✅ Build complete!"
 
 demo: build
-	@echo "Starting development environment..."
+	@echo "🚀 Starting development environment..."
 	docker compose up -d
+	@echo "⏳ Waiting for services to be ready..."
 	@sleep 5
-	@echo "Creating migrations..."
+	@echo "🔄 Creating migrations..."
 	docker compose exec backend python manage.py makemigrations
-	@echo "Running migrations..."
+	@echo "🔄 Running migrations..."
 	docker compose exec backend python manage.py migrate
-	@echo "Seeding forum categories..."
+	@echo "🌱 Seeding forum categories..."
 	docker compose exec backend python manage.py seed_forum_categories
-	@echo "Setting up demo data..."
+	@echo "🎭 Setting up demo data..."
 	docker compose exec backend bash -c "cd /code && DJANGO_SETTINGS_MODULE=hive_project.settings python setup_demo.py"
 	@echo ""
-	@echo "Demo environment ready!"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "✅ Demo environment ready!"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo ""
-	@echo "Demo Accounts:"
-	@echo "  Admin:   admin@thehive.local / admin123"
-	@echo "  User 1:  elif@demo.com / demo123"
-	@echo "  User 2:  cem@demo.com / demo123"
-	@echo "  User 3:  marcus@demo.com / demo123"
+	@echo "🔐 Demo Accounts:"
+	@echo "  Admin:     admin@thehive.local / admin123"
+	@echo "  User 1:    elif@demo.com / demo123"
+	@echo "  User 2:    cem@demo.com / demo123"
+	@echo "  User 3:    marcus@demo.com / demo123"
 	@echo ""
-	@echo "Frontend: http://localhost:5173"
-	@echo "Backend:  http://localhost:8000"
+	@echo "🌐 Frontend: http://localhost:5173"
+	@echo "🔧 Backend:  http://localhost:8000"
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 delete:
-	@echo "Deleting development environment..."
+	@echo "🗑️  Deleting development environment..."
 	docker compose down -v
+	@echo "✅ Development environment deleted (containers, volumes, databases removed)"
 
 logs:
 	docker compose logs -f
 
+# ============================================================================
+# PRODUCTION COMMANDS
+# ============================================================================
+
 prod-build:
-	@echo "Building production containers..."
+	@echo "🔨 Building production containers..."
 	docker compose -f docker-compose.prod.yml build
+	@echo "✅ Production build complete!"
 
 prod-demo: prod-build
-	@echo "Starting production environment..."
+	@echo "🚀 Starting production environment..."
 	docker compose -f docker-compose.prod.yml up -d
+	@echo "⏳ Waiting for services to be ready..."
 	@sleep 10
-	@echo "Creating migrations..."
+	@echo "🔄 Creating migrations..."
 	docker compose -f docker-compose.prod.yml exec backend python manage.py makemigrations
-	@echo "Running migrations..."
+	@echo "🔄 Running migrations..."
 	docker compose -f docker-compose.prod.yml exec backend python manage.py migrate --noinput
-	@echo "Collecting static files..."
+	@echo "📦 Collecting static files..."
 	docker compose -f docker-compose.prod.yml exec backend python manage.py collectstatic --noinput
-	@echo "Seeding forum categories..."
+	@echo "🌱 Seeding forum categories..."
 	docker compose -f docker-compose.prod.yml exec backend python manage.py seed_forum_categories
-	@echo "Setting up demo data..."
+	@echo "🎭 Setting up demo data..."
 	docker compose -f docker-compose.prod.yml exec backend python setup_demo.py
 	@echo ""
-	@echo "Production demo environment ready!"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "✅ Production demo environment ready!"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo ""
-	@echo "Demo Accounts:"
-	@echo "  Admin:   admin@thehive.local / admin123"
-	@echo "  User 1:  elif@demo.com / demo123"
-	@echo "  User 2:  cem@demo.com / demo123"
-	@echo "  User 3:  marcus@demo.com / demo123"
+	@echo "🔐 Demo Accounts:"
+	@echo "  Admin:     admin@thehive.local / admin123"
+	@echo "  User 1:    elif@demo.com / demo123"
+	@echo "  User 2:    cem@demo.com / demo123"
+	@echo "  User 3:    marcus@demo.com / demo123"
+	@echo ""
+	@echo "🌐 Check your configured production URL"
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 prod-delete:
-	@echo "Deleting production environment..."
+	@echo "🗑️  Deleting production environment..."
 	docker compose -f docker-compose.prod.yml down -v
+	@echo "✅ Production environment deleted (containers, volumes, databases removed)"
 
 prod-logs:
 	docker compose -f docker-compose.prod.yml logs -f
 
+# ============================================================================
+# DATABASE COMMANDS
+# ============================================================================
+
 db-backup:
 	@mkdir -p backups
-	@echo "Creating database backup..."
+	@echo "💾 Creating database backup..."
 	docker compose exec -T db pg_dump -U postgres the_hive_db | gzip > backups/backup_$$(date +%Y%m%d_%H%M%S).sql.gz
-	@echo "Backup created in backups/"
+	@echo "✅ Backup created in backups/"
 
 db-restore:
 	@if [ -z "$(FILE)" ]; then \
-		echo "Error: Please specify a backup file"; \
+		echo "❌ Error: Please specify a backup file"; \
 		echo "Usage: make db-restore FILE=backups/backup_XXXXXXXX_XXXXXX.sql.gz"; \
 		exit 1; \
 	fi
-	@echo "Restoring database from $(FILE)..."
+	@echo "📥 Restoring database from $(FILE)..."
 	gunzip < $(FILE) | docker compose exec -T db psql -U postgres the_hive_db
-	@echo "Database restored from $(FILE)"
+	@echo "✅ Database restored from $(FILE)"
+
+# ============================================================================
+# UTILITY COMMANDS
+# ============================================================================
 
 migrate:
 	docker compose exec backend python manage.py migrate
