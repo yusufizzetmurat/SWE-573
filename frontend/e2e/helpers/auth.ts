@@ -36,4 +36,3 @@ export async function switchUser(page: Page, newUser: DemoUser) {
 export function generateTestEmail(): string {
   return `test_${Date.now()}_${Math.random().toString(36).substring(7)}@test.com`;
 }
-

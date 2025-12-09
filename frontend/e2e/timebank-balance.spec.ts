@@ -117,4 +117,3 @@ test.describe('Balance Display Consistency', () => {
     await expect(navBalance).toBeVisible({ timeout: 5000 });
   });
 });
-

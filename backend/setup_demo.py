@@ -5,10 +5,8 @@ Cleans up existing demo data and creates fresh demo users, services, interaction
 Run: docker compose run --rm backend python manage.py shell < backend/setup_demo.py
 """
 import os
-import sys
 import django
 
-# Setup Django
 if __name__ == "__main__":
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hive_project.settings')
     django.setup()
@@ -51,21 +49,13 @@ if demo_users.exists():
 
 orphaned_handshakes = Handshake.objects.filter(service__isnull=True)
 if orphaned_handshakes.exists():
-    print(f"  Removing {orphaned_handshakes.count()} orphaned handshakes...")
     orphaned_handshakes.delete()
 
 orphaned_messages = ChatMessage.objects.filter(handshake__isnull=True)
 if orphaned_messages.exists():
-    print(f"  Removing {orphaned_messages.count()} orphaned chat messages...")
     orphaned_messages.delete()
 
-orphaned_notifications = Notification.objects.filter(
-    related_service__isnull=True,
-    related_handshake__isnull=True
-).exclude(type__in=['system', 'welcome'])
-if orphaned_notifications.exists():
-    print(f"  Removing {orphaned_notifications.count()} orphaned notifications...")
-    orphaned_notifications.delete()
+print("  Done")
 
 print("  ✅ Cleanup complete")
 
@@ -89,12 +79,12 @@ tags_data = [
 created_count = 0
 for tag_data in tags_data:
     try:
-        tag = Tag.objects.get(name=tag_data['name'])
+        Tag.objects.get(name=tag_data['name'])
     except Tag.DoesNotExist:
         try:
-            tag = Tag.objects.get(id=tag_data['id'])
+            Tag.objects.get(id=tag_data['id'])
         except Tag.DoesNotExist:
-            tag = Tag.objects.create(id=tag_data['id'], name=tag_data['name'])
+            Tag.objects.create(id=tag_data['id'], name=tag_data['name'])
             created_count += 1
 
 print(f"  ✅ Processed {len(tags_data)} tags ({created_count} created)")
@@ -154,7 +144,6 @@ alex = create_or_update_user(
     'Chess player and genealogy researcher. Love connecting with people through shared interests!',
     Decimal('1.00'), 6
 )
-
 ayse = create_or_update_user(
     'ayse@demo.com', 'Ayse', 'Kaya',
     'Gardening enthusiast and community organizer. Passionate about sustainable living.',
