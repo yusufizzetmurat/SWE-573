@@ -337,8 +337,7 @@ print("\n[5/5] Creating forum content...")
 # Get forum categories (assumes seed_forum_categories has been run)
 try:
     general_cat = ForumCategory.objects.get(slug='general-discussion')
-    introductions_cat = ForumCategory.objects.get(slug='introductions')
-    skills_cat = ForumCategory.objects.get(slug='skills-exchange')
+    skills_cat = ForumCategory.objects.get(slug='skills-learning')
     
     # Create welcome topic
     welcome_topic = ForumTopic.objects.create(
@@ -386,7 +385,7 @@ I'm here to help with tech stuff and also hoping to improve my Turkish. 👋'''
     
     # Create introduction topic
     intro_topic = ForumTopic.objects.create(
-        category=introductions_cat,
+        category=general_cat,
         author=elif_user,
         title='Hi! I\'m Elif - Your Friendly Neighborhood Cook 👩‍🍳',
         body='''Hello Hive community!
