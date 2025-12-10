@@ -84,3 +84,5 @@ frontend/test-results/
 frontend/playwright-report/
 
 /docs/*
+
+/.github/*
