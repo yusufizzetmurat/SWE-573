@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Clock, AlertTriangle, Calendar, CheckCircle, Heart, Sparkles, Award, Trophy, Star, Zap, Edit, MapPin, CalendarDays, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Clock, AlertTriangle, Calendar, CheckCircle, Heart, Sparkles, Award, Trophy, Star, Zap, Edit, MapPin, CalendarDays, RotateCcw, Play, Image as ImageIcon } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
 import { Avatar, AvatarFallback } from './ui/avatar';
@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 import { Badge } from './ui/badge';
 import { useAuth } from '../lib/auth-context';
-import { serviceAPI, handshakeAPI, Service, Handshake } from '../lib/api';
+import { serviceAPI, handshakeAPI, userAPI, Service, Handshake, Comment } from '../lib/api';
 import { ProfileEditModal } from './ProfileEditModal';
 import { formatTimebank } from '../lib/utils';
 import { useToast } from './Toast';
@@ -64,6 +64,20 @@ const mockActiveNeeds = [
   },
 ];
 
+// Helper to extract YouTube video ID
+function getYouTubeVideoId(url: string): string | null {
+  const regex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/;
+  const match = url.match(regex);
+  return match ? match[1] : null;
+}
+
+// Helper to extract Vimeo video ID
+function getVimeoVideoId(url: string): string | null {
+  const regex = /vimeo\.com\/(?:.*\/)?(\d+)/;
+  const match = url.match(regex);
+  return match ? match[1] : null;
+}
+
 const mockCompletedHistory = [
   {
     id: 4,
@@ -109,6 +123,7 @@ export function UserProfile({
   const [activeOffers, setActiveOffers] = useState<Service[]>([]);
   const [activeNeeds, setActiveNeeds] = useState<Service[]>([]);
   const [completedHandshakes, setCompletedHandshakes] = useState<Handshake[]>([]);
+  const [verifiedReviews, setVerifiedReviews] = useState<Comment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
   const { showToast } = useToast();
@@ -172,6 +187,18 @@ export function UserProfile({
         const completed = handshakes.filter(h => h.status === 'completed');
         if (isMounted && !abortController.signal.aborted) {
           setCompletedHandshakes(completed);
+        }
+        
+        // Fetch verified reviews
+        if (user && isMounted && !abortController.signal.aborted) {
+          try {
+            const reviews = await userAPI.getVerifiedReviews(user.id, abortController.signal);
+            if (isMounted && !abortController.signal.aborted) {
+              setVerifiedReviews(reviews);
+            }
+          } catch (error) {
+            console.error('Failed to fetch verified reviews:', error);
+          }
         }
       } catch (error: any) {
         if (!isMounted) return;
@@ -316,15 +343,22 @@ export function UserProfile({
               </div>
             </div>
 
-            {/* Edit Profile Button (only for own profile) */}
+            {/* Edit Profile Button and Achievements Link (only for own profile) */}
             {isOwnProfile && (
-              <div className="pb-4">
+              <div className="pb-4 flex gap-3">
                 <Button 
                   className="bg-amber-500 hover:bg-amber-600"
                   onClick={() => setShowEditModal(true)}
                 >
                   <Edit className="w-4 h-4 mr-2" />
                   Edit Profile
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => onNavigate('achievements')}
+                >
+                  <Trophy className="w-4 h-4 mr-2" />
+                  View Achievements
                 </Button>
               </div>
             )}
@@ -352,6 +386,85 @@ export function UserProfile({
               <h3 className="text-gray-900 mb-3">Bio</h3>
               <p className="text-gray-700 leading-relaxed">{user?.bio || userBio || 'No bio available'}</p>
             </div>
+
+            {/* Video Intro */}
+            {(user?.video_intro_url || user?.video_intro_file_url) && (() => {
+              const videoUrl = user.video_intro_url;
+              const videoFileUrl = user.video_intro_file_url;
+              
+              let videoElement = null;
+              if (videoUrl) {
+                const youtubeId = getYouTubeVideoId(videoUrl);
+                if (youtubeId) {
+                  videoElement = (
+                    <div className="aspect-video rounded-lg overflow-hidden bg-black">
+                      <iframe
+                        src={`https://www.youtube.com/embed/${youtubeId}`}
+                        title="Video Introduction"
+                        className="w-full h-full"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    </div>
+                  );
+                } else {
+                  const vimeoId = getVimeoVideoId(videoUrl);
+                  if (vimeoId) {
+                    videoElement = (
+                      <div className="aspect-video rounded-lg overflow-hidden bg-black">
+                        <iframe
+                          src={`https://player.vimeo.com/video/${vimeoId}`}
+                          title="Video Introduction"
+                          className="w-full h-full"
+                          allow="autoplay; fullscreen; picture-in-picture"
+                          allowFullScreen
+                        />
+                      </div>
+                    );
+                  }
+                }
+              } else if (videoFileUrl) {
+                videoElement = (
+                  <div className="aspect-video rounded-lg overflow-hidden bg-black">
+                    <video src={videoFileUrl} controls className="w-full h-full" />
+                  </div>
+                );
+              }
+              
+              return videoElement ? (
+                <div className="bg-white rounded-xl border border-gray-200 p-6">
+                  <h3 className="text-gray-900 mb-3 flex items-center gap-2">
+                    <Play className="w-4 h-4" />
+                    Video Introduction
+                  </h3>
+                  {videoElement}
+                </div>
+              ) : null;
+            })()}
+
+            {/* Portfolio Images */}
+            {user?.portfolio_images && user.portfolio_images.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h3 className="text-gray-900 mb-3 flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4" />
+                  Portfolio
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {user.portfolio_images.map((img, idx) => (
+                    <div
+                      key={idx}
+                      className="aspect-square rounded-lg overflow-hidden border border-gray-200"
+                    >
+                      <img 
+                        src={img} 
+                        alt={`Portfolio ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Positive Reps */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -409,6 +522,54 @@ export function UserProfile({
                 })}
               </div>
             </div>
+
+            {/* Verified Reviews */}
+            {verifiedReviews.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h3 className="text-gray-900 mb-4 flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-green-600" />
+                  Verified Reviews
+                </h3>
+                <div className="space-y-4">
+                  {verifiedReviews.slice(0, 5).map((review) => (
+                    <div key={review.id} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="font-semibold text-gray-900">{review.service_title}</span>
+                            <span className="text-gray-400">-</span>
+                            <button
+                              onClick={() => onNavigate('public-profile', { userId: review.user_id })}
+                              className="font-medium text-gray-900 hover:text-amber-600 transition-colors"
+                            >
+                              {review.user_name}
+                            </button>
+                            {review.user_karma_score !== undefined && review.user_karma_score > 0 && (
+                              <span className="text-xs text-amber-600 font-medium">
+                                {review.user_karma_score} karma
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-700">{review.body}</p>
+                        </div>
+                        <Badge className="bg-green-100 text-green-700 text-xs flex items-center gap-1 ml-2 shrink-0">
+                          <CheckCircle className="w-3 h-3" />
+                          Verified · {formatTimebank(review.handshake_hours || 0)}hr
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-2">
+                        {new Date(review.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </div>
+                    </div>
+                  ))}
+                  {verifiedReviews.length > 5 && (
+                    <p className="text-sm text-gray-500 text-center">
+                      +{verifiedReviews.length - 5} more verified reviews
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* RIGHT COLUMN - Activity & Balance */}

@@ -26,6 +26,7 @@ const ForumTopicList = lazy(() => import('./components/ForumTopicList').then(m =
 const ForumTopicDetail = lazy(() => import('./components/ForumTopicDetail').then(m => ({ default: m.ForumTopicDetail })));
 const ForumCreateTopic = lazy(() => import('./components/ForumCreateTopic').then(m => ({ default: m.ForumCreateTopic })));
 const PublicProfile = lazy(() => import('./components/PublicProfile').then(m => ({ default: m.PublicProfile })));
+const AchievementView = lazy(() => import('./components/AchievementView').then(m => ({ default: m.AchievementView })));
 const WelcomeModal = lazy(() => import('./components/WelcomeModal').then(m => ({ default: m.WelcomeModal })));
 const ServiceConfirmationModal = lazy(() => import('./components/ServiceConfirmationModal').then(m => ({ default: m.ServiceConfirmationModal })));
 const PositiveRepModal = lazy(() => import('./components/PositiveRepModal').then(m => ({ default: m.PositiveRepModal })));
@@ -57,7 +58,8 @@ type Page =
   | 'forum'
   | 'forum-category'
   | 'forum-topic'
-  | 'forum-create-topic';
+  | 'forum-create-topic'
+  | 'achievements';
 
 const pageToPath: Record<Page, string> = {
   home: '/',
@@ -77,6 +79,7 @@ const pageToPath: Record<Page, string> = {
   'forum-category': '/forum/category',
   'forum-topic': '/forum/topic',
   'forum-create-topic': '/forum/new',
+  achievements: '/achievements',
 };
 
 const resolvePageFromPath = (path: string): Page => {
@@ -100,9 +103,12 @@ const resolvePageFromPath = (path: string): Page => {
   if (path.startsWith('/forum/category/')) {
     return 'forum-category';
   }
-  if (path === '/forum') {
-    return 'forum';
-  }
+    if (path === '/forum') {
+      return 'forum';
+    }
+    if (path === '/achievements') {
+      return 'achievements';
+    }
   
   const entry = Object.entries(pageToPath).find(([, mappedPath]) => mappedPath === path);
   return (entry ? entry[0] : 'home') as Page;
@@ -533,6 +539,28 @@ function AppContent() {
           <div className="min-h-screen flex items-center justify-center">
             <div className="text-center">
               <p className="text-gray-600 mb-4">Please log in to view your profile</p>
+              <Button onClick={() => handleNavigate('login')} className="bg-orange-500 hover:bg-orange-600">
+                Log In
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {currentPage === 'achievements' && isAuthenticated && (
+          <Suspense fallback={<LoadingFallback />}>
+            <AchievementView 
+              onNavigate={handleNavigate}
+              userBalance={userBalance}
+              unreadNotifications={unreadNotifications}
+              onLogout={handleLogout}
+            />
+          </Suspense>
+        )}
+
+        {currentPage === 'achievements' && !isAuthenticated && (
+          <div className="min-h-screen flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-gray-600 mb-4">Please log in to view achievements</p>
               <Button onClick={() => handleNavigate('login')} className="bg-orange-500 hover:bg-orange-600">
                 Log In
               </Button>

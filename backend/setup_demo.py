@@ -160,6 +160,8 @@ elif_manti = Service.objects.create(
     duration=Decimal('3.00'),
     location_type='In-Person',
     location_area='Besiktas',
+    location_lat=Decimal('41.0422'),
+    location_lng=Decimal('29.0089'),
     max_participants=2,
     schedule_type='Recurrent',
     schedule_details='Every Tuesday at 19:00',
@@ -176,6 +178,8 @@ elif_3d = Service.objects.create(
     duration=Decimal('2.00'),
     location_type='In-Person',
     location_area='Besiktas',
+    location_lat=Decimal('41.0422'),
+    location_lng=Decimal('29.0089'),
     max_participants=1,
     schedule_type='One-Time',
     schedule_details='This Saturday at 14:00',
@@ -192,6 +196,8 @@ cem_chess = Service.objects.create(
     duration=Decimal('1.00'),
     location_type='In-Person',
     location_area='Kadikoy',
+    location_lat=Decimal('40.9819'),
+    location_lng=Decimal('29.0244'),
     max_participants=1,
     schedule_type='Recurrent',
     schedule_details='Every Sunday at 15:00',
@@ -223,6 +229,8 @@ ayse_gardening = Service.objects.create(
     duration=Decimal('2.00'),
     location_type='In-Person',
     location_area='Uskudar',
+    location_lat=Decimal('41.0214'),
+    location_lng=Decimal('29.0125'),
     max_participants=3,
     schedule_type='One-Time',
     schedule_details='Next Saturday at 10:00',
@@ -251,6 +259,32 @@ for user in [elif_user, cem, marcus, sarah, alex, ayse]:
     check_and_assign_badges(user)
 print("  Done")
 
+print("\n[5/5] Creating admin account...")
+admin_email = 'moderator@demo.com'
+admin_password = 'demo123'
+
+# Delete existing admin if exists
+existing_admin = User.objects.filter(email=admin_email).first()
+if existing_admin:
+    existing_admin.delete()
+    print(f"  Removed existing admin account")
+
+# Create new admin account
+admin_user = User.objects.create_superuser(
+    email=admin_email,
+    password=admin_password,
+    first_name='Moderator',
+    last_name='Admin',
+    bio='Platform moderator and administrator',
+    timebank_balance=Decimal('10.00'),
+    karma_score=100,
+    role='admin',
+    is_staff=True,
+    is_superuser=True
+)
+print(f"  Created: {admin_email} (Admin account)")
+print("  Done")
+
 print("\n" + "=" * 60)
 print("Demo setup complete!")
 print("=" * 60)
@@ -258,6 +292,7 @@ print(f"\nSummary:")
 print(f"  Users: {User.objects.filter(email__in=demo_emails).count()}")
 print(f"  Services: {Service.objects.filter(user__email__in=demo_emails).count()}")
 print(f"\nDemo Accounts (password: demo123):")
+print(f"  Admin:   {admin_email} / {admin_password}")
 for user in [elif_user, cem, sarah, marcus, alex, ayse]:
     print(f"  {user.first_name}: {user.email} (Balance: {user.timebank_balance}h)")
 print("\n" + "=" * 60)

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, X } from 'lucide-react';
+import { ArrowLeft, X, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { WikidataAutocomplete } from './WikidataAutocomplete';
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
@@ -50,6 +50,22 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
     schedule_details: '',
   });
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number; area?: string } | null>(null);
+  const [serviceImages, setServiceImages] = useState<string[]>([]);
+  
+  const handleImageAdd = (file: File | null) => {
+    if (file && serviceImages.length < 5) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        setServiceImages([...serviceImages, dataUrl]);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleImageRemove = (index: number) => {
+    setServiceImages(serviceImages.filter((_, i) => i !== index));
+  };
 
   // Memoize location select callback to prevent re-renders
   const handleLocationSelect = useCallback((location: { lat: number; lng: number; area?: string }) => {
@@ -206,6 +222,7 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
         schedule_details: scheduleDetails,
         tags: existingTagIds.length > 0 ? existingTagIds : undefined,
         tag_names: newTagNames.length > 0 ? newTagNames : undefined,
+        media: serviceImages.length > 0 ? serviceImages : undefined,
       });
 
       showToast('Service want published successfully!', 'success');
@@ -282,6 +299,41 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
               <p className="text-xs text-gray-500 mt-1.5">
                 Provide clear details to help others understand your request
               </p>
+            </div>
+
+            {/* Service Photos */}
+            <div>
+              <Label>Service Photos (Optional)</Label>
+              <p className="text-xs text-gray-500 mt-1 mb-2">
+                Upload up to 5 photos to showcase your need ({serviceImages.length}/5)
+              </p>
+              <div className="grid grid-cols-3 gap-3 mt-2">
+                {serviceImages.map((img, idx) => (
+                  <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 group">
+                    <img src={img} alt={`Service photo ${idx + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => handleImageRemove(idx)}
+                      className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                
+                {serviceImages.length < 5 && (
+                  <label className="aspect-square rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                    <ImageIcon className="w-6 h-6 text-gray-400" />
+                    <span className="text-xs text-gray-500 mt-1">Add Photo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handleImageAdd(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                )}
+              </div>
             </div>
 
             {/* Duration */}

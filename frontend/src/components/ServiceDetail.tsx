@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Clock, MapPin, Calendar, Users, Monitor, Flag, Tag, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Clock, MapPin, Calendar, Users, Monitor, Flag, Tag, MessageSquare, Play, Image as ImageIcon } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -295,6 +295,45 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                     </div>
                   </div>
 
+                  {/* Service Media */}
+                  {service.media && service.media.length > 0 && (
+                    <div className="mb-6">
+                      <h3 className="text-gray-900 mb-3">Photos</h3>
+                      <div className="grid grid-cols-3 gap-3">
+                        {service.media.map((mediaItem: any) => {
+                          // Handle both file URLs and file objects
+                          let imageUrl = '';
+                          if (mediaItem.image) {
+                            // If it's a file URL from backend (preferred)
+                            imageUrl = mediaItem.image;
+                          } else if (mediaItem.file_url) {
+                            // If it's a data URL or external URL
+                            imageUrl = mediaItem.file_url;
+                          } else if (mediaItem.file) {
+                            // Fallback to file field
+                            imageUrl = mediaItem.file;
+                          }
+                          
+                          if (!imageUrl) return null;
+                          
+                          return (
+                            <div key={mediaItem.id} className="aspect-square rounded-lg overflow-hidden border border-gray-200">
+                              <img 
+                                src={imageUrl} 
+                                alt="Service photo"
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  // Hide broken images
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Tags */}
                   {service.tags && service.tags.length > 0 && (
                     <div>
@@ -413,6 +452,83 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                 </div>
               </div>
             </div>
+
+            {/* Provider Media - 2x3 Grid (1 video, up to 5 photos) */}
+            {(providerUser?.video_intro_url || providerUser?.video_intro_file_url || (providerUser?.portfolio_images && providerUser.portfolio_images.length > 0)) && (
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h3 className="text-gray-900 mb-4 flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4" />
+                  Provider Portfolio
+                </h3>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Video (first position) */}
+                  {(providerUser.video_intro_url || providerUser.video_intro_file_url) && (() => {
+                    const videoUrl = providerUser.video_intro_url;
+                    const videoFileUrl = providerUser.video_intro_file_url;
+                    let videoElement = null;
+                    
+                    if (videoUrl) {
+                      const youtubeMatch = videoUrl.match(/(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/);
+                      if (youtubeMatch) {
+                        videoElement = (
+                          <div className="aspect-square rounded-lg overflow-hidden bg-black">
+                            <iframe
+                              src={`https://www.youtube.com/embed/${youtubeMatch[1]}`}
+                              title="Video Introduction"
+                              className="w-full h-full"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            />
+                          </div>
+                        );
+                      } else {
+                        const vimeoMatch = videoUrl.match(/vimeo\.com\/(?:.*\/)?(\d+)/);
+                        if (vimeoMatch) {
+                          videoElement = (
+                            <div className="aspect-square rounded-lg overflow-hidden bg-black">
+                              <iframe
+                                src={`https://player.vimeo.com/video/${vimeoMatch[1]}`}
+                                title="Video Introduction"
+                                className="w-full h-full"
+                                allow="autoplay; fullscreen; picture-in-picture"
+                                allowFullScreen
+                              />
+                            </div>
+                          );
+                        }
+                      }
+                    } else if (videoFileUrl) {
+                      videoElement = (
+                        <div className="aspect-square rounded-lg overflow-hidden bg-black">
+                          <video src={videoFileUrl} controls className="w-full h-full" />
+                        </div>
+                      );
+                    }
+                    
+                    return videoElement ? (
+                      <div className="relative">
+                        {videoElement}
+                        <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                          <Play className="w-3 h-3" />
+                          Video
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
+                  
+                  {/* Portfolio Images (up to 5, fill remaining slots) */}
+                  {providerUser.portfolio_images && providerUser.portfolio_images.slice(0, 5).map((img: string, idx: number) => (
+                    <div key={idx} className="aspect-square rounded-lg overflow-hidden border border-gray-200">
+                      <img 
+                        src={img} 
+                        alt={`Portfolio ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Action Card */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">

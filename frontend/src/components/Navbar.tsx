@@ -1,5 +1,5 @@
 import React from 'react';
-import { Hexagon, Search, Plus, User, LogOut, MessageSquare, UserCircle, Bell } from 'lucide-react';
+import { Hexagon, Search, Plus, User, LogOut, MessageSquare, UserCircle, Bell, Grid3x3 } from 'lucide-react';
 import { formatTimebank } from '../lib/utils';
 import { Button } from './ui/button';
 import {
@@ -49,22 +49,24 @@ export function Navbar({
             <div className="flex items-center gap-1">
               <button
                 onClick={() => onNavigate('dashboard')}
-                className={`px-4 py-2 rounded-lg transition-colors ${
+                className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
                   activeLink === 'browse'
                     ? 'bg-amber-50 text-amber-900'
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 }`}
               >
+                <Grid3x3 className="w-4 h-4" />
                 Browse Services
               </button>
               <button
                 onClick={() => onNavigate('forum')}
-                className={`px-4 py-2 rounded-lg transition-colors ${
+                className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
                   activeLink === 'forum'
                     ? 'bg-amber-50 text-amber-900'
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 }`}
               >
+                <MessageSquare className="w-4 h-4" />
                 Forums
               </button>
               <button

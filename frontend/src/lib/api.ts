@@ -19,6 +19,7 @@ export interface User {
   badges?: string[];
   date_joined?: string;
   featured_badge?: string | null;
+  featured_achievement_id?: string | null;
   // Profile trust enhancement fields
   video_intro_url?: string;
   video_intro_file?: string;
@@ -142,6 +143,16 @@ export const userAPI = {
   getHistory: async (userId: string, signal?: AbortSignal): Promise<UserHistoryItem[]> => {
     const response = await apiClient.get(`/users/${userId}/history/`, { signal });
     return response.data;
+  },
+
+  getBadgeProgress: async (userId: string, signal?: AbortSignal): Promise<Record<string, any>> => {
+    const response = await apiClient.get(`/users/${userId}/badge-progress/`, { signal });
+    return response.data;
+  },
+
+  getVerifiedReviews: async (userId: string, signal?: AbortSignal): Promise<Comment[]> => {
+    const response = await apiClient.get(`/users/${userId}/verified-reviews/`, { signal });
+    return response.data.results || response.data;
   },
 };
 
@@ -560,9 +571,13 @@ export interface CommentReply {
 export interface Comment {
   id: string;
   service: string;
+  service_title?: string;
   user_id: string;
   user_name: string;
   user_avatar_url?: string;
+  user_karma_score?: number;
+  user_badges?: string[];
+  user_featured_achievement_id?: string | null;
   parent?: string;
   body: string;
   is_deleted: boolean;

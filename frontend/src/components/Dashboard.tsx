@@ -22,6 +22,7 @@ interface DashboardProps {
 export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2, onLogout }: DashboardProps) {
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [services, setServices] = useState<Service[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,26 +31,45 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
   const [userLocation, setUserLocation] = useState<{lat: number; lng: number} | null>(null);
   const [distanceKm, setDistanceKm] = useState<number>(10);
   const [debouncedDistanceKm, setDebouncedDistanceKm] = useState<number>(10);
-  const [locationEnabled, setLocationEnabled] = useState(false);
+  const [locationEnabled, setLocationEnabled] = useState(() => {
+    // Load from localStorage for persistence
+    const saved = localStorage.getItem('locationEnabled');
+    return saved === 'true';
+  });
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   
-  // Debounce timer ref for distance slider
+  // Debounce timer refs
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const distanceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
+  // Debounce searchQuery changes (500ms delay)
+  useEffect(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+    
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 500);
+    
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [searchQuery]);
+
   // Debounce distanceKm changes to prevent excessive API calls while dragging slider
   useEffect(() => {
-    // Clear any existing timeout
     if (distanceDebounceRef.current) {
       clearTimeout(distanceDebounceRef.current);
     }
     
-    // Set new timeout to update debounced value after 300ms of no changes
     distanceDebounceRef.current = setTimeout(() => {
       setDebouncedDistanceKm(distanceKm);
     }, 300);
     
-    // Cleanup timeout on unmount or when distanceKm changes
     return () => {
       if (distanceDebounceRef.current) {
         clearTimeout(distanceDebounceRef.current);
@@ -75,6 +95,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
           lng: position.coords.longitude
         });
         setLocationEnabled(true);
+        localStorage.setItem('locationEnabled', 'true');
         setLocationLoading(false);
       },
       (error) => {
@@ -105,8 +126,10 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
   const toggleLocationSearch = useCallback(() => {
     if (locationEnabled) {
       setLocationEnabled(false);
+      localStorage.setItem('locationEnabled', 'false');
     } else if (userLocation) {
       setLocationEnabled(true);
+      localStorage.setItem('locationEnabled', 'true');
     } else {
       requestLocation();
     }
@@ -181,9 +204,9 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
           });
         }
         
-        // Apply search filter
-        if (searchQuery.trim()) {
-          const query = searchQuery.toLowerCase().trim();
+        // Apply search filter (use debounced query)
+        if (debouncedSearchQuery.trim()) {
+          const query = debouncedSearchQuery.toLowerCase().trim();
           filteredData = filteredData.filter(service => {
             const titleMatch = service.title.toLowerCase().includes(query);
             const descMatch = service.description.toLowerCase().includes(query);
@@ -244,7 +267,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [activeFilter, searchQuery, locationEnabled, userLocation, debouncedDistanceKm]);
+  }, [activeFilter, debouncedSearchQuery, locationEnabled, userLocation, debouncedDistanceKm]);
 
   const filters = [
     { id: 'all', label: 'All Services' },
@@ -343,7 +366,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
                   ) : locationEnabled ? (
                     <>
                       <MapPin className="w-4 h-4 mr-2" />
-                      Enabled
+                      By Distance
                     </>
                   ) : (
                     <>
@@ -366,14 +389,43 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
                       {distanceKm <= 5 ? 'Nearby' : distanceKm <= 15 ? 'Local Area' : distanceKm <= 30 ? 'Wider Area' : 'City-wide'}
                     </span>
                   </div>
-                  <Slider
-                    value={[distanceKm]}
-                    onValueChange={([value]) => setDistanceKm(value)}
-                    min={1}
-                    max={50}
-                    step={1}
-                    className="w-full"
-                  />
+                  <div className="relative">
+                    <Slider
+                      value={[distanceKm]}
+                      onValueChange={([value]) => setDistanceKm(value)}
+                      min={1}
+                      max={50}
+                      step={1}
+                      className="w-full"
+                      style={{
+                        // Improve contrast for slider track and thumb
+                        '--slider-track-bg': '#e5e7eb',
+                        '--slider-range-bg': '#f97316',
+                        '--slider-thumb-bg': '#ffffff',
+                        '--slider-thumb-border': '#f97316',
+                      } as React.CSSProperties}
+                    />
+                    <style>{`
+                      [data-slot="slider-track"] {
+                        background-color: #e5e7eb !important;
+                        height: 6px !important;
+                      }
+                      [data-slot="slider-range"] {
+                        background-color: #f97316 !important;
+                      }
+                      [data-slot="slider-thumb"] {
+                        background-color: #ffffff !important;
+                        border: 2px solid #f97316 !important;
+                        width: 18px !important;
+                        height: 18px !important;
+                        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+                      }
+                      [data-slot="slider-thumb"]:hover {
+                        border-color: #ea580c !important;
+                        box-shadow: 0 4px 8px rgba(249, 115, 22, 0.3) !important;
+                      }
+                    `}</style>
+                  </div>
                   <div className="flex justify-between text-xs text-gray-400">
                     <span>1 km</span>
                     <span>25 km</span>

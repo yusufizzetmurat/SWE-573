@@ -16,101 +16,91 @@ from .models import (
     Comment, NegativeRep, TransactionHistory
 )
 
-# Badge definitions with metadata
-BADGE_DEFAULTS: Dict[str, Dict[str, str]] = {
-    # === Original Badges ===
+# Achievement definitions with metadata and karma rewards
+# Format: badge_id -> {name, description, icon_url, karma_points, is_hidden}
+BADGE_DEFAULTS: Dict[str, Dict[str, any]] = {
     "first-service": {
         "name": "First Service",
         "description": "Completed the first timebank exchange.",
         "icon_url": "",
+        "karma_points": 5,
+        "is_hidden": False,
     },
     "10-offers": {
         "name": "10+ Offers",
         "description": "Shared at least ten offers with the community.",
         "icon_url": "",
+        "karma_points": 10,
+        "is_hidden": False,
     },
     "kindness-hero": {
         "name": "Kindness Hero",
         "description": "Received consistent kindness feedback from neighbours.",
         "icon_url": "",
+        "karma_points": 15,
+        "is_hidden": False,
     },
     "super-helper": {
         "name": "Super Helper",
         "description": "Recognised for above-and-beyond support.",
         "icon_url": "",
+        "karma_points": 15,
+        "is_hidden": False,
     },
     "punctual-pro": {
         "name": "Punctual Pro",
         "description": "Always on time for confirmed handshakes.",
         "icon_url": "",
+        "karma_points": 12,
+        "is_hidden": False,
     },
-    
-    # === New Community Engagement Badges ===
     "community-voice": {
         "name": "Community Voice",
         "description": "Active contributor with 10+ comments in the community.",
         "icon_url": "",
+        "karma_points": 8,
+        "is_hidden": False,
     },
-    "conversation-starter": {
-        "name": "Conversation Starter",
-        "description": "Your services spark discussion with 5+ comments received.",
-        "icon_url": "",
-    },
-    
-    # === Time Giving Milestones ===
     "time-giver-bronze": {
         "name": "Time Giver (Bronze)",
         "description": "Generously shared 10+ hours with the community.",
         "icon_url": "",
+        "karma_points": 10,
+        "is_hidden": False,
     },
-    "time-giver-silver": {
-        "name": "Time Giver (Silver)",
-        "description": "Generously shared 50+ hours with the community.",
-        "icon_url": "",
-    },
-    "time-giver-gold": {
-        "name": "Time Giver (Gold)",
-        "description": "Generously shared 100+ hours with the community.",
-        "icon_url": "",
-    },
-    
-    # === Trust and Reputation Badges ===
     "trusted-member": {
         "name": "Trusted Member",
         "description": "Reliable community member with 25+ completed exchanges.",
         "icon_url": "",
+        "karma_points": 20,
+        "is_hidden": False,
     },
     "perfect-record": {
         "name": "Perfect Record",
         "description": "Maintained excellence with 10+ completed handshakes and zero negative feedback.",
         "icon_url": "",
+        "karma_points": 25,
+        "is_hidden": True,
     },
     "top-rated": {
         "name": "Top Rated",
         "description": "Exceptional reputation with 50+ positive feedback points.",
         "icon_url": "",
+        "karma_points": 30,
+        "is_hidden": True,
     },
 }
 
-# Badge requirements mapping: badge_id -> (stat_key, threshold)
+# Achievement requirements mapping: badge_id -> (stat_key, threshold)
+# Only 10 achievements are active
 BADGE_REQUIREMENTS: Dict[str, tuple] = {
-    # Original badges
     'first-service': ('completed_services', 1),
     '10-offers': ('offer_count', 10),
     'kindness-hero': ('kindness_count', 20),
     'super-helper': ('helpful_count', 15),
     'punctual-pro': ('punctual_count', 15),
-    
-    # New community engagement badges
     'community-voice': ('comments_posted', 10),
-    'conversation-starter': ('comments_on_services', 5),
-    
-    # Time giving milestones
     'time-giver-bronze': ('hours_given', 10),
-    'time-giver-silver': ('hours_given', 50),
-    'time-giver-gold': ('hours_given', 100),
-    
-    # Trust and reputation badges
     'trusted-member': ('completed_services', 25),
     'perfect-record': ('completed_no_negative', 10),
     'top-rated': ('total_positive_reputation', 50),
@@ -246,7 +236,7 @@ def get_user_stats(user: User) -> Dict[str, int]:
 
 def assign_badge(user: User, badge_id: str) -> bool:
     """
-    Assign a badge to a user.
+    Assign a badge to a user and award karma points.
     
     Returns True if badge was newly assigned, False if already had it.
     """
@@ -256,10 +246,20 @@ def assign_badge(user: User, badge_id: str) -> bool:
             "name": badge_id.replace("-", " ").replace("_", " ").title(),
             "description": "",
             "icon_url": "",
+            "karma_points": 0,
+            "is_hidden": False,
         },
     )
     badge, _ = Badge.objects.get_or_create(id=badge_id, defaults=defaults)
     _, created = UserBadge.objects.get_or_create(user=user, badge=badge)
+    
+    # Award karma points when badge is newly assigned
+    if created:
+        karma_points = defaults.get("karma_points", 0)
+        if karma_points > 0:
+            user.karma_score += karma_points
+            user.save(update_fields=['karma_score'])
+    
     return created
 
 
@@ -284,12 +284,21 @@ def get_badge_progress(user: User) -> Dict[str, Dict]:
             has_negative = stats.get('negative_rep_count', 0) > 0
             current = stats.get('completed_services', 0) if not has_negative else 0
         
+        badge_info = BADGE_DEFAULTS.get(badge_id, {})
+        is_hidden = badge_info.get('is_hidden', False)
+        
         progress[badge_id] = {
-            'badge': BADGE_DEFAULTS.get(badge_id, {}),
+            'badge': {
+                'name': badge_info.get('name', badge_id),
+                'description': badge_info.get('description', ''),
+                'icon_url': badge_info.get('icon_url', ''),
+                'karma_points': badge_info.get('karma_points', 0),
+                'is_hidden': is_hidden,
+            },
             'earned': badge_id in existing_badges,
-            'current': current,
-            'threshold': threshold,
-            'progress_percent': min(100, int((current / threshold) * 100)) if threshold > 0 else 0,
+            'current': current if (badge_id in existing_badges or not is_hidden) else None,
+            'threshold': threshold if (badge_id in existing_badges or not is_hidden) else None,
+            'progress_percent': min(100, int((current / threshold) * 100)) if threshold > 0 and (badge_id in existing_badges or not is_hidden) else 0,
         }
     
     return progress

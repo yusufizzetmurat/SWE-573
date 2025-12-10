@@ -90,17 +90,17 @@ export function HomePageMap({ services = [] }: HomePageMapProps) {
       let position: [number, number] | undefined;
       let label = 'Istanbul';
 
-      // Priority 1: Use exact coordinates if provided
-      if (service.location_lat && service.location_lng) {
-        const lat = typeof service.location_lat === 'string' ? parseFloat(service.location_lat) : service.location_lat;
-        const lng = typeof service.location_lng === 'string' ? parseFloat(service.location_lng) : service.location_lng;
-        if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-          position = [lat, lng];
-          label = service.location_area || 'Istanbul';
+      // Priority 1: Use district lookup for fuzzy location (never show exact coordinates)
+      if (service.location_type === 'In-Person' && service.location_area) {
+        const normalized = normalizeArea(service.location_area);
+        const district = DISTRICT_COORDS[normalized];
+        if (district) {
+          position = [district.lat, district.lng];
+          label = district.name;
         }
       }
 
-      // Priority 2: Use district lookup if coordinates not available
+      // Priority 2: Use district lookup if coordinates not available (fallback)
       if (!position && service.location_type === 'In-Person' && service.location_area) {
         const normalized = normalizeArea(service.location_area);
         const district = DISTRICT_COORDS[normalized];
@@ -166,7 +166,7 @@ export function HomePageMap({ services = [] }: HomePageMapProps) {
         />
         {markerGroups.length > 0 && markerGroups.map((group, index) => {
           const color = circleColors[group.type];
-          const radius = 12 + Math.min(group.services.length * 2, 12);
+          const radius = 20 + Math.min(group.services.length * 3, 20);
           return (
             <CircleMarker
               key={`${group.label}-${index}-${group.position[0]}-${group.position[1]}`}

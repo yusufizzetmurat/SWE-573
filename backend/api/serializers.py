@@ -5,7 +5,7 @@ from .models import (
     User, Service, Tag, Handshake, ChatMessage, 
     Notification, ReputationRep, Badge, UserBadge, Report, TransactionHistory,
     ChatRoom, PublicChatMessage, Comment, NegativeRep,
-    ForumCategory, ForumTopic, ForumPost
+    ForumCategory, ForumTopic, ForumPost, ServiceMedia
 )
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.password_validation import validate_password
@@ -55,7 +55,7 @@ class UserSummarySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'first_name', 'last_name', 'bio',
             'avatar_url', 'banner_url', 'timebank_balance', 'karma_score',
-            'date_joined', 'badges', 'featured_badge'
+            'date_joined', 'badges', 'featured_badge', 'featured_achievement_id'
         ]
         read_only_fields = fields
     
@@ -74,7 +74,9 @@ class UserSummarySerializer(serializers.ModelSerializer):
     
     @extend_schema_field(OpenApiTypes.STR)
     def get_featured_badge(self, obj):
-        """Return first badge ID as featured badge"""
+        """Return featured achievement ID or first badge ID as fallback"""
+        if obj.featured_achievement_id:
+            return obj.featured_achievement_id
         badges = self.get_badges(obj)
         return badges[0] if badges else None
 
@@ -110,6 +112,42 @@ class TagSerializer(serializers.ModelSerializer):
                 return fetch_wikidata_item(obj.id)
             except Exception:
                 return None
+        return None
+
+class ServiceMediaSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+    image = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ServiceMedia
+        fields = ['id', 'media_type', 'file_url', 'file', 'image', 'display_order', 'created_at']
+        read_only_fields = ['id', 'created_at']
+    
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_file_url(self, obj):
+        """Return file URL - prefer file_url field, fallback to file field URL"""
+        if obj.file_url:
+            return obj.file_url
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
+    
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_image(self, obj):
+        """Return image URL for convenience (same as file_url for images)"""
+        if obj.media_type == 'image':
+            return self.get_file_url(obj)
+        return None
+        if obj.file_url:
+            return obj.file_url
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
         return None
 
 @extend_schema_serializer(
@@ -175,6 +213,7 @@ class ServiceSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
+    media = ServiceMediaSerializer(many=True, required=False, read_only=True)
     
     user = serializers.SerializerMethodField()
     description = serializers.CharField(max_length=5000)
@@ -187,7 +226,7 @@ class ServiceSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'title', 'description', 'type', 'duration',
             'location_type', 'location_area', 'location_lat', 'location_lng', 'status', 'max_participants', 'schedule_type',
-            'schedule_details', 'created_at', 'tags', 'tag_ids', 'tag_names', 'comment_count', 'hot_score', 'is_visible'
+            'schedule_details', 'created_at', 'tags', 'tag_ids', 'tag_names', 'comment_count', 'hot_score', 'is_visible', 'media'
         ]
         read_only_fields = ['user', 'hot_score', 'is_visible']
     
@@ -228,6 +267,11 @@ class ServiceSerializer(serializers.ModelSerializer):
         # Extract tag_ids and tag_names if provided
         tag_ids = validated_data.pop('tag_ids', [])
         tag_names = validated_data.pop('tag_names', [])
+        
+        # Extract media data URLs if provided
+        media_data_urls = self.context['request'].data.get('media', [])
+        if not isinstance(media_data_urls, list):
+            media_data_urls = []
         
         # Handle location coordinates if provided (convert from string/float to Decimal, round to 6 decimal places)
         if 'location_lat' in validated_data and validated_data['location_lat']:
@@ -341,6 +385,49 @@ class ServiceSerializer(serializers.ModelSerializer):
         if tags_to_add:
             service.tags.set(tags_to_add)
         
+        # Create ServiceMedia objects from data URLs
+        if media_data_urls:
+            from .models import ServiceMedia
+            import base64
+            from django.core.files.base import ContentFile
+            
+            for idx, data_url in enumerate(media_data_urls[:5]):  # Limit to 5 images
+                if not data_url or not isinstance(data_url, str):
+                    continue
+                
+                try:
+                    # Parse data URL (format: data:image/png;base64,...)
+                    if data_url.startswith('data:'):
+                        header, encoded = data_url.split(',', 1)
+                        mime_type = header.split(';')[0].split(':')[1]
+                        
+                        # Decode base64
+                        image_data = base64.b64decode(encoded)
+                        
+                        # Determine file extension from MIME type
+                        ext_map = {
+                            'image/jpeg': 'jpg',
+                            'image/jpg': 'jpg',
+                            'image/png': 'png',
+                            'image/gif': 'gif',
+                            'image/webp': 'webp'
+                        }
+                        ext = ext_map.get(mime_type, 'jpg')
+                        
+                        # Create file name
+                        file_name = f"service_{service.id}_{idx}.{ext}"
+                        
+                        # Create ServiceMedia object
+                        ServiceMedia.objects.create(
+                            service=service,
+                            media_type='image',
+                            file=ContentFile(image_data, name=file_name),
+                            display_order=idx
+                        )
+                except Exception as e:
+                    # Log error but don't fail service creation
+                    logger.warning(f"Failed to create service media from data URL: {e}")
+        
         return service
     
     def update(self, instance, validated_data):
@@ -429,7 +516,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'banner_url', 'timebank_balance', 'karma_score', 'services',
             'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined',
             'video_intro_url', 'video_intro_file', 'video_intro_file_url',
-            'portfolio_images', 'show_history'
+            'portfolio_images', 'show_history', 'featured_achievement_id'
         ]
         read_only_fields = [
             'id', 'email', 'timebank_balance', 'karma_score', 'services',
@@ -974,6 +1061,10 @@ class CommentSerializer(serializers.ModelSerializer):
     user_id = serializers.UUIDField(source='user.id', read_only=True)
     user_name = serializers.SerializerMethodField()
     user_avatar_url = serializers.SerializerMethodField()
+    user_karma_score = serializers.IntegerField(source='user.karma_score', read_only=True)
+    user_badges = serializers.SerializerMethodField()
+    user_featured_achievement_id = serializers.CharField(source='user.featured_achievement_id', read_only=True, allow_null=True)
+    service_title = serializers.SerializerMethodField()
     reply_count = serializers.SerializerMethodField()
     parent_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
     handshake_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
@@ -985,7 +1076,8 @@ class CommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
         fields = [
-            'id', 'service', 'user_id', 'user_name', 'user_avatar_url',
+            'id', 'service', 'service_title', 'user_id', 'user_name', 'user_avatar_url',
+            'user_karma_score', 'user_badges', 'user_featured_achievement_id',
             'parent', 'parent_id', 'body', 'is_deleted', 'is_verified_review',
             'handshake_id', 'handshake_hours', 'handshake_completed_at',
             'reply_count', 'replies', 'created_at', 'updated_at'
@@ -1002,6 +1094,26 @@ class CommentSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.STR)
     def get_user_avatar_url(self, obj):
         return obj.user.avatar_url
+    
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_user_badges(self, obj):
+        """Return list of badge IDs for the comment author"""
+        try:
+            if hasattr(obj.user, '_prefetched_objects_cache') and 'badges' in obj.user._prefetched_objects_cache:
+                return [user_badge.badge.id for user_badge in obj.user._prefetched_objects_cache['badges']]
+        except (AttributeError, KeyError):
+            pass
+        try:
+            return [user_badge.badge.id for user_badge in obj.user.badges.all()]
+        except (AttributeError, Exception):
+            return []
+    
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_service_title(self, obj):
+        """Return service title for verified reviews"""
+        if obj.service:
+            return obj.service.title
+        return None
 
     @extend_schema_field(OpenApiTypes.FLOAT)
     def get_handshake_hours(self, obj):

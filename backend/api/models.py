@@ -36,6 +36,7 @@ class User(AbstractUser):
     timebank_balance = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     karma_score = models.IntegerField(default=0)
     role = models.CharField(max_length=20, choices=[('member', 'Member'), ('admin', 'Admin')], default='member')
+    featured_achievement_id = models.CharField(max_length=200, null=True, blank=True, help_text='Featured achievement badge ID to display on profile')
     date_joined = models.DateTimeField(auto_now_add=True)
     
     # Profile trust enhancement fields
@@ -630,4 +631,30 @@ class ForumPost(models.Model):
             models.Index(fields=['topic', 'created_at']),
             models.Index(fields=['author', 'created_at']),
             models.Index(fields=['topic', 'is_deleted', 'created_at']),
+        ]
+
+
+class ServiceMedia(models.Model):
+    """Media files (images/videos) attached to services"""
+    MEDIA_TYPE_CHOICES = (
+        ('image', 'Image'),
+        ('video', 'Video'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='media')
+    media_type = models.CharField(max_length=10, choices=MEDIA_TYPE_CHOICES, default='image')
+    file_url = models.TextField(blank=True, null=True, help_text='URL to the media file (data URL or external URL)')
+    file = models.FileField(upload_to='service_media/', blank=True, null=True, help_text='Uploaded media file')
+    display_order = models.IntegerField(default=0, help_text='Order for displaying media (lower numbers first)')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.media_type} for {self.service.title}"
+
+    class Meta:
+        ordering = ['display_order', 'created_at']
+        indexes = [
+            models.Index(fields=['service', 'display_order']),
+            models.Index(fields=['service', 'media_type']),
         ]

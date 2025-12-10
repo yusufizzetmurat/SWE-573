@@ -9,6 +9,7 @@ import { useAuth } from '../lib/auth-context';
 import { useToast } from './Toast';
 import { getErrorMessage } from '../lib/types';
 import { formatTimebank } from '../lib/utils';
+import { getBadgeMeta } from '../lib/badges';
 
 interface CommentSectionProps {
   serviceId: string;
@@ -97,12 +98,36 @@ function CommentItem({
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
+            {comment.service_title && (
+              <>
+                <span className="font-semibold text-gray-900">{comment.service_title}</span>
+                <span className="text-gray-400">-</span>
+              </>
+            )}
             <button
               onClick={() => onNavigate('public-profile', { userId: comment.user_id })}
               className="font-medium text-gray-900 hover:text-amber-600 transition-colors"
             >
               {comment.user_name}
             </button>
+            
+            {comment.user_karma_score !== undefined && comment.user_karma_score > 0 && (
+              <span className="text-xs text-amber-600 font-medium">
+                {comment.user_karma_score} karma
+              </span>
+            )}
+            
+            {comment.user_featured_achievement_id && (() => {
+              const badgeMeta = getBadgeMeta(comment.user_featured_achievement_id);
+              if (!badgeMeta) return null;
+              const Icon = badgeMeta.icon;
+              return (
+                <Badge className="bg-amber-50 text-amber-700 text-xs flex items-center gap-1">
+                  <Icon className="w-3 h-3" />
+                  {badgeMeta.label}
+                </Badge>
+              );
+            })()}
             
             {comment.is_verified_review && (
               <Badge className="bg-green-100 text-green-700 text-xs flex items-center gap-1">
@@ -240,10 +265,13 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
 
       const response = await commentAPI.list(serviceId, pageNum);
       
+      // Filter to show only verified reviews
+      const verifiedReviews = response.results.filter(c => c.is_verified_review && !c.is_deleted);
+      
       if (append) {
-        setComments(prev => [...prev, ...response.results]);
+        setComments(prev => [...prev, ...verifiedReviews]);
       } else {
-        setComments(response.results);
+        setComments(verifiedReviews);
       }
       
       setHasMore(!!response.next);
@@ -467,7 +495,7 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
       ) : comments.length === 0 ? (
         <div className="text-center py-8">
           <MessageSquare className="w-10 h-10 mx-auto text-gray-300 mb-2" />
-          <p className="text-gray-500">No comments yet. Be the first to comment!</p>
+          <p className="text-gray-500">No verified reviews yet. Reviews will appear here after service completion.</p>
         </div>
       ) : (
         <div className="space-y-6">

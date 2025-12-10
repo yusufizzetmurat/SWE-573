@@ -122,14 +122,14 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl h-[85vh] p-0 flex flex-col overflow-hidden">
+      <DialogContent className="max-w-2xl max-h-[90vh] p-0 flex flex-col overflow-hidden">
         <div className="flex-shrink-0 bg-white px-6 pt-6 pb-4 border-b">
           <DialogHeader>
             <DialogTitle>Edit Profile</DialogTitle>
           </DialogHeader>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4" style={{ minHeight: 0 }}>
+        <div className="flex-1 overflow-y-auto px-6 py-4" style={{ minHeight: 0, maxHeight: 'calc(90vh - 140px)' }}>
           <div className="space-y-6 pb-4">
             {error && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-lg">

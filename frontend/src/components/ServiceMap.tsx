@@ -46,17 +46,13 @@ export function ServiceMap({ locationType, locationArea, locationDetails, locati
       mapInstanceRef.current = null;
     }
 
-    // Determine coordinates: use provided lat/lng, or lookup district, or use Istanbul center
+    // Determine coordinates: use district lookup for fuzzy location (never show exact coordinates)
     let lat: number;
     let lng: number;
     let displayName: string = locationArea || 'Istanbul';
 
-    if (locationLat && locationLng) {
-      // Use provided coordinates
-      lat = typeof locationLat === 'string' ? parseFloat(locationLat) : locationLat;
-      lng = typeof locationLng === 'string' ? parseFloat(locationLng) : locationLng;
-    } else if (locationArea && ISTANBUL_DISTRICTS[locationArea]) {
-      // Use predefined district coordinates
+    if (locationArea && ISTANBUL_DISTRICTS[locationArea]) {
+      // Use predefined district coordinates (fuzzy location)
       const district = ISTANBUL_DISTRICTS[locationArea];
       lat = district.lat;
       lng = district.lng;
@@ -67,10 +63,10 @@ export function ServiceMap({ locationType, locationArea, locationDetails, locati
       lng = 28.9784;
     }
 
-    // Create map centered on the location
+    // Create map centered on the location (always use district-level zoom for fuzzy location)
     const map = L.map(mapRef.current, {
       center: [lat, lng],
-      zoom: locationLat && locationLng ? 14 : 13,
+      zoom: 13, // Always use district-level zoom to hide exact location
       zoomControl: true,
       attributionControl: true,
     });
@@ -97,12 +93,12 @@ export function ServiceMap({ locationType, locationArea, locationDetails, locati
     // Add popup with area name
     marker.bindPopup(`<b>${displayName}</b><br>Approximate location`).openPopup();
 
-    // Add circle to show approximate area (not exact address)
+    // Add circle to show approximate area (not exact address) - increased radius for better visibility
     L.circle([lat, lng], {
       color: '#10b981',
       fillColor: '#10b981',
-      fillOpacity: 0.1,
-      radius: 2000, // 2km radius to show approximate area
+      fillOpacity: 0.15,
+      radius: 3000, // 3km radius to show approximate area and hide exact location
     }).addTo(map);
 
     mapInstanceRef.current = map;

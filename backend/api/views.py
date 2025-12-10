@@ -25,7 +25,7 @@ from .models import (
     User, Service, Tag, Handshake, ChatMessage,
     Notification, ReputationRep, Badge, Report, UserBadge, TransactionHistory,
     ChatRoom, PublicChatMessage, Comment, NegativeRep,
-    ForumCategory, ForumTopic, ForumPost
+    ForumCategory, ForumTopic, ForumPost, ServiceMedia
 )
 from .serializers import (
     UserRegistrationSerializer, 
@@ -47,6 +47,7 @@ from .serializers import (
     ForumTopicDetailSerializer,
     ForumPostSerializer
 )
+from .badge_utils import get_badge_progress
 from .utils import (
     can_user_post_offer, provision_timebank, complete_timebank_transfer,
     cancel_timebank_transfer, create_notification
@@ -431,6 +432,122 @@ class UserHistoryView(APIView):
         return Response(serializer.data)
 
 
+class UserBadgeProgressView(APIView):
+    """
+    User Badge/Achievement Progress
+    
+    Get progress towards all achievements for a user.
+    
+    **GET /api/users/{id}/badge-progress/** - Get user's achievement progress
+    
+    **Response Format:**
+    ```json
+    {
+        "first-service": {
+            "badge": {
+                "name": "First Service",
+                "description": "Completed the first timebank exchange.",
+                "karma_points": 5,
+                "is_hidden": false
+            },
+            "earned": true,
+            "current": 1,
+            "threshold": 1,
+            "progress_percent": 100
+        },
+        ...
+    }
+    ```
+    
+    **Authentication:** Required (JWT Bearer token)
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, id):
+        try:
+            target_user = User.objects.get(id=id)
+        except User.DoesNotExist:
+            return Response(
+                {'detail': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Users can only view their own badge progress
+        if str(request.user.id) != str(id):
+            return Response(
+                {'detail': 'You can only view your own achievement progress'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        progress = get_badge_progress(target_user)
+        return Response(progress)
+
+
+class UserVerifiedReviewsView(APIView):
+    """
+    User Verified Reviews
+    
+    Get all verified reviews received by a user (reviews about their services).
+    
+    **GET /api/users/{id}/verified-reviews/** - Get user's verified reviews
+    
+    **Response Format:**
+    ```json
+    {
+        "count": 5,
+        "results": [
+            {
+                "id": "uuid",
+                "service_title": "Manti Cooking Lesson",
+                "user_name": "Sarah Chen",
+                "user_id": "uuid",
+                "body": "Great service!",
+                "handshake_hours": 3.0,
+                "created_at": "2024-01-01T12:00:00Z"
+            }
+        ]
+    }
+    ```
+    
+    **Authentication:** Optional (public endpoint)
+    """
+    permission_classes = [permissions.AllowAny]
+    pagination_class = StandardResultsSetPagination
+    
+    def get(self, request, id):
+        try:
+            target_user = User.objects.get(id=id)
+        except User.DoesNotExist:
+            return Response(
+                {'detail': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get verified reviews where the user is the service provider
+        from .models import Comment
+        comments = Comment.objects.filter(
+            service__user=target_user,
+            is_verified_review=True,
+            is_deleted=False
+        ).select_related('user', 'service').prefetch_related(
+            Prefetch(
+                'user__badges',
+                queryset=UserBadge.objects.select_related('badge')
+            )
+        ).order_by('-created_at')
+        
+        # Paginate
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(comments, request)
+        
+        if page is not None:
+            serializer = CommentSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+        
+        serializer = CommentSerializer(comments, many=True)
+        return Response({'results': serializer.data, 'count': len(serializer.data)})
+
+
 class ServiceViewSet(viewsets.ModelViewSet):
     """
     Service Management
@@ -560,7 +677,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
         queryset = (
             Service.objects.filter(status='Active')
             .select_related('user')
-            .prefetch_related('tags', user_badges_prefetch)
+            .prefetch_related('tags', user_badges_prefetch, Prefetch('media', queryset=ServiceMedia.objects.order_by('display_order', 'created_at')))
         )
         
         # Filter by visibility - admins can see all, others only visible
@@ -2947,17 +3064,22 @@ class CommentViewSet(viewsets.ViewSet):
                 status_code=status.HTTP_404_NOT_FOUND
             )
 
-        # Get top-level comments only (parent=None), prefetch replies
+        # Get top-level comments only (parent=None), prefetch replies and user badges
+        user_badges_prefetch = Prefetch(
+            'user__badges',
+            queryset=UserBadge.objects.select_related('badge')
+        )
         comments = Comment.objects.filter(
             service=service,
             parent__isnull=True,
             is_deleted=False
-        ).select_related('user', 'related_handshake').prefetch_related(
+        ).select_related('user', 'related_handshake', 'service').prefetch_related(
+            user_badges_prefetch,
             Prefetch(
                 'replies',
                 queryset=Comment.objects.filter(is_deleted=False).select_related(
                     'user', 'related_handshake'
-                ),
+                ).prefetch_related(user_badges_prefetch),
                 to_attr='active_replies'
             )
         ).order_by('-created_at')
