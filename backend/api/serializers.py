@@ -1385,6 +1385,36 @@ class ForumTopicSerializer(serializers.ModelSerializer):
         """Sanitize body text"""
         return bleach.clean(value, tags=[], strip=True)
 
+    def create(self, validated_data):
+        """Create a new forum topic, handling tag_ids separately"""
+        # Extract tag_ids if provided (it's write-only, not a model field)
+        tag_ids = validated_data.pop('tag_ids', [])
+        
+        # Create the topic
+        topic = super().create(validated_data)
+        
+        # Set tags if provided
+        if tag_ids:
+            tags = Tag.objects.filter(id__in=tag_ids)
+            topic.tags.set(tags)
+        
+        return topic
+
+    def update(self, instance, validated_data):
+        """Update a forum topic, handling tag_ids separately"""
+        # Extract tag_ids if provided (it's write-only, not a model field)
+        tag_ids = validated_data.pop('tag_ids', None)
+        
+        # Update the topic
+        topic = super().update(instance, validated_data)
+        
+        # Update tags if provided
+        if tag_ids is not None:
+            tags = Tag.objects.filter(id__in=tag_ids)
+            topic.tags.set(tags)
+        
+        return topic
+
 
 @extend_schema_serializer(
     examples=[

@@ -3755,12 +3755,7 @@ class ForumTopicViewSet(viewsets.ModelViewSet):
         
         topic = serializer.save(author=request.user, category=category)
         
-        # Handle tags if provided
-        tag_ids = request.data.get('tag_ids', [])
-        if tag_ids:
-            tags = Tag.objects.filter(id__in=tag_ids)
-            topic.tags.set(tags)
-        
+        # Tags are now handled by the serializer's create() method
         # Re-serialize to include tags in response
         response_serializer = self.get_serializer(topic)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
@@ -3791,14 +3786,9 @@ class ForumTopicViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(topic, data=update_data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        topic = serializer.save()
         
-        # Handle tags if provided
-        tag_ids = request.data.get('tag_ids')
-        if tag_ids is not None:
-            tags = Tag.objects.filter(id__in=tag_ids)
-            topic.tags.set(tags)
-        
+        # Tags are now handled by the serializer's update() method
         # Re-serialize to include updated tags in response
         response_serializer = self.get_serializer(topic)
         return Response(response_serializer.data)
