@@ -79,3 +79,5 @@ logs/
 *.bak
 *.backup
 *.sql
+
+.cursorrules
