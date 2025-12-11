@@ -9,7 +9,7 @@ import { useAuth } from '../lib/auth-context';
 import { useToast } from './Toast';
 import { getErrorMessage } from '../lib/types';
 import { formatTimebank } from '../lib/utils';
-import { getBadgeMeta } from '../lib/badges';
+import { getAchievementMeta } from '../lib/achievements';
 import { logger } from '../lib/logger';
 
 interface CommentSectionProps {
@@ -129,13 +129,13 @@ function CommentItem({
             )}
             
             {comment.user_featured_achievement_id && (() => {
-              const badgeMeta = getBadgeMeta(comment.user_featured_achievement_id);
-              if (!badgeMeta) return null;
-              const Icon = badgeMeta.icon;
+              const achievementMeta = getAchievementMeta(comment.user_featured_achievement_id);
+              if (!achievementMeta) return null;
+              const Icon = achievementMeta.icon;
               return (
                 <Badge className="bg-amber-50 text-amber-700 text-xs flex items-center gap-1">
                   <Icon className="w-3 h-3" />
-                  {badgeMeta.label}
+                  {achievementMeta.label}
                 </Badge>
               );
             })()}

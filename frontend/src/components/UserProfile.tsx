@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Clock, AlertTriangle, Calendar, CheckCircle, Heart, Sparkles, Award, Trophy, Star, Zap, Edit, MapPin, CalendarDays, RotateCcw, Play, Image as ImageIcon } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
-import { Avatar, AvatarFallback } from './ui/avatar';
+import { Avatar, AvatarImage, AvatarFallback } from './ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 import { Badge } from './ui/badge';
@@ -12,7 +12,7 @@ import { ProfileEditModal } from './ProfileEditModal';
 import { formatTimebank } from '../lib/utils';
 import { useToast } from './Toast';
 import { logger } from '../lib/logger';
-import { BADGE_CONFIG, getBadgeMeta } from '../lib/badges';
+import { ACHIEVEMENT_CONFIG, getAchievementMeta, NEWCOMER_TAG } from '../lib/achievements';
 
 interface UserProfileProps {
   onNavigate: (page: string, data?: any) => void;
@@ -23,7 +23,8 @@ interface UserProfileProps {
     helpful: number;
     kind: number;
   };
-  badges?: string[];
+  achievements?: string[];
+  badges?: string[];  // Deprecated: use achievements instead
   isOwnProfile?: boolean;
   userName?: string;
   userBio?: string;
@@ -111,7 +112,7 @@ export function UserProfile({
   userBalance = 11,
   karma = 142,
   positiveReps = { punctual: 14, helpful: 11, kind: 19 },
-  badges = ['first-service', '10-offers', 'kindness-hero'],
+  achievements = ['first-service', '10-offers', 'kindness-hero'],
   isOwnProfile = true,
   userName = 'Elif',
   userBio = 'Freelance designer, manti expert, and 3D printing novice. I love teaching creative skills and learning new things from my amazing neighbors!',
@@ -230,16 +231,13 @@ export function UserProfile({
   const actualBalance = user?.timebank_balance || userBalance;
   const showBalanceWarning = actualBalance > 10;
 
-  // Get earned badges - use user badges if available
-  // Add newcomer badge for users who joined recently (within last 30 days)
-  const userBadges = user?.badges || badges;
+  // Get earned achievements - use user achievements if available
+  // Newcomer is a special tag, not an achievement
+  const userAchievements = user?.achievements || user?.badges || achievements;
   const isNewcomer = user?.date_joined ? 
     (new Date().getTime() - new Date(user.date_joined).getTime()) < (30 * 24 * 60 * 60 * 1000) : false;
-  const allUserBadges = isNewcomer && !userBadges.includes('newcomer') 
-    ? [...userBadges, 'newcomer'] 
-    : userBadges;
-  const earnedBadges = BADGE_CONFIG.filter(badge => allUserBadges.includes(badge.id));
-  const featuredBadge = earnedBadges[0];
+  const earnedAchievements = ACHIEVEMENT_CONFIG.filter(achievement => userAchievements.includes(achievement.id));
+  const featuredAchievement = earnedAchievements[0];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -290,13 +288,7 @@ export function UserProfile({
               {/* Large Avatar */}
               <div className="relative">
                 <Avatar className="w-40 h-40 border-4 border-white shadow-xl">
-                  {user?.avatar_url && (
-                    <img 
-                      src={user.avatar_url} 
-                      alt={userName}
-                      className="w-full h-full object-cover"
-                    />
-                  )}
+                  <AvatarImage src={user?.avatar_url || undefined} alt={userName} className="object-cover" />
                   <AvatarFallback className="bg-gradient-to-br from-amber-400 to-orange-500 text-white text-5xl">
                     {userName.charAt(0)}
                   </AvatarFallback>
@@ -334,10 +326,10 @@ export function UserProfile({
                       <span>Member since {memberSince}</span>
                     </div>
                   )}
-                  {featuredBadge && (
+                  {featuredAchievement && (
                     <Badge className="bg-white/80 text-amber-600 flex items-center gap-1">
-                      <featuredBadge.icon className="w-3 h-3" />
-                      {featuredBadge.label}
+                      <featuredAchievement.icon className="w-3 h-3" />
+                      {featuredAchievement.label}
                     </Badge>
                   )}
                 </div>
@@ -505,19 +497,19 @@ export function UserProfile({
 
             {/* Badges */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h3 className="text-gray-900 mb-4">Badges</h3>
+              <h3 className="text-gray-900 mb-4">Achievements</h3>
               <div className="grid grid-cols-3 gap-3">
-                {earnedBadges.map((badge) => {
-                  const Icon = badge.icon;
+                {earnedAchievements.map((achievement) => {
+                  const Icon = achievement.icon;
                   return (
                     <div 
-                      key={badge.id}
+                      key={achievement.id}
                       className="aspect-square bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-3 flex flex-col items-center justify-center border-2 border-amber-200"
                     >
-                      <div className={`w-10 h-10 rounded-full bg-white flex items-center justify-center mb-2 ${badge.color}`}>
+                      <div className={`w-10 h-10 rounded-full bg-white flex items-center justify-center mb-2 ${achievement.color}`}>
                         <Icon className="w-5 h-5" />
                       </div>
-                      <div className="text-xs text-center text-gray-700 leading-tight">{badge.label}</div>
+                      <div className="text-xs text-center text-gray-700 leading-tight">{achievement.label}</div>
                     </div>
                   );
                 })}

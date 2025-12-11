@@ -124,6 +124,9 @@ def invalidate_user_services(user_id: str) -> None:
 
 def invalidate_on_service_change(service) -> None:
     invalidate_service_lists()
+    invalidate_hot_services()
+    if hasattr(service, 'id') and service.id:
+        invalidate_service_detail(str(service.id))
     if hasattr(service, 'user') and service.user:
         invalidate_user_services(str(service.user.id))
 
@@ -166,3 +169,91 @@ def get_cached_transactions(user_id: str) -> Optional[list]:
 def invalidate_transactions(user_id: str) -> None:
     key = f"transactions:{user_id}"
     CacheManager.delete(key)
+
+
+def cache_service_detail(service_id: str, data: dict, ttl: int = CACHE_TTL_MEDIUM) -> None:
+    """Cache individual service detail"""
+    key = f"service_detail:{service_id}"
+    CacheManager.set(key, data, ttl)
+
+
+def get_cached_service_detail(service_id: str) -> Optional[dict]:
+    """Get cached service detail"""
+    key = f"service_detail:{service_id}"
+    return CacheManager.get(key)
+
+
+def invalidate_service_detail(service_id: str) -> None:
+    """Invalidate cached service detail"""
+    key = f"service_detail:{service_id}"
+    CacheManager.delete(key)
+
+
+def cache_hot_services(data: list, ttl: int = CACHE_TTL_SHORT) -> None:
+    """Cache hot/trending services list"""
+    key = "hot_services:list"
+    CacheManager.set(key, data, ttl)
+
+
+def get_cached_hot_services() -> Optional[list]:
+    """Get cached hot services list"""
+    key = "hot_services:list"
+    return CacheManager.get(key)
+
+
+def invalidate_hot_services() -> None:
+    """Invalidate cached hot services"""
+    key = "hot_services:list"
+    CacheManager.delete(key)
+
+
+def warm_cache_popular_services() -> None:
+    """Pre-load popular services into cache."""
+    from .models import Service
+    from .serializers import ServiceSerializer
+    from rest_framework.request import Request
+    from django.test import RequestFactory
+    
+    try:
+        # Warm cache for active services sorted by hot_score
+        popular_services = Service.objects.filter(
+            status='Active',
+            is_visible=True
+        ).select_related('user').prefetch_related('tags', 'media').order_by('-hot_score')[:50]
+        
+        factory = RequestFactory()
+        request = factory.get('/')
+        
+        serializer = ServiceSerializer(popular_services, many=True, context={'request': request})
+        cache_hot_services(serializer.data, ttl=CACHE_TTL_SHORT)
+        
+    except Exception:
+        pass
+
+
+def invalidate_on_handshake_change(handshake) -> None:
+    """Invalidate caches when handshake changes."""
+    # Invalidate conversations for both users
+    if hasattr(handshake, 'requester') and handshake.requester:
+        invalidate_conversations(str(handshake.requester.id))
+    if hasattr(handshake, 'service') and hasattr(handshake.service, 'user') and handshake.service.user:
+        invalidate_conversations(str(handshake.service.user.id))
+        invalidate_service_detail(str(handshake.service.id))
+        invalidate_service_lists()
+
+
+def invalidate_on_comment_change(comment) -> None:
+    """Invalidate caches when comment changes."""
+    if hasattr(comment, 'service') and comment.service:
+        invalidate_service_detail(str(comment.service.id))
+        invalidate_service_lists()
+        invalidate_hot_services()
+
+
+def invalidate_on_reputation_change(reputation) -> None:
+    """Invalidate caches when reputation changes."""
+    if hasattr(reputation, 'receiver') and reputation.receiver:
+        invalidate_user_profile(str(reputation.receiver.id))
+        # Invalidate hot services since reputation affects hot_score
+        invalidate_hot_services()
+        invalidate_service_lists()

@@ -26,7 +26,7 @@ class ChatRoomSignalTestCase(TestCase):
         )
 
     def test_chat_room_created_on_service_creation(self):
-        """Test that a ChatRoom is automatically created when a Service is created."""
+        """Test that a ChatRoom is created when a Service is created."""
         service = Service.objects.create(
             user=self.user,
             title='Test Service',

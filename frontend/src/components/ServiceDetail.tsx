@@ -9,7 +9,7 @@ import { serviceAPI, handshakeAPI, Service } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { ServiceMap } from './ServiceMap';
 import { useToast } from './Toast';
-import { getBadgeMeta } from '../lib/badges';
+import { getAchievementMeta } from '../lib/achievements';
 import { formatTimebank } from '../lib/utils';
 import { getErrorMessage, type NavigateData } from '../lib/types';
 import { PublicChat } from './PublicChat';
@@ -169,8 +169,8 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
   const providerBio = providerUser?.bio;
   const providerKarma = providerUser?.karma_score || 0;
   const providerDateJoined = providerUser?.date_joined;
-  const providerBadges = Array.isArray(providerUser?.badges) ? providerUser.badges : [];
-  const primaryProviderBadge = providerBadges.length ? getBadgeMeta(providerBadges[0]) : undefined;
+  const providerAchievements = Array.isArray(providerUser?.achievements) ? providerUser.achievements : (Array.isArray(providerUser?.badges) ? providerUser.badges : []);
+  const primaryProviderAchievement = providerAchievements.length ? getAchievementMeta(providerAchievements[0]) : undefined;
   
   // Format date joined
   const formatDateJoined = (dateString?: string) => {
@@ -427,16 +427,16 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                 </p>
               )}
 
-              {providerBadges.length > 1 && (
+              {providerAchievements.length > 1 && (
                 <div className="flex flex-wrap gap-2 mb-4">
-                  {providerBadges.slice(1, 4).map((badgeId) => {
-                    const badgeMeta = getBadgeMeta(badgeId);
-                    if (!badgeMeta) return null;
-                    const Icon = badgeMeta.icon;
+                  {providerAchievements.slice(1, 4).map((achievementId) => {
+                    const achievementMeta = getAchievementMeta(achievementId);
+                    if (!achievementMeta) return null;
+                    const Icon = achievementMeta.icon;
                     return (
-                      <span key={badgeId} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-amber-50 text-amber-700">
+                      <span key={achievementId} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-amber-50 text-amber-700">
                         <Icon className="w-3 h-3" />
-                        {badgeMeta.label}
+                        {achievementMeta.label}
                       </span>
                     );
                   })}

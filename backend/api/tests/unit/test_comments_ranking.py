@@ -15,7 +15,7 @@ from api.models import (
     ReputationRep, Badge, UserBadge, TransactionHistory
 )
 from api.ranking import calculate_hot_score, calculate_hot_scores_batch
-from api.badge_utils import check_and_assign_badges, get_user_stats, get_badge_progress
+from api.achievement_utils import check_and_assign_badges, get_user_stats, get_achievement_progress
 
 
 class CommentModelTest(TestCase):
@@ -367,7 +367,7 @@ class BadgeSystemTest(TestCase):
     
     def test_get_badge_progress(self):
         """Test getting badge progress"""
-        progress = get_badge_progress(self.user)
+        progress = get_achievement_progress(self.user)
         
         self.assertIn('first-service', progress)
         self.assertIn('community-voice', progress)

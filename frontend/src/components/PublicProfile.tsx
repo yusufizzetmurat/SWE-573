@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Clock, Award, MapPin, CalendarDays, Play, Image as ImageIcon, History, ExternalLink } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
-import { Avatar, AvatarFallback } from './ui/avatar';
+import { Avatar, AvatarImage, AvatarFallback } from './ui/avatar';
 import { Badge } from './ui/badge';
 import { userAPI, serviceAPI, User, Service, UserHistoryItem } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { formatTimebank } from '../lib/utils';
-import { BADGE_CONFIG, getBadgeMeta } from '../lib/badges';
+import { ACHIEVEMENT_CONFIG, getAchievementMeta, NEWCOMER_TAG } from '../lib/achievements';
 
 interface PublicProfileProps {
   onNavigate: (page: string, data?: unknown) => void;
@@ -130,10 +130,10 @@ export function PublicProfile({
     ? new Date(profileUser.date_joined).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
     : 'Unknown';
 
-  // Get earned badges
-  const userBadges = profileUser.badges || [];
-  const earnedBadges = BADGE_CONFIG.filter(badge => userBadges.includes(badge.id));
-  const featuredBadge = earnedBadges[0];
+  // Get earned achievements
+  const userAchievements = profileUser.achievements || profileUser.badges || [];
+  const earnedAchievements = ACHIEVEMENT_CONFIG.filter(achievement => userAchievements.includes(achievement.id));
+  const featuredAchievement = earnedAchievements[0];
 
   // Video intro rendering
   const renderVideoIntro = () => {
@@ -252,13 +252,7 @@ export function PublicProfile({
           <div className="flex items-end gap-6">
             {/* Avatar */}
             <Avatar className="w-32 h-32 border-4 border-white shadow-xl">
-              {profileUser.avatar_url && (
-                <img 
-                  src={profileUser.avatar_url} 
-                  alt={userName}
-                  className="w-full h-full object-cover"
-                />
-              )}
+              <AvatarImage src={profileUser.avatar_url || undefined} alt={userName} className="object-cover" />
               <AvatarFallback className="bg-gradient-to-br from-amber-400 to-orange-500 text-white text-4xl">
                 {userName.charAt(0)}
               </AvatarFallback>
@@ -276,10 +270,10 @@ export function PublicProfile({
                   <CalendarDays className="w-4 h-4" />
                   <span>Member since {memberSince}</span>
                 </div>
-                {featuredBadge && (
+                {featuredAchievement && (
                   <Badge className="bg-white/80 text-amber-600 flex items-center gap-1">
-                    <featuredBadge.icon className="w-3 h-3" />
-                    {featuredBadge.label}
+                    <featuredAchievement.icon className="w-3 h-3" />
+                    {featuredAchievement.label}
                   </Badge>
                 )}
               </div>
@@ -450,9 +444,7 @@ export function PublicProfile({
                       className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg"
                     >
                       <Avatar className="w-10 h-10">
-                        {item.partner_avatar_url && (
-                          <img src={item.partner_avatar_url} alt={item.partner_name} className="w-full h-full object-cover" />
-                        )}
+                        <AvatarImage src={item.partner_avatar_url || undefined} alt={item.partner_name} className="object-cover" />
                         <AvatarFallback className="bg-amber-100 text-amber-700 text-sm">
                           {item.partner_name.charAt(0)}
                         </AvatarFallback>

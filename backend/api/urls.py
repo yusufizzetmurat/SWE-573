@@ -53,10 +53,15 @@ def health_check(request):
     Health check endpoint that verifies connectivity to all critical dependencies.
     Returns detailed status for database and Redis.
     """
+    from django.utils import timezone
+    from api.models import User, Service, Handshake
+    
     health_status = {
         'status': 'healthy',
         'service': 'the-hive-api',
-        'dependencies': {}
+        'timestamp': timezone.now().isoformat(),
+        'dependencies': {},
+        'metrics': {}
     }
     
     overall_healthy = True
@@ -70,6 +75,14 @@ def health_check(request):
             'status': 'healthy',
             'message': 'Database connection successful'
         }
+        
+        # Add basic metrics
+        try:
+            health_status['metrics']['total_users'] = User.objects.count()
+            health_status['metrics']['active_services'] = Service.objects.filter(status='Active').count()
+            health_status['metrics']['pending_handshakes'] = Handshake.objects.filter(status='pending').count()
+        except Exception:
+            pass  # Don't fail health check if metrics fail
     except Exception as e:
         overall_healthy = False
         health_status['dependencies']['database'] = {
@@ -106,6 +119,48 @@ def health_check(request):
     # Return appropriate HTTP status code
     status_code = 200 if overall_healthy else 503
     return JsonResponse(health_status, status=status_code)
+
+
+def metrics_endpoint(request):
+    """Returns application metrics for monitoring."""
+    from django.utils import timezone
+    from api.models import User, Service, Handshake, TransactionHistory
+    from django.db.models import Count, Q
+    
+    if not request.user.is_authenticated or request.user.role != 'admin':
+        return JsonResponse(
+            {'error': 'Unauthorized - Admin access required'},
+            status=403
+        )
+    
+    metrics = {
+        'timestamp': timezone.now().isoformat(),
+        'users': {
+            'total': User.objects.count(),
+            'active': User.objects.filter(is_active=True).count(),
+            'admins': User.objects.filter(role='admin').count(),
+        },
+        'services': {
+            'total': Service.objects.count(),
+            'active': Service.objects.filter(status='Active').count(),
+            'offers': Service.objects.filter(type='Offer', status='Active').count(),
+            'needs': Service.objects.filter(type='Need', status='Active').count(),
+        },
+        'handshakes': {
+            'total': Handshake.objects.count(),
+            'pending': Handshake.objects.filter(status='pending').count(),
+            'accepted': Handshake.objects.filter(status='accepted').count(),
+            'completed': Handshake.objects.filter(status='completed').count(),
+        },
+        'transactions': {
+            'total': TransactionHistory.objects.count(),
+            'last_24h': TransactionHistory.objects.filter(
+                created_at__gte=timezone.now() - timezone.timedelta(hours=24)
+            ).count(),
+        }
+    }
+    
+    return JsonResponse(metrics, status=200)
 
 # Create viewset instance for public chat
 public_chat_viewset = PublicChatViewSet.as_view({
@@ -176,6 +231,7 @@ forum_post_detail = ForumPostViewSet.as_view({
 
 urlpatterns = [
     path('health/', health_check, name='health_check'),
+    path('metrics/', metrics_endpoint, name='metrics'),
     path('auth/register/', UserRegistrationView.as_view(), name='register'),
     path('auth/login/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/refresh/', CustomTokenRefreshView.as_view(), name='token_refresh'),

@@ -310,3 +310,26 @@ Built-in security features:
 - Input validation on all API endpoints
 - Rate limiting on authentication endpoints
 - JWT-based authentication with refresh token rotation
+
+## Image Assets and Licensing
+
+### External Images
+
+**Unsplash Images (3 instances):**
+- HomePage hero image: Community sharing hands
+- ForumCategories header: Diverse team collaboration  
+- UserProfile default banner: Abstract orange gradient
+- **License:** Unsplash License (free for commercial use, no attribution required)
+
+**Leaflet Map Assets:**
+- Map marker icons and shadows from CDN
+- CartoDB map tiles
+- **License:** BSD 2-Clause (open source) / CartoDB free tier
+
+**Error Fallback:**
+- Base64-encoded SVG placeholder (custom generated)
+
+### User Content
+All user-uploaded images (avatars, banners, portfolio, service photos) are user-generated content stored as data URLs or external URLs provided by users.
+
+All external images are properly licensed for open source use.

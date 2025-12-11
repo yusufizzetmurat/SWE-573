@@ -817,11 +817,11 @@ function AppContent() {
 function App() {
   return (
     <ErrorBoundary>
-      <ToastProvider children={
-        <AuthProvider children={
+      <ToastProvider>
+        <AuthProvider>
           <AppContent />
-        } />
-      } />
+        </AuthProvider>
+      </ToastProvider>
     </ErrorBoundary>
   );
 }

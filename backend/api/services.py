@@ -47,6 +47,15 @@ class HandshakeService:
         if current_participants >= service.max_participants:
             return False, f'Service has reached maximum capacity ({service.max_participants} participants)'
         
+        # Check hard cap on pending requests (REQ-SRV-006: 50 request limit)
+        pending_requests = Handshake.objects.filter(
+            service=service,
+            status='pending'
+        ).count()
+        
+        if pending_requests >= 50:
+            return False, 'Service has reached the maximum number of pending requests (50). Please wait for some requests to be processed.'
+        
         # Determine payer and check balance
         payer = HandshakeService._determine_payer(service, user)
         if payer.timebank_balance < service.duration:
@@ -110,6 +119,15 @@ class HandshakeService:
             
             # Check max_participants (inside transaction with locked data)
             HandshakeService._check_max_participants(service)
+            
+            # Check hard cap on pending requests (REQ-SRV-006: 50 request limit)
+            pending_requests = Handshake.objects.filter(
+                service=service,
+                status='pending'
+            ).count()
+            
+            if pending_requests >= 50:
+                raise ValueError('Service has reached the maximum number of pending requests (50). Please wait for some requests to be processed.')
             
             # Determine payer and check balance (inside transaction with locked data)
             payer = HandshakeService._determine_payer(service, requester)

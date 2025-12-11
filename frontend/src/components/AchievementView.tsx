@@ -3,9 +3,9 @@ import { Trophy, Lock, Award, Star, Zap, Heart, Clock, Users, Target, CheckCircl
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { userAPI, User, BadgeProgress } from '../lib/api';
+import { userAPI, User, AchievementProgress } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
-import { BADGE_CONFIG, getBadgeMeta } from '../lib/badges';
+import { ACHIEVEMENT_CONFIG, getAchievementMeta, NEWCOMER_TAG } from '../lib/achievements';
 import { useToast } from './Toast';
 import { logger } from '../lib/logger';
 
@@ -24,7 +24,7 @@ export function AchievementView({
 }: AchievementViewProps) {
   const { user, isAuthenticated } = useAuth();
   const { showToast } = useToast();
-  const [achievements, setAchievements] = useState<Record<string, BadgeProgress>>({});
+  const [achievements, setAchievements] = useState<Record<string, AchievementProgress>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [selectedAchievement, setSelectedAchievement] = useState<string | null>(null);
 
@@ -34,7 +34,7 @@ export function AchievementView({
       
       try {
         setIsLoading(true);
-        const data = await userAPI.getBadgeProgress(user.id);
+        const data = await userAPI.getAchievementProgress(user.id);
         setAchievements(data);
       } catch (error) {
         logger.error('Failed to fetch achievements', error instanceof Error ? error : new Error(String(error)), { userId: user.id });
@@ -96,8 +96,11 @@ export function AchievementView({
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {earnedAchievements.map(([id, progress]) => {
-                  const badgeMeta = getBadgeMeta(id);
-                  const Icon = badgeMeta?.icon || Trophy;
+                  if (!progress.achievement) {
+                    return null; // Skip if achievement data is missing
+                  }
+                  const achievementMeta = getAchievementMeta(id);
+                  const Icon = achievementMeta?.icon || Trophy;
                   const isFeatured = user?.featured_achievement_id === id;
                   
                   return (
@@ -113,9 +116,9 @@ export function AchievementView({
                             <Icon className="w-6 h-6 text-white" />
                           </div>
                           <div>
-                            <h3 className="font-semibold text-gray-900">{progress.badge.name}</h3>
+                            <h3 className="font-semibold text-gray-900">{progress.achievement.name}</h3>
                             <p className="text-xs text-amber-600 font-medium">
-                              +{progress.badge.karma_points} karma
+                              +{progress.achievement.karma_points} karma
                             </p>
                           </div>
                         </div>
@@ -123,7 +126,7 @@ export function AchievementView({
                           <Badge className="bg-amber-500 text-white text-xs">Featured</Badge>
                         )}
                       </div>
-                      <p className="text-sm text-gray-600 mb-4">{progress.badge.description}</p>
+                      <p className="text-sm text-gray-600 mb-4">{progress.achievement.description}</p>
                       {!isFeatured && (
                         <Button
                           size="sm"
@@ -148,9 +151,12 @@ export function AchievementView({
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {unearnedAchievements.map(([id, progress]) => {
-                  const badgeMeta = getBadgeMeta(id);
-                  const Icon = badgeMeta?.icon || Trophy;
-                  const isHidden = progress.badge.is_hidden && !progress.earned;
+                  if (!progress.achievement) {
+                    return null; // Skip if achievement data is missing
+                  }
+                  const achievementMeta = getAchievementMeta(id);
+                  const Icon = achievementMeta?.icon || Trophy;
+                  const isHidden = progress.achievement.is_hidden && !progress.earned;
                   
                   return (
                     <div
@@ -168,16 +174,16 @@ export function AchievementView({
                           </div>
                           <div>
                             <h3 className="font-semibold text-gray-900">
-                              {isHidden ? '???' : progress.badge.name}
+                              {isHidden ? '???' : progress.achievement.name}
                             </h3>
                             <p className="text-xs text-gray-500">
-                              {isHidden ? 'Hidden Achievement' : `+${progress.badge.karma_points} karma`}
+                              {isHidden ? 'Hidden Achievement' : `+${progress.achievement.karma_points} karma`}
                             </p>
                           </div>
                         </div>
                       </div>
                       <p className="text-sm text-gray-500 mb-4">
-                        {isHidden ? 'Complete this achievement to reveal its details' : progress.badge.description}
+                        {isHidden ? 'Complete this achievement to reveal its details' : progress.achievement.description}
                       </p>
                       {!isHidden && progress.current !== null && progress.threshold !== null && (
                         <div className="space-y-2">

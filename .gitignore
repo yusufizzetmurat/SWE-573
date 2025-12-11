@@ -67,6 +67,11 @@ htmlcov/
 coverage/
 .nyc_output/
 *.cover
+.hypothesis/
+**/tests/reports/
+test-results/
+playwright-report/
+*.plan.md
 
 # Docker
 docker-compose.override.yml
@@ -79,5 +84,3 @@ logs/
 *.bak
 *.backup
 *.sql
-
-.cursorrules

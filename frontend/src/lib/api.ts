@@ -16,7 +16,8 @@ export interface User {
   punctual_count?: number;
   helpful_count?: number;
   kind_count?: number;
-  badges?: string[];
+  achievements?: string[];
+  badges?: string[];  // Deprecated: use achievements instead
   date_joined?: string;
   featured_badge?: string | null;
   featured_achievement_id?: string | null;
@@ -71,7 +72,7 @@ export interface WikidataItem {
   description?: string; // "high-level programming language"
 }
 
-export interface BadgeInfo {
+export interface AchievementInfo {
   name: string;
   description: string;
   icon_url: string;
@@ -79,8 +80,18 @@ export interface BadgeInfo {
   is_hidden: boolean;
 }
 
+export interface AchievementProgress {
+  achievement: AchievementInfo;
+  earned: boolean;
+  current: number | null;
+  threshold: number | null;
+  progress_percent: number;
+}
+
+// Deprecated: use AchievementInfo and AchievementProgress instead
+export interface BadgeInfo extends AchievementInfo {}
 export interface BadgeProgress {
-  badge: BadgeInfo;
+  badge: AchievementInfo;
   earned: boolean;
   current: number | null;
   threshold: number | null;
@@ -161,9 +172,40 @@ export const userAPI = {
     return response.data;
   },
 
-  getBadgeProgress: async (userId: string, signal?: AbortSignal): Promise<Record<string, BadgeProgress>> => {
+  getAchievementProgress: async (userId: string, signal?: AbortSignal): Promise<Record<string, AchievementProgress>> => {
     const response = await apiClient.get(`/users/${userId}/badge-progress/`, { signal });
-    return response.data;
+    // Transform badge to achievement in response
+    const transformed: Record<string, AchievementProgress> = {};
+    for (const [key, value] of Object.entries(response.data)) {
+      const achievementData = (value as any).achievement || (value as any).badge;
+      if (!achievementData) {
+        // Skip if no achievement data
+        continue;
+      }
+      transformed[key] = {
+        achievement: achievementData,
+        earned: value.earned || false,
+        current: value.current ?? null,
+        threshold: value.threshold ?? null,
+        progress_percent: value.progress_percent || 0,
+      };
+    }
+    return transformed;
+  },
+  // Deprecated: use getAchievementProgress instead
+  getBadgeProgress: async (userId: string, signal?: AbortSignal): Promise<Record<string, BadgeProgress>> => {
+    const progress = await userAPI.getAchievementProgress(userId, signal);
+    const transformed: Record<string, BadgeProgress> = {};
+    for (const [key, value] of Object.entries(progress)) {
+      transformed[key] = {
+        badge: value.achievement,
+        earned: value.earned,
+        current: value.current,
+        threshold: value.threshold,
+        progress_percent: value.progress_percent,
+      };
+    }
+    return transformed;
   },
 
   getVerifiedReviews: async (userId: string, signal?: AbortSignal): Promise<Comment[]> => {

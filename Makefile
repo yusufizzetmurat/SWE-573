@@ -1,143 +1,95 @@
-.PHONY: help build delete demo logs migrate superuser shell lint prod-build prod-delete prod-demo prod-logs db-backup db-restore test test-backend test-frontend test-e2e test-all
+.PHONY: help install test test-backend test-frontend test-e2e test-all coverage coverage-backend coverage-frontend coverage-report clean demo build
 
-help:
-	@echo "The Hive - Development & Production Commands"
-	@echo ""
-	@echo "Development:"
-	@echo "  make build       - Build development containers"
-	@echo "  make demo        - Build + setup demo data"
-	@echo "  make delete      - Delete containers, volumes & databases"
-	@echo "  make logs        - View development logs"
-	@echo ""
-	@echo "Production:"
-	@echo "  make prod-build  - Build production containers"
-	@echo "  make prod-demo   - Build + setup demo data"
-	@echo "  make prod-delete - Delete containers, volumes & databases"
-	@echo "  make prod-logs   - View production logs"
-	@echo ""
-	@echo "Database:"
-	@echo "  make db-backup   - Backup database to backups/"
-	@echo "  make db-restore  - Restore database (use: FILE=backup.sql.gz)"
-	@echo ""
-	@echo "Testing:"
-	@echo "  make test          - Run backend + frontend unit tests"
-	@echo "  make test-backend  - Run backend Django tests"
-	@echo "  make test-frontend - Run frontend Vitest tests"
-	@echo "  make test-e2e      - Run Playwright E2E tests"
-	@echo "  make test-all      - Run all tests including E2E"
-	@echo ""
-	@echo "Utilities:"
-	@echo "  make migrate     - Run database migrations"
-	@echo "  make superuser   - Create Django superuser"
-	@echo "  make shell       - Open Django shell"
-	@echo "  make lint        - Check for errors"
+help: ## Show this help message
+	@echo 'Usage: make [target]'
+	@echo ''
+	@echo 'Available targets:'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-build:
-	@echo "Building development containers..."
-	docker compose build
+install: ## Install all dependencies
+	cd backend && pip install -r requirements.txt
+	cd frontend && npm install
 
-demo: build
-	@echo "Starting development environment..."
-	docker compose up -d
-	@sleep 5
-	@echo "Running migrations..."
-	docker compose exec backend python manage.py migrate
-	@echo "Setting up demo data..."
-	docker compose exec backend bash -c "cd /code && DJANGO_SETTINGS_MODULE=hive_project.settings python setup_demo.py"
-	@echo ""
-	@echo "Demo environment ready!"
-	@echo ""
-	@echo "Demo Accounts:"
-	@echo "  Admin:   moderator@demo.com / demo123"
-	@echo "  User 1:  elif@demo.com / demo123"
-	@echo "  User 2:  cem@demo.com / demo123"
-	@echo "  User 3:  marcus@demo.com / demo123"
-	@echo ""
-	@echo "Frontend: http://localhost:5173"
-	@echo "Backend:  http://localhost:8000"
+test-backend: ## Run backend unit and integration tests
+	cd backend && pytest --html=tests/reports/backend-test-report.html --self-contained-html --cov=api --cov-report=html:tests/reports/coverage/html --cov-report=term --cov-report=json:tests/reports/coverage/coverage.json
 
-delete:
-	@echo "Deleting development environment..."
-	docker compose down -v
+test-backend-unit: ## Run backend unit tests only
+	cd backend && pytest api/tests/unit/ --html=tests/reports/backend-unit-test-report.html --self-contained-html --cov=api --cov-report=html:tests/reports/coverage/html --cov-report=term
 
-logs:
-	docker compose logs -f
+test-backend-integration: ## Run backend integration tests only
+	cd backend && pytest api/tests/integration/ --html=tests/reports/backend-integration-test-report.html --self-contained-html --cov=api --cov-report=html:tests/reports/coverage/html --cov-report=term
 
-prod-build:
-	@echo "Building production containers..."
-	docker compose -f docker-compose.prod.yml build
+test-frontend: ## Run frontend unit tests
+	cd frontend && npm run test -- --reporter=html --reporter=verbose --outputFile=tests/reports/frontend-test-report.html --coverage
 
-prod-demo: prod-build
-	@echo "Starting production environment..."
-	docker compose -f docker-compose.prod.yml up -d
-	@sleep 10
-	@echo "Running migrations..."
-	docker compose -f docker-compose.prod.yml exec backend python manage.py migrate --noinput
-	@echo "Collecting static files..."
-	docker compose -f docker-compose.prod.yml exec backend python manage.py collectstatic --noinput
-	@echo "Setting up demo data..."
-	docker compose -f docker-compose.prod.yml exec backend python setup_demo.py
-	@echo ""
-	@echo "Production demo environment ready!"
-	@echo ""
-	@echo "Demo Accounts:"
-	@echo "  Admin:   moderator@demo.com / demo123"
-	@echo "  User 1:  elif@demo.com / demo123"
-	@echo "  User 2:  cem@demo.com / demo123"
-	@echo "  User 3:  marcus@demo.com / demo123"
+test-frontend-unit: ## Run frontend unit tests only
+	cd frontend && npm run test:unit -- --reporter=html --reporter=verbose --outputFile=tests/reports/frontend-unit-test-report.html
 
-prod-delete:
-	@echo "Deleting production environment..."
-	docker compose -f docker-compose.prod.yml down -v
+test-frontend-integration: ## Run frontend integration tests
+	cd frontend && npm run test:integration -- --reporter=html --reporter=verbose --outputFile=tests/reports/frontend-integration-test-report.html
 
-prod-logs:
-	docker compose -f docker-compose.prod.yml logs -f
-
-db-backup:
-	@mkdir -p backups
-	@echo "Creating database backup..."
-	docker compose exec -T db pg_dump -U postgres the_hive_db | gzip > backups/backup_$$(date +%Y%m%d_%H%M%S).sql.gz
-	@echo "Backup created in backups/"
-
-db-restore:
-	@if [ -z "$(FILE)" ]; then \
-		echo "Error: Please specify a backup file"; \
-		echo "Usage: make db-restore FILE=backups/backup_XXXXXXXX_XXXXXX.sql.gz"; \
-		exit 1; \
-	fi
-	@echo "Restoring database from $(FILE)..."
-	gunzip < $(FILE) | docker compose exec -T db psql -U postgres the_hive_db
-	@echo "Database restored from $(FILE)"
-
-migrate:
-	docker compose exec backend python manage.py migrate
-
-superuser:
-	docker compose exec backend python manage.py createsuperuser
-
-shell:
-	docker compose exec backend python manage.py shell
-
-lint:
-	@echo "Checking backend..."
-	docker compose exec backend python manage.py check
-
-test: test-backend test-frontend
-
-test-backend:
-	@echo "Running backend tests..."
-	docker compose exec -T backend python manage.py test api.tests -v 2
-
-test-frontend:
-	@echo "Running frontend tests..."
-	cd frontend && npm run test:run
-
-test-e2e:
-	@echo "Running E2E tests..."
-	@echo "Checking services..."
-	@curl -sf http://localhost:5173 > /dev/null 2>&1 || (echo "Frontend not running. Run 'make demo' first" && exit 1)
-	@curl -sf http://localhost:8000/api/health/ > /dev/null 2>&1 || (echo "Backend not running. Run 'make demo' first" && exit 1)
-	@echo "Services ready"
+test-e2e: ## Run E2E tests with Playwright
 	cd frontend && npm run test:e2e
 
-test-all: test-backend test-frontend test-e2e
+test-e2e-ui: ## Run E2E tests with UI mode
+	cd frontend && npm run test:e2e:ui
+
+test-e2e-debug: ## Run E2E tests in debug mode
+	cd frontend && npm run test:e2e:debug
+
+test-all: ## Run all tests (backend, frontend, E2E)
+	$(MAKE) test-backend
+	$(MAKE) test-frontend
+	$(MAKE) test-e2e
+
+coverage: ## Generate coverage reports for all tests
+	$(MAKE) coverage-backend
+	$(MAKE) coverage-frontend
+
+coverage-backend: ## Generate backend coverage report
+	cd backend && pytest --cov=api --cov-report=html:tests/reports/coverage/html --cov-report=term --cov-report=json:tests/reports/coverage/coverage.json
+
+coverage-frontend: ## Generate frontend coverage report
+	cd frontend && npm run test -- --coverage --coverage.reporter=html --coverage.reporter=text --coverage.reportsDirectory=tests/reports/coverage
+
+coverage-report: ## Open coverage reports in browser
+	@echo "Opening coverage reports..."
+	@python3 -m http.server 8001 --directory backend/tests/reports/coverage/html || echo "Backend coverage: http://localhost:8001"
+	@cd frontend && npx serve tests/reports/coverage || echo "Frontend coverage: http://localhost:3000"
+
+test-reports: ## Open test reports in browser
+	@echo "Opening test reports..."
+	@python3 -m http.server 8002 --directory backend/tests/reports || echo "Backend reports: http://localhost:8002"
+	@cd frontend && npx serve tests/reports || echo "Frontend reports: http://localhost:3001"
+
+demo: ## Run demo data setup
+	cd backend && python manage.py runserver &
+	sleep 5
+	cd backend && python setup_demo.py
+
+build: ## Build the application
+	cd frontend && npm run build
+
+clean: ## Clean generated files and caches
+	find . -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true
+	find . -type f -name "*.pyc" -delete
+	find . -type d -name ".pytest_cache" -exec rm -r {} + 2>/dev/null || true
+	find . -type d -name ".coverage" -exec rm -r {} + 2>/dev/null || true
+	find . -type d -name "htmlcov" -exec rm -r {} + 2>/dev/null || true
+	find . -type d -name "node_modules" -prune -o -type d -name ".next" -exec rm -r {} + 2>/dev/null || true
+	rm -rf backend/tests/reports
+	rm -rf frontend/tests/reports
+	rm -rf frontend/.next
+	rm -rf frontend/coverage
+
+docker-up: ## Start Docker containers
+	docker-compose up -d
+
+docker-down: ## Stop Docker containers
+	docker-compose down
+
+docker-logs: ## View Docker logs
+	docker-compose logs -f
+
+docker-build: ## Build Docker images
+	docker-compose build

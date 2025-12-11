@@ -203,12 +203,15 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle'
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',
-        'user': '1000/hour',
+        'anon': '20/hour',        # Reduced from 100/hour (REQ-NF-SEC-002)
+        'user': '200/hour',       # Reduced from 1000/hour (REQ-NF-SEC-002)
         'registration': '20/hour',  # Separate rate for registration
-        'handshake': '20/hour',  # Limit handshake creation
-        'chat': '100/hour',      # Limit chat messages
+        'handshake': '20/hour',   # Limit handshake creation
+        'chat': '100/hour',       # Limit chat messages
         'confirm': '10/hour',     # Limit confirmations
+        'sensitive': '10/hour',   # Rate limit for sensitive operations (password change, etc.)
+        'reputation': '5/hour',    # Rate limit for reputation submissions
+        'admin': '100/hour',      # Higher limit for admin operations
     },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'EXCEPTION_HANDLER': 'api.exceptions.custom_exception_handler',

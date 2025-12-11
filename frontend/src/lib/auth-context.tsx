@@ -35,15 +35,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   });
   const [isLoading, setIsLoading] = useState(false);
 
-  // Helper to save user to localStorage
-  const saveUser = (userData: User | null) => {
+  // Helper to save user to localStorage - memoized to prevent recreation on every render
+  const saveUser = useCallback((userData: User | null) => {
     setUser(userData);
     if (userData) {
       localStorage.setItem('user_data', JSON.stringify(userData));
     } else {
       localStorage.removeItem('user_data');
     }
-  };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -147,13 +147,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const userData = await userAPI.getMe();
       saveUser(userData);
     }
-  }, []);
+  }, [saveUser]);
 
   const logout = useCallback(() => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     saveUser(null);
-  }, []);
+  }, [saveUser]);
 
   const refreshUser = useCallback(async () => {
     try {
@@ -162,14 +162,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch (error) {
       logger.error('Failed to refresh user data', error instanceof Error ? error : new Error(String(error)));
     }
-  }, []);
+  }, [saveUser]);
 
   const updateUserOptimistically = useCallback((updates: Partial<User>) => {
     if (user) {
       const updatedUser = { ...user, ...updates };
       saveUser(updatedUser);
     }
-  }, [user]);
+  }, [user, saveUser]);
 
   // Memoize context value to prevent unnecessary re-renders
   const contextValue = useMemo(

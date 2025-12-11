@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
-import { getBadgeMeta } from '../lib/badges';
+import { getAchievementMeta } from '../lib/achievements';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 

@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { HomePageMap } from './HomePageMap';
 import { serviceAPI, Service } from '../lib/api';
+import { logger } from '../lib/logger';
 
 interface HomePageProps {
   onNavigate: (page: string) => void;

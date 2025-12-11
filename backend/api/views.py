@@ -18,7 +18,7 @@ import bleach
 
 logger = logging.getLogger(__name__)
 
-from .throttles import ConfirmationThrottle, HandshakeThrottle
+from .throttles import ConfirmationThrottle, HandshakeThrottle, SensitiveOperationThrottle, ReputationThrottle
 from .exceptions import create_error_response, ErrorCodes
 
 from .models import (
@@ -48,13 +48,13 @@ from .serializers import (
     ForumTopicDetailSerializer,
     ForumPostSerializer
 )
-from .badge_utils import get_badge_progress
+from .achievement_utils import get_achievement_progress
 from .utils import (
     can_user_post_offer, provision_timebank, complete_timebank_transfer,
     cancel_timebank_transfer, create_notification
 )
 from .services import HandshakeService
-from .badge_utils import check_and_assign_badges
+from .achievement_utils import check_and_assign_badges
 from .search_filters import SearchEngine
 from .performance import track_performance
 from django.db.models import Count, Q, Prefetch
@@ -115,17 +115,75 @@ class CustomTokenRefreshView(TokenRefreshView):
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
 class CustomTokenObtainPairView(TokenObtainPairView):
+    MAX_FAILED_ATTEMPTS = 5
+    LOCKOUT_DURATION_MINUTES = 30
+    
     def post(self, request, *args, **kwargs):
+        email = request.data.get('email')
+        
+        # Check for account lockout before attempting authentication
+        if email:
+            try:
+                user = User.objects.get(email=email)
+                from django.utils import timezone
+                if user.locked_until and user.locked_until > timezone.now():
+                    remaining_minutes = int((user.locked_until - timezone.now()).total_seconds() / 60)
+                    return Response(
+                        {
+                            'detail': f'Account is temporarily locked due to too many failed login attempts. Please try again in {remaining_minutes} minutes.',
+                            'locked_until': user.locked_until.isoformat()
+                        },
+                        status=status.HTTP_423_LOCKED
+                    )
+                elif user.locked_until and user.locked_until <= timezone.now():
+                    # Lockout expired, reset
+                    user.locked_until = None
+                    user.failed_login_attempts = 0
+                    user.save(update_fields=['locked_until', 'failed_login_attempts'])
+            except User.DoesNotExist:
+                pass  # Don't reveal if user exists
+        
         serializer = self.get_serializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
         except Exception as e:
+            # Increment failed login attempts
+            if email:
+                try:
+                    user = User.objects.get(email=email)
+                    from django.utils import timezone
+                    from datetime import timedelta
+                    user.failed_login_attempts += 1
+                    
+                    if user.failed_login_attempts >= self.MAX_FAILED_ATTEMPTS:
+                        # Lock the account
+                        user.locked_until = timezone.now() + timedelta(minutes=self.LOCKOUT_DURATION_MINUTES)
+                        user.save(update_fields=['failed_login_attempts', 'locked_until'])
+                        return Response(
+                            {
+                                'detail': f'Account has been temporarily locked due to too many failed login attempts. Please try again in {self.LOCKOUT_DURATION_MINUTES} minutes.',
+                                'locked_until': user.locked_until.isoformat()
+                            },
+                            status=status.HTTP_423_LOCKED
+                        )
+                    else:
+                        user.save(update_fields=['failed_login_attempts'])
+                except User.DoesNotExist:
+                    pass  # Don't reveal if user exists
+            
             return Response(
                 {'detail': 'No active account found with the given credentials'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
         user = serializer.user
+        
+        # Reset failed login attempts on successful login
+        if user.failed_login_attempts > 0 or user.locked_until:
+            user.failed_login_attempts = 0
+            user.locked_until = None
+            user.save(update_fields=['failed_login_attempts', 'locked_until'])
+        
         response_data = serializer.validated_data
         
         user_data = {
@@ -271,6 +329,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [JSONParser, FormParser, MultiPartParser]
+    throttle_classes = [SensitiveOperationThrottle]  # Profile updates are sensitive operations
 
     def get_queryset(self):
         badge_prefetch = Prefetch(
@@ -480,7 +539,7 @@ class UserBadgeProgressView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        progress = get_badge_progress(target_user)
+        progress = get_achievement_progress(target_user)
         return Response(progress)
 
 
@@ -944,7 +1003,7 @@ class ExpressInterestView(APIView):
     @track_performance
     def post(self, request, service_id):
         try:
-            service = Service.objects.get(id=service_id, status='Active')
+            service = Service.objects.select_related('user').get(id=service_id, status='Active')
         except Service.DoesNotExist:
             return create_error_response(
                 'Service not found',
@@ -1118,7 +1177,7 @@ class HandshakeViewSet(viewsets.ModelViewSet):
     @track_performance
     def express_interest(self, request, service_id=None):
         try:
-            service = Service.objects.get(id=service_id, status='Active')
+            service = Service.objects.select_related('user').get(id=service_id, status='Active')
         except Service.DoesNotExist:
             return create_error_response(
                 'Service not found',
@@ -1944,6 +2003,13 @@ class ChatViewSet(viewsets.ViewSet):
             to_attr='last_message_list'
         )
         
+        # Prefetch reputation data to avoid N+1 queries
+        reputation_prefetch = Prefetch(
+            'reps',
+            queryset=ReputationRep.objects.filter(giver=user),
+            to_attr='user_reps'
+        )
+        
         handshakes = Handshake.objects.filter(
             Q(requester=user) | Q(service__user=user)
         ).select_related(
@@ -1951,7 +2017,8 @@ class ChatViewSet(viewsets.ViewSet):
             'requester', 
             'service__user'
         ).prefetch_related(
-            last_message_prefetch
+            last_message_prefetch,
+            reputation_prefetch
         ).order_by('-updated_at')
 
         conversations = []
@@ -1965,11 +2032,8 @@ class ChatViewSet(viewsets.ViewSet):
             is_provider = provider == user
             other_user = receiver if is_provider else provider
             
-            # Check if user has already left reputation for this handshake
-            user_has_reviewed = ReputationRep.objects.filter(
-                handshake=handshake,
-                giver=user
-            ).exists()
+            # Check if user has already left reputation for this handshake (using prefetched data)
+            user_has_reviewed = len(handshake.user_reps) > 0
             
             conversations.append({
                 'handshake_id': str(handshake.id),
@@ -2007,7 +2071,9 @@ class ChatViewSet(viewsets.ViewSet):
     def retrieve(self, request, pk=None):
         """Get messages for a specific handshake"""
         try:
-            handshake = Handshake.objects.get(id=pk)
+            handshake = Handshake.objects.select_related(
+                'service', 'service__user', 'requester'
+            ).get(id=pk)
         except Handshake.DoesNotExist:
             return create_error_response(
                 'Handshake not found',
@@ -2024,7 +2090,9 @@ class ChatViewSet(viewsets.ViewSet):
             )
 
         # Order messages by created_at descending (newest first) for pagination
-        messages = ChatMessage.objects.filter(handshake=handshake).order_by('-created_at')
+        messages = ChatMessage.objects.filter(handshake=handshake).select_related(
+            'sender'
+        ).order_by('-created_at')
         
         # Always apply pagination
         paginator = self.pagination_class()
@@ -2063,7 +2131,9 @@ class ChatViewSet(viewsets.ViewSet):
         body = body[:5000] if body else ''
 
         try:
-            handshake = Handshake.objects.get(id=handshake_id)
+            handshake = Handshake.objects.select_related(
+                'service', 'service__user', 'requester'
+            ).get(id=handshake_id)
         except Handshake.DoesNotExist:
             return create_error_response(
                 'Handshake not found',
@@ -2230,6 +2300,7 @@ class ReputationViewSet(viewsets.ModelViewSet):
     """
     serializer_class = ReputationRepSerializer
     permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [ReputationThrottle]
 
     def get_queryset(self):
         return ReputationRep.objects.filter(giver=self.request.user)
@@ -2239,7 +2310,9 @@ class ReputationViewSet(viewsets.ModelViewSet):
         handshake_id = request.data.get('handshake_id')
         
         try:
-            handshake = Handshake.objects.get(id=handshake_id, status='completed')
+            handshake = Handshake.objects.select_related(
+                'service', 'service__user', 'requester'
+            ).get(id=handshake_id, status='completed')
         except Handshake.DoesNotExist:
             return create_error_response(
                 'Handshake not found or not completed',
@@ -2298,7 +2371,9 @@ class ReputationViewSet(viewsets.ModelViewSet):
         # Check and assign badges for receiver
         receiver_badges = check_and_assign_badges(receiver)
         if receiver_badges:
-            badge_names = [Badge.objects.get(id=bid).name for bid in receiver_badges]
+            # Fetch all badges at once to avoid N+1 queries
+            badges_dict = {badge.id: badge.name for badge in Badge.objects.filter(id__in=receiver_badges)}
+            badge_names = [badges_dict.get(bid, f"Badge {bid}") for bid in receiver_badges]
             create_notification(
                 user=receiver,
                 notification_type='positive_rep',
@@ -2987,7 +3062,7 @@ class PublicChatViewSet(viewsets.ViewSet):
         Returns room details and paginated messages.
         """
         try:
-            service = Service.objects.get(id=pk)
+            service = Service.objects.select_related('user').prefetch_related('tags', 'media').get(id=pk)
         except Service.DoesNotExist:
             return create_error_response(
                 'Service not found',
@@ -3039,7 +3114,7 @@ class PublicChatViewSet(viewsets.ViewSet):
         - body (string, required): The message content (max 5000 chars)
         """
         try:
-            service = Service.objects.get(id=pk)
+            service = Service.objects.select_related('user').prefetch_related('tags', 'media').get(id=pk)
         except Service.DoesNotExist:
             return create_error_response(
                 'Service not found',
@@ -3119,7 +3194,7 @@ class CommentViewSet(viewsets.ViewSet):
     def _get_service(self, service_id):
         """Get service or raise 404"""
         try:
-            return Service.objects.get(id=service_id)
+            return Service.objects.select_related('user').prefetch_related('tags', 'media').get(id=service_id)
         except Service.DoesNotExist:
             return None
 
@@ -3476,7 +3551,7 @@ class CommentViewSet(viewsets.ViewSet):
             status='completed'
         ).filter(
             Q(requester=request.user) | Q(service__user=request.user)
-        )
+        ).select_related('service', 'requester', 'service__user')
 
         # Exclude handshakes already reviewed by this user
         # Exclude handshakes with active (non-deleted) verified reviews
@@ -3543,7 +3618,9 @@ class NegativeRepViewSet(viewsets.ViewSet):
             )
 
         try:
-            handshake = Handshake.objects.get(id=handshake_id, status='completed')
+            handshake = Handshake.objects.select_related(
+                'service', 'service__user', 'requester'
+            ).get(id=handshake_id, status='completed')
         except Handshake.DoesNotExist:
             return create_error_response(
                 'Handshake not found or not completed',

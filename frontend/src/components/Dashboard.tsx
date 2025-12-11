@@ -9,7 +9,7 @@ import { Avatar, AvatarImage, AvatarFallback } from './ui/avatar';
 import { serviceAPI, Service } from '../lib/api';
 import { formatTimebank } from '../lib/utils';
 import { getErrorMessage, type NavigateData, type ApiError } from '../lib/types';
-import { getBadgeMeta } from '../lib/badges';
+import { getAchievementMeta } from '../lib/achievements';
 import { HomePageMap } from './HomePageMap';
 import { logger } from '../lib/logger';
 import { POLLING_INTERVALS, DEBOUNCE_DELAYS, GEOLOCATION_CONFIG, DISTANCE_SEARCH } from '../lib/constants';
@@ -488,8 +488,8 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
                   : 'User';
                 const userInitials = userName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
                 const avatarUrl = serviceUser?.avatar_url;
-                const providerBadges = Array.isArray(serviceUser?.badges) ? serviceUser?.badges ?? [] : [];
-                const featuredBadge = providerBadges.length ? getBadgeMeta(providerBadges[0]) : undefined;
+                const providerAchievements = Array.isArray(serviceUser?.achievements) ? serviceUser?.achievements : (Array.isArray(serviceUser?.badges) ? serviceUser?.badges ?? [] : []);
+                const featuredAchievement = providerAchievements.length ? getAchievementMeta(providerAchievements[0]) : undefined;
                 
                 return (
                 <button
@@ -519,10 +519,10 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
                           </Badge>
                         </div>
                         <p className="text-xs text-gray-500 mb-1">{userName}</p>
-                        {featuredBadge && (
+                        {featuredAchievement && (
                           <div className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-100 text-amber-700 text-xs font-medium">
-                            <featuredBadge.icon className="w-3 h-3" />
-                            {featuredBadge.label}
+                            <featuredAchievement.icon className="w-3 h-3" />
+                            {featuredAchievement.label}
                           </div>
                         )}
                       </div>
@@ -562,14 +562,14 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
                           #{tag.name}
                         </span>
                       ))}
-                      {providerBadges.slice(1, 3).map((badgeId) => {
-                        const badgeMeta = getBadgeMeta(badgeId);
-                        if (!badgeMeta) return null;
-                        const Icon = badgeMeta.icon;
+                      {providerAchievements.slice(1, 3).map((achievementId) => {
+                        const achievementMeta = getAchievementMeta(achievementId);
+                        if (!achievementMeta) return null;
+                        const Icon = achievementMeta.icon;
                         return (
-                          <span key={badgeId} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-amber-50 text-amber-700">
+                          <span key={achievementId} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-amber-50 text-amber-700">
                             <Icon className="w-3 h-3" />
-                            {badgeMeta.label}
+                            {achievementMeta.label}
                           </span>
                         );
                       })}

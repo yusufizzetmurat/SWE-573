@@ -152,14 +152,39 @@ class ServiceMediaSerializer(serializers.ModelSerializer):
         if obj.media_type == 'image':
             return self.get_file_url(obj)
         return None
-        if obj.file_url:
-            return obj.file_url
-        if obj.file:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.file.url)
-            return obj.file.url
-        return None
+    
+    def validate_file(self, value):
+        """Validate uploaded file type and size"""
+        if value:
+            # Check file size (50MB limit)
+            max_size = 50 * 1024 * 1024  # 50MB
+            if value.size > max_size:
+                raise serializers.ValidationError('File size cannot exceed 50MB')
+            
+            # Get file extension
+            import os
+            ext = os.path.splitext(value.name)[1].lower()
+            
+            # Allowed extensions based on media_type
+            # This will be validated in the view when media_type is provided
+            allowed_image_exts = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+            allowed_video_exts = ['.mp4', '.webm', '.ogg']
+            
+            if ext not in allowed_image_exts + allowed_video_exts:
+                raise serializers.ValidationError(
+                    f'Invalid file type. Allowed: {", ".join(allowed_image_exts + allowed_video_exts)}'
+                )
+        return value
+    
+    def validate_file_url(self, value):
+        """Validate file URL format"""
+        if value:
+            # Must be a valid URL (http/https) or data URL
+            if not (value.startswith(('http://', 'https://', 'data:'))):
+                raise serializers.ValidationError(
+                    'File URL must be a valid HTTP/HTTPS URL or data URL'
+                )
+        return value
 
 @extend_schema_serializer(
     examples=[
@@ -249,16 +274,56 @@ class ServiceSerializer(serializers.ModelSerializer):
             return len([c for c in obj.comments.all() if not c.is_deleted])
         return obj.comments.filter(is_deleted=False).count()
     
+    def validate_title(self, value):
+        """Sanitize and validate title"""
+        if not value or not value.strip():
+            raise serializers.ValidationError('Title cannot be empty')
+        cleaned = bleach.clean(value, tags=[], strip=True).strip()
+        if len(cleaned) < 3:
+            raise serializers.ValidationError('Title must be at least 3 characters')
+        if len(cleaned) > 200:
+            raise serializers.ValidationError('Title cannot exceed 200 characters')
+        return cleaned
+    
+    def validate_description(self, value):
+        """Sanitize and validate description"""
+        if not value or not value.strip():
+            raise serializers.ValidationError('Description cannot be empty')
+        cleaned = bleach.clean(value, tags=[], strip=True).strip()
+        if len(cleaned) < 10:
+            raise serializers.ValidationError('Description must be at least 10 characters')
+        if len(cleaned) > 5000:
+            raise serializers.ValidationError('Description cannot exceed 5000 characters')
+        return cleaned
+    
+    def validate_location_lat(self, value):
+        """Validate latitude is within valid range (-90 to 90)"""
+        if value is not None:
+            if value < -90 or value > 90:
+                raise serializers.ValidationError('Latitude must be between -90 and 90')
+        return value
+    
+    def validate_location_lng(self, value):
+        """Validate longitude is within valid range (-180 to 180)"""
+        if value is not None:
+            if value < -180 or value > 180:
+                raise serializers.ValidationError('Longitude must be between -180 and 180')
+        return value
+    
     def validate_duration(self, value):
         """Validate that duration is positive"""
         if value <= 0:
             raise serializers.ValidationError('Duration must be greater than 0')
+        if value > 1000:  # Reasonable upper limit
+            raise serializers.ValidationError('Duration cannot exceed 1000 hours')
         return value
     
     def validate_max_participants(self, value):
         """Validate that max_participants is positive"""
         if value <= 0:
             raise serializers.ValidationError('Max participants must be greater than 0')
+        if value > 100:  # Reasonable upper limit
+            raise serializers.ValidationError('Max participants cannot exceed 100')
         return value
 
     @extend_schema_field(UserSummarySerializer)
@@ -267,13 +332,8 @@ class ServiceSerializer(serializers.ModelSerializer):
         return UserSummarySerializer(obj.user).data
 
     def create(self, validated_data):
-        # Sanitize description
-        if 'description' in validated_data:
-            validated_data['description'] = bleach.clean(
-                validated_data['description'],
-                tags=[],  # No HTML tags allowed
-                strip=True
-            )
+        # Description is already sanitized in validate_description
+        # No need to sanitize again here
         
         # Extract tag_ids and tag_names if provided
         tag_ids = validated_data.pop('tag_ids', [])
@@ -442,13 +502,8 @@ class ServiceSerializer(serializers.ModelSerializer):
         return service
     
     def update(self, instance, validated_data):
-        # Sanitize description if being updated
-        if 'description' in validated_data:
-            validated_data['description'] = bleach.clean(
-                validated_data['description'],
-                tags=[],  # No HTML tags allowed
-                strip=True
-            )
+        # Description is already sanitized in validate_description
+        # No need to sanitize again here
         return super().update(instance, validated_data)
 
 @extend_schema_serializer(
@@ -509,7 +564,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     punctual_count = serializers.IntegerField(read_only=True)
     helpful_count = serializers.IntegerField(read_only=True)
     kind_count = serializers.IntegerField(read_only=True)
-    badges = serializers.SerializerMethodField()
+    achievements = serializers.SerializerMethodField()
+    badges = serializers.SerializerMethodField()  # Deprecated: use achievements instead
     bio = serializers.CharField(max_length=1000, allow_blank=True, required=False)
     first_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
     last_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
@@ -525,13 +581,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'first_name', 'last_name', 'bio', 'avatar_url',
             'banner_url', 'timebank_balance', 'karma_score', 'role', 'services',
-            'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined',
+            'punctual_count', 'helpful_count', 'kind_count', 'achievements', 'badges', 'date_joined',
             'video_intro_url', 'video_intro_file', 'video_intro_file_url',
             'portfolio_images', 'show_history', 'featured_achievement_id'
         ]
         read_only_fields = [
             'id', 'email', 'timebank_balance', 'karma_score', 'role', 'services',
-            'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined',
+            'punctual_count', 'helpful_count', 'kind_count', 'achievements', 'badges', 'date_joined',
             'video_intro_file_url'
         ]
         extra_kwargs = {
@@ -561,9 +617,34 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return value
     
     def validate_bio(self, value):
-        """Validate bio length"""
-        if value and len(value) > 1000:
-            raise serializers.ValidationError('Bio must be 1000 characters or less')
+        """Sanitize and validate bio"""
+        if value:
+            cleaned = bleach.clean(value, tags=[], strip=True).strip()
+            if len(cleaned) > 1000:
+                raise serializers.ValidationError('Bio must be 1000 characters or less')
+            return cleaned
+        return value
+    
+    def validate_first_name(self, value):
+        """Sanitize and validate first name"""
+        if value:
+            cleaned = bleach.clean(value, tags=[], strip=True).strip()
+            if len(cleaned) < 1:
+                raise serializers.ValidationError('First name cannot be empty')
+            if len(cleaned) > 150:
+                raise serializers.ValidationError('First name cannot exceed 150 characters')
+            return cleaned
+        return value
+    
+    def validate_last_name(self, value):
+        """Sanitize and validate last name"""
+        if value:
+            cleaned = bleach.clean(value, tags=[], strip=True).strip()
+            if len(cleaned) < 1:
+                raise serializers.ValidationError('Last name cannot be empty')
+            if len(cleaned) > 150:
+                raise serializers.ValidationError('Last name cannot exceed 150 characters')
+            return cleaned
         return value
     
     def validate_video_intro_url(self, value):
@@ -596,15 +677,30 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return value
 
     @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_achievements(self, obj):
+        """Return list of achievement IDs - uses prefetched data when available"""
+        try:
+            if hasattr(obj, '_prefetched_objects_cache') and 'badges' in obj._prefetched_objects_cache:
+                return [user_badge.badge.id for user_badge in obj._prefetched_objects_cache['badges'] if user_badge.badge]
+        except (AttributeError, KeyError):
+            pass
+        try:
+            return [user_badge.badge.id for user_badge in obj.badges.all() if user_badge.badge]
+        except (AttributeError, Exception):
+            return []
+    
+    @extend_schema_field(OpenApiTypes.OBJECT)
     def get_badges(self, obj):
-        return [ub.badge.id for ub in obj.badges.all()]
+        """Deprecated: use achievements instead. Return list of achievement IDs for backward compatibility."""
+        return self.get_achievements(obj)
 
 class PublicUserProfileSerializer(serializers.ModelSerializer):
     services = ServiceSerializer(many=True, read_only=True)
     punctual_count = serializers.IntegerField(read_only=True)
     helpful_count = serializers.IntegerField(read_only=True)
     kind_count = serializers.IntegerField(read_only=True)
-    badges = serializers.SerializerMethodField()
+    achievements = serializers.SerializerMethodField()
+    badges = serializers.SerializerMethodField()  # Deprecated: use achievements instead
     video_intro_file_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -612,7 +708,7 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'first_name', 'last_name', 'bio', 'avatar_url',
             'banner_url', 'karma_score', 'services',
-            'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined',
+            'punctual_count', 'helpful_count', 'kind_count', 'achievements', 'badges', 'date_joined',
             'video_intro_url', 'video_intro_file_url', 'portfolio_images', 'show_history'
         ]
         read_only_fields = fields
@@ -628,8 +724,22 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
         return None
 
     @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_achievements(self, obj):
+        """Return list of achievement IDs - uses prefetched data when available"""
+        try:
+            if hasattr(obj, '_prefetched_objects_cache') and 'badges' in obj._prefetched_objects_cache:
+                return [user_badge.badge.id for user_badge in obj._prefetched_objects_cache['badges'] if user_badge.badge]
+        except (AttributeError, KeyError):
+            pass
+        try:
+            return [user_badge.badge.id for user_badge in obj.badges.all() if user_badge.badge]
+        except (AttributeError, Exception):
+            return []
+    
+    @extend_schema_field(OpenApiTypes.OBJECT)
     def get_badges(self, obj):
-        return [ub.badge.id for ub in obj.badges.all()]
+        """Deprecated: use achievements instead. Return list of achievement IDs for backward compatibility."""
+        return self.get_achievements(obj)
 
 # Handshake Serializers
 @extend_schema_serializer(
