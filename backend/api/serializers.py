@@ -55,7 +55,7 @@ class UserSummarySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'first_name', 'last_name', 'bio',
             'avatar_url', 'banner_url', 'timebank_balance', 'karma_score',
-            'date_joined', 'badges', 'featured_badge', 'featured_achievement_id'
+            'role', 'date_joined', 'badges', 'featured_badge', 'featured_achievement_id'
         ]
         read_only_fields = fields
     
@@ -71,6 +71,17 @@ class UserSummarySerializer(serializers.ModelSerializer):
             return [user_badge.badge.id for user_badge in obj.badges.all()]
         except (AttributeError, Exception):
             return []
+
+class AdminUserListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for admin user list view"""
+    class Meta:
+        model = User
+        fields = [
+            'id', 'email', 'first_name', 'last_name', 
+            'timebank_balance', 'karma_score', 'role', 
+            'is_active', 'date_joined'
+        ]
+        read_only_fields = fields
     
     @extend_schema_field(OpenApiTypes.STR)
     def get_featured_badge(self, obj):
@@ -513,13 +524,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'email', 'first_name', 'last_name', 'bio', 'avatar_url',
-            'banner_url', 'timebank_balance', 'karma_score', 'services',
+            'banner_url', 'timebank_balance', 'karma_score', 'role', 'services',
             'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined',
             'video_intro_url', 'video_intro_file', 'video_intro_file_url',
             'portfolio_images', 'show_history', 'featured_achievement_id'
         ]
         read_only_fields = [
-            'id', 'email', 'timebank_balance', 'karma_score', 'services',
+            'id', 'email', 'timebank_balance', 'karma_score', 'role', 'services',
             'punctual_count', 'helpful_count', 'kind_count', 'badges', 'date_joined',
             'video_intro_file_url'
         ]

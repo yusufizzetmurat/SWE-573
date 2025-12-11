@@ -317,16 +317,19 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
             
             {/* Interactive Map */}
             <div className="w-full" style={{ minHeight: '400px' }}>
-              <HomePageMap services={services.map(service => ({
-                id: service.id,
-                title: service.title,
-                location_area: service.location_area,
-                location_type: service.location_type,
-                location_lat: service.location_lat,
-                location_lng: service.location_lng,
-                type: service.type,
-                user: service.user,
-              }))} />
+              <HomePageMap 
+                services={services.map(service => ({
+                  id: service.id,
+                  title: service.title,
+                  location_area: service.location_area,
+                  location_type: service.location_type,
+                  location_lat: service.location_lat,
+                  location_lng: service.location_lng,
+                  type: service.type,
+                  user: service.user,
+                }))} 
+                onNavigate={onNavigate}
+              />
             </div>
           </div>
         </div>

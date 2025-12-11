@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { MapPin } from 'lucide-react';
 import L from 'leaflet';
+import { logger } from '../lib/logger';
 import 'leaflet/dist/leaflet.css';
 
 interface LocationPickerMapProps {
@@ -83,9 +84,9 @@ export function LocationPickerMap({ onLocationSelect, initialLocation, required 
 
     function initializeMap(map: L.Map, startLocation: { lat: number; lng: number }) {
 
-      // Add OpenStreetMap tiles
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
+      // Add CartoDB Positron tiles (light theme, matches HomePageMap)
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://carto.com/attributions">CARTO</a>',
         maxZoom: 19,
       }).addTo(map);
 
@@ -105,15 +106,55 @@ export function LocationPickerMap({ onLocationSelect, initialLocation, required 
 
       markerRef.current = marker;
 
-      // Add circle to show approximate area (not exact address)
-      const circle = L.circle([startLocation.lat, startLocation.lng], {
-        color: '#f59e0b',
-        fillColor: '#f59e0b',
-        fillOpacity: 0.1,
-        radius: 2000, // 2km radius to show approximate area
-      }).addTo(map);
-
-      circleRef.current = circle;
+      // Add circles with fixed geographic size (meters) to show approximate area (not exact address)
+      let outerCircle: L.Circle | null = null;
+      let middleCircle: L.Circle | null = null;
+      
+      const updateCircles = (position?: L.LatLng) => {
+        // Radius values in meters - maintains geographic size regardless of zoom
+        const outerRadius = 500; // 500 meters
+        const middleRadius = 300; // 300 meters
+        
+        const currentPos = position || marker.getLatLng();
+        
+        // Update or create outer circle (uses meters, maintains geographic size)
+        if (!outerCircle) {
+          outerCircle = L.circle(currentPos, {
+            radius: outerRadius,
+            color: '#f59e0b',
+            fillColor: '#f59e0b',
+            fillOpacity: 0.15,
+            weight: 3,
+            opacity: 0.6,
+          });
+          outerCircle.addTo(map);
+        } else {
+          outerCircle.setRadius(outerRadius);
+          outerCircle.setLatLng(currentPos);
+        }
+        
+        // Update or create middle circle (uses meters, maintains geographic size)
+        if (!middleCircle) {
+          middleCircle = L.circle(currentPos, {
+            radius: middleRadius,
+            color: '#fbbf24',
+            fillColor: '#fbbf24',
+            fillOpacity: 0.2,
+            weight: 2,
+            opacity: 0.5,
+          });
+          middleCircle.addTo(map);
+        } else {
+          middleCircle.setRadius(middleRadius);
+          middleCircle.setLatLng(currentPos);
+        }
+      };
+      
+      // Update circles when marker moves
+      updateCircles(); // Initial render
+      
+      // Store refs for cleanup
+      circleRef.current = outerCircle as any; // Store for cleanup
 
       // Function to reverse geocode and get area name
       const updateLocation = async (lat: number, lng: number, isUserAction: boolean = false) => {
@@ -160,15 +201,16 @@ export function LocationPickerMap({ onLocationSelect, initialLocation, required 
       // Update location when marker is dragged
       marker.on('dragend', (e) => {
         const position = marker.getLatLng();
-        circle.setLatLng(position);
+        updateCircles(position);
         updateLocation(position.lat, position.lng, true);
       });
 
       // Update location when map is clicked
       map.on('click', (e) => {
         const { lat, lng } = e.latlng;
-        marker.setLatLng([lat, lng]);
-        circle.setLatLng([lat, lng]);
+        const position = L.latLng(lat, lng);
+        marker.setLatLng(position);
+        updateCircles(position);
         updateLocation(lat, lng, true);
       });
 

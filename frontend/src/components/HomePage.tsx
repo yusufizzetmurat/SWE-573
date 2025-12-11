@@ -186,7 +186,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
               Discover in-person services available in different districts. Each location shows approximate areas to protect privacy.
             </p>
           </div>
-          <HomePageMap services={services} />
+          <HomePageMap services={services} onNavigate={onNavigate} />
         </div>
       </section>
 

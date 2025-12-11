@@ -472,10 +472,38 @@ export interface Report {
   resolved_by?: string;
 }
 
+export interface AdminUser {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  timebank_balance: number;
+  karma_score: number;
+  role: 'member' | 'admin';
+  is_active: boolean;
+  date_joined: string;
+}
+
 export const adminAPI = {
   getReports: async (status?: string, signal?: AbortSignal): Promise<Report[]> => {
     const params = status ? { status } : {};
     const response = await apiClient.get('/admin/reports/', { params, signal });
+    return response.data;
+  },
+
+  getUsers: async (
+    search?: string, 
+    status?: 'active' | 'banned', 
+    page?: number,
+    pageSize?: number,
+    signal?: AbortSignal
+  ): Promise<PaginatedResponse<AdminUser>> => {
+    const params: Record<string, string | number> = {};
+    if (search) params.search = search;
+    if (status) params.status = status;
+    if (page) params.page = page;
+    if (pageSize) params.page_size = pageSize;
+    const response = await apiClient.get('/admin/users/', { params, signal });
     return response.data;
   },
 
@@ -504,6 +532,11 @@ export const adminAPI = {
 
   banUser: async (userId: string, signal?: AbortSignal): Promise<{status: string, message: string}> => {
     const response = await apiClient.post(`/admin/users/${userId}/ban/`, {}, { signal });
+    return response.data;
+  },
+
+  unbanUser: async (userId: string, signal?: AbortSignal): Promise<{status: string, message: string}> => {
+    const response = await apiClient.post(`/admin/users/${userId}/unban/`, {}, { signal });
     return response.data;
   },
 

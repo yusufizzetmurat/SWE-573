@@ -71,35 +71,54 @@ export function ServiceMap({ locationType, locationArea, locationDetails, locati
       attributionControl: true,
     });
 
-    // Add OpenStreetMap tiles
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
+    // Add CartoDB Positron tiles (light theme, matches HomePageMap)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://carto.com/attributions">CARTO</a>',
       maxZoom: 19,
     }).addTo(map);
 
-    // Add marker for the location
-    const marker = L.marker([lat, lng], {
-      icon: L.icon({
-        iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-        iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41],
-      }),
-    }).addTo(map);
-
-    // Add popup with area name
-    marker.bindPopup(`<b>${displayName}</b><br>Approximate location`).openPopup();
-
-    // Add circle to show approximate area (not exact address) - increased radius for better visibility
-    L.circle([lat, lng], {
-      color: '#10b981',
-      fillColor: '#10b981',
-      fillOpacity: 0.15,
-      radius: 3000, // 3km radius to show approximate area and hide exact location
-    }).addTo(map);
+    // Add circles with fixed geographic size (meters) to show approximate area (not exact address)
+    let outerCircle: L.Circle | null = null;
+    let middleCircle: L.Circle | null = null;
+    
+    const updateCircles = () => {
+      // Radius values in meters - maintains geographic size regardless of zoom
+      const outerRadius = 500; // 500 meters
+      const middleRadius = 300; // 300 meters
+      
+      // Update or create outer circle (uses meters, maintains geographic size)
+      if (!outerCircle) {
+        outerCircle = L.circle([lat, lng], {
+          radius: outerRadius,
+          color: '#10b981',
+          fillColor: '#10b981',
+          fillOpacity: 0.15,
+          weight: 3,
+          opacity: 0.6,
+        });
+        outerCircle.addTo(map);
+      } else {
+        outerCircle.setRadius(outerRadius);
+      }
+      
+      // Update or create middle circle (uses meters, maintains geographic size)
+      if (!middleCircle) {
+        middleCircle = L.circle([lat, lng], {
+          radius: middleRadius,
+          color: '#34d399',
+          fillColor: '#34d399',
+          fillOpacity: 0.2,
+          weight: 2,
+          opacity: 0.5,
+        });
+        middleCircle.addTo(map);
+      } else {
+        middleCircle.setRadius(middleRadius);
+      }
+    };
+    
+    // Circles maintain geographic size automatically, no need for zoom updates
+    updateCircles(); // Initial render
 
     mapInstanceRef.current = map;
 

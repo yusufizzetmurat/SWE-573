@@ -1,7 +1,8 @@
 import React from 'react';
-import { Hexagon, Search, Plus, User, LogOut, MessageSquare, UserCircle, Bell, Grid3x3 } from 'lucide-react';
+import { Hexagon, Search, Plus, User, LogOut, MessageSquare, UserCircle, Bell, Grid3x3, Shield } from 'lucide-react';
 import { formatTimebank } from '../lib/utils';
 import { Button } from './ui/button';
+import { useAuth } from '../lib/auth-context';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +32,9 @@ export function Navbar({
   onLogout = () => {},
   isAuthenticated = false
 }: NavbarProps) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+
   return (
     <nav className="sticky top-0 z-50 bg-white border-b border-gray-200">
       <div className="max-w-[1440px] mx-auto px-8 py-4">
@@ -100,6 +104,21 @@ export function Navbar({
                 <UserCircle className="w-4 h-4" aria-hidden="true" />
                 Profile
               </button>
+              {isAdmin && (
+                <button
+                  onClick={() => onNavigate('admin')}
+                  className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                    activeLink === 'admin'
+                      ? 'bg-amber-50 text-amber-900'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                  aria-label="Moderator dashboard"
+                  aria-current={activeLink === 'admin' ? 'page' : undefined}
+                >
+                  <Shield className="w-4 h-4" aria-hidden="true" />
+                  Moderator
+                </button>
+              )}
             </div>
           </div>
 

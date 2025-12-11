@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Shield, Users, FileText, TrendingUp, Flag, AlertTriangle, Clock, Eye, EyeOff, Ban, AlertCircle, CheckCircle, XCircle, Loader2, Pause } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { adminAPI, type Report } from '../lib/api';
+import { Input } from './ui/input';
+import { adminAPI, type Report, type AdminUser, type PaginatedResponse } from '../lib/api';
 import { DisputeResolutionModal } from './DisputeResolutionModal';
-
+import { useToast } from './Toast';
+import { logger } from '../lib/logger';
 import { type NavigateData } from '../lib/types';
 
 interface AdminDashboardProps {
@@ -34,14 +36,29 @@ const getTypeBadgeClass = (type: string): string => {
 };
 
 export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
+  const { showToast } = useToast();
   const [activeSection, setActiveSection] = useState('dashboard');
   const [activeReportTab, setActiveReportTab] = useState<ReportTab>('content');
   const [reports, setReports] = useState<Report[]>([]);
+  const [resolvedReports, setResolvedReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [showDisputeModal, setShowDisputeModal] = useState(false);
+  
+  // User management state
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  const [userSearch, setUserSearch] = useState('');
+  const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'active' | 'banned'>('all');
+  const [usersPagination, setUsersPagination] = useState<{ count: number; next: string | null; previous: string | null }>({ count: 0, next: null, previous: null });
+  const [usersPage, setUsersPage] = useState(1);
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [showKarmaModal, setShowKarmaModal] = useState(false);
+  const [karmaAdjustment, setKarmaAdjustment] = useState('');
+  const [debouncedUserSearch, setDebouncedUserSearch] = useState('');
 
   // Fetch reports on mount and when reports section is active
   useEffect(() => {
@@ -55,15 +72,54 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     }
   }, [activeSection]);
 
+  // Debounce user search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedUserSearch(userSearch);
+      setUsersPage(1); // Reset to first page on search change
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [userSearch]);
+
+  // Fetch users when navigating to users section
+  useEffect(() => {
+    if (activeSection === 'users') {
+      fetchUsers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, debouncedUserSearch, userStatusFilter, usersPage]);
+
+  const fetchUsers = async () => {
+    setUsersLoading(true);
+    setUsersError(null);
+    try {
+      const status = userStatusFilter === 'all' ? undefined : userStatusFilter;
+      const data = await adminAPI.getUsers(debouncedUserSearch || undefined, status, usersPage, 20);
+      setUsers(data.results);
+      setUsersPagination({ count: data.count, next: data.next, previous: data.previous });
+    } catch (err) {
+      setUsersError('Failed to load users. Please try again.');
+      logger.error('Error fetching users', err instanceof Error ? err : new Error(String(err)));
+      showToast('Failed to load users. Please try again.', 'error');
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
   const fetchReports = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await adminAPI.getReports('pending');
-      setReports(data);
+      const [pendingData, resolvedData] = await Promise.all([
+        adminAPI.getReports('pending'),
+        adminAPI.getReports('resolved')
+      ]);
+      setReports(pendingData);
+      setResolvedReports(resolvedData);
     } catch (err) {
       setError('Failed to load reports. Please try again.');
       logger.error('Error fetching reports', err instanceof Error ? err : new Error(String(err)));
+      showToast('Failed to load reports. Please try again.', 'error');
     } finally {
       setLoading(false);
     }
@@ -80,9 +136,11 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     setActionLoading(report.id);
     try {
       await adminAPI.warnUser(report.reported_user, 'You have received a warning for violating community guidelines.');
-      alert('Warning sent successfully');
+      showToast('Warning sent successfully', 'success');
+      fetchReports();
     } catch (err) {
-      alert('Failed to send warning');
+      logger.error('Error warning user', err instanceof Error ? err : new Error(String(err)));
+      showToast('Failed to send warning', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -96,10 +154,11 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     setActionLoading(report.id);
     try {
       await adminAPI.banUser(report.reported_user);
-      alert('User has been banned');
+      showToast('User has been banned', 'success');
       fetchReports();
     } catch (err) {
-      alert('Failed to ban user');
+      logger.error('Error banning user', err instanceof Error ? err : new Error(String(err)));
+      showToast('Failed to ban user', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -109,10 +168,13 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     if (!report.reported_service) return;
     setActionLoading(report.id);
     try {
-      await adminAPI.toggleServiceVisibility(report.reported_service);
-      alert('Service visibility toggled');
+      const result = await adminAPI.toggleServiceVisibility(report.reported_service);
+      const message = result.is_visible ? 'Service is now visible' : 'Service is now hidden';
+      showToast(message, 'success');
+      fetchReports();
     } catch (err) {
-      alert('Failed to toggle service visibility');
+      logger.error('Error toggling service visibility', err instanceof Error ? err : new Error(String(err)));
+      showToast('Failed to toggle service visibility', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -122,10 +184,11 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     setActionLoading(report.id);
     try {
       await adminAPI.pauseHandshake(report.id);
-      alert('Handshake has been paused for investigation');
+      showToast('Handshake has been paused for investigation', 'success');
       fetchReports();
     } catch (err) {
-      alert('Failed to pause handshake');
+      logger.error('Error pausing handshake', err instanceof Error ? err : new Error(String(err)));
+      showToast('Failed to pause handshake', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -142,17 +205,111 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     setActionLoading(targetReport.id);
     try {
       await adminAPI.resolveReport(targetReport.id, action, notes);
+      const message = action === 'confirm_no_show' 
+        ? 'No-show confirmed. TimeBank dispute resolved.' 
+        : 'Report dismissed. Service completed normally.';
+      showToast(message, 'success');
       setShowDisputeModal(false);
       setSelectedReport(null);
       fetchReports();
     } catch (err) {
-      alert('Failed to resolve dispute');
+      logger.error('Error resolving dispute', err instanceof Error ? err : new Error(String(err)));
+      showToast('Failed to resolve dispute', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // User management handlers
+  const handleWarnUserFromList = async (user: AdminUser) => {
+    setActionLoading(user.id);
+    try {
+      await adminAPI.warnUser(user.id, 'You have received a warning for violating community guidelines.');
+      showToast(`Warning sent to ${user.first_name} ${user.last_name}`, 'success');
+      fetchUsers();
+    } catch (err) {
+      logger.error('Error warning user', err instanceof Error ? err : new Error(String(err)));
+      showToast('Failed to send warning', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleBanUserFromList = async (user: AdminUser) => {
+    if (!confirm(`Are you sure you want to ${user.is_active ? 'ban' : 'unban'} ${user.first_name} ${user.last_name}?`)) {
+      return;
+    }
+    setActionLoading(user.id);
+    try {
+      if (user.is_active) {
+        await adminAPI.banUser(user.id);
+        showToast(`User ${user.first_name} ${user.last_name} has been banned`, 'success');
+      } else {
+        await adminAPI.unbanUser(user.id);
+        showToast(`User ${user.first_name} ${user.last_name} has been unbanned`, 'success');
+      }
+      fetchUsers();
+    } catch (err) {
+      logger.error('Error banning/unbanning user', err instanceof Error ? err : new Error(String(err)));
+      showToast(`Failed to ${user.is_active ? 'ban' : 'unban'} user`, 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleAdjustKarma = async () => {
+    if (!selectedUser || !karmaAdjustment) return;
+    const adjustment = parseInt(karmaAdjustment);
+    if (isNaN(adjustment)) {
+      showToast('Please enter a valid number', 'error');
+      return;
+    }
+    setActionLoading(selectedUser.id);
+    try {
+      const result = await adminAPI.adjustKarma(selectedUser.id, adjustment);
+      showToast(`Karma adjusted. New karma: ${result.new_karma}`, 'success');
+      setShowKarmaModal(false);
+      setKarmaAdjustment('');
+      setSelectedUser(null);
+      fetchUsers();
+    } catch (err) {
+      logger.error('Error adjusting karma', err instanceof Error ? err : new Error(String(err)));
+      showToast('Failed to adjust karma', 'error');
     } finally {
       setActionLoading(null);
     }
   };
 
   const pendingCount = reports.length;
+
+  // Calculate average resolution time from resolved reports
+  const calculateAvgResolutionTime = (): string => {
+    if (resolvedReports.length === 0) return '-';
+    
+    const reportsWithTimes = resolvedReports.filter(r => r.created_at && r.resolved_at);
+    if (reportsWithTimes.length === 0) return '-';
+    
+    const totalMs = reportsWithTimes.reduce((sum, r) => {
+      const created = new Date(r.created_at).getTime();
+      const resolved = new Date(r.resolved_at!).getTime();
+      return sum + (resolved - created);
+    }, 0);
+    
+    const avgMs = totalMs / reportsWithTimes.length;
+    const avgHours = avgMs / (1000 * 60 * 60);
+    
+    if (avgHours < 1) {
+      const avgMinutes = avgMs / (1000 * 60);
+      return `${Math.round(avgMinutes)}m`;
+    } else if (avgHours < 24) {
+      return `${Math.round(avgHours * 10) / 10}h`;
+    } else {
+      const avgDays = avgHours / 24;
+      return `${Math.round(avgDays * 10) / 10}d`;
+    }
+  };
+
+  const avgResolutionTime = calculateAvgResolutionTime();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -278,7 +435,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       <Clock className="w-6 h-6" />
                     </div>
                   </div>
-                  <div className="text-3xl font-bold text-gray-900 mb-1">-</div>
+                  <div className="text-3xl font-bold text-gray-900 mb-1">{avgResolutionTime}</div>
                   <div className="text-sm text-gray-600">Avg Resolution Time</div>
                 </div>
               </div>
@@ -525,20 +682,299 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
           )}
 
           {activeSection === 'users' && (
-            <div className="bg-white rounded-xl border border-gray-200 p-8">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">User Management</h3>
-              <p className="text-gray-600">
-                User management tools and search functionality would appear here
-              </p>
-            </div>
+            <>
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">User Management</h2>
+                <p className="text-gray-600">
+                  Search, view, and manage user accounts
+                </p>
+              </div>
+
+              {/* Search and Filters */}
+              <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+                <div className="flex gap-4 items-end">
+                  <div className="flex-1">
+                    <label htmlFor="user-search" className="block text-sm font-medium text-gray-700 mb-2">
+                      Search Users
+                    </label>
+                    <Input
+                      id="user-search"
+                      type="text"
+                      placeholder="Search by email, first name, or last name..."
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="user-status" className="block text-sm font-medium text-gray-700 mb-2">
+                      Status
+                    </label>
+                    <select
+                      id="user-status"
+                      value={userStatusFilter}
+                      onChange={(e) => {
+                        setUserStatusFilter(e.target.value as 'all' | 'active' | 'banned');
+                        setUsersPage(1);
+                      }}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    >
+                      <option value="all">All Users</option>
+                      <option value="active">Active</option>
+                      <option value="banned">Banned</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {usersLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+                </div>
+              ) : usersError ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+                  {usersError}
+                  <Button onClick={fetchUsers} variant="outline" size="sm" className="ml-4">
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Karma</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {users.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                                No users found
+                              </td>
+                            </tr>
+                          ) : (
+                            users.map((user) => (
+                              <tr key={user.id} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {user.first_name} {user.last_name}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-600">{user.email}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-900">{user.timebank_balance}h</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-900">{user.karma_score}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <Badge className={user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'}>
+                                    {user.role}
+                                  </Badge>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <Badge className={user.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                                    {user.is_active ? 'Active' : 'Banned'}
+                                  </Badge>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-500">
+                                    {new Date(user.date_joined).toLocaleDateString()}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => onNavigate('public-profile', { userId: user.id })}
+                                    >
+                                      <Eye className="w-4 h-4 mr-1" />
+                                      View
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                                      onClick={() => handleWarnUserFromList(user)}
+                                      disabled={actionLoading === user.id}
+                                    >
+                                      <AlertCircle className="w-4 h-4 mr-1" />
+                                      Warn
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className={user.is_active ? "text-red-600 border-red-300 hover:bg-red-50" : "text-green-600 border-green-300 hover:bg-green-50"}
+                                      onClick={() => handleBanUserFromList(user)}
+                                      disabled={actionLoading === user.id}
+                                    >
+                                      <Ban className="w-4 h-4 mr-1" />
+                                      {user.is_active ? 'Ban' : 'Unban'}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                                      onClick={() => {
+                                        setSelectedUser(user);
+                                        setShowKarmaModal(true);
+                                      }}
+                                    >
+                                      Adjust Karma
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    
+                    {/* Pagination */}
+                    {usersPagination.count > 0 && (
+                      <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                        <div className="text-sm text-gray-700">
+                          Showing {((usersPage - 1) * 20) + 1} to {Math.min(usersPage * 20, usersPagination.count)} of {usersPagination.count} users
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setUsersPage(p => Math.max(1, p - 1))}
+                            disabled={!usersPagination.previous || usersPage === 1}
+                          >
+                            Previous
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setUsersPage(p => p + 1)}
+                            disabled={!usersPagination.next}
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </>
           )}
 
           {activeSection === 'guidelines' && (
-            <div className="bg-white rounded-xl border border-gray-200 p-8">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Community Guidelines</h3>
-              <p className="text-gray-600">
-                Edit and manage community guidelines and policies
-              </p>
+            <div className="space-y-6">
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">Community Guidelines</h2>
+                <p className="text-gray-600">
+                  Reference guide for community standards and moderation policies
+                </p>
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200 p-8 space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">General Principles</h3>
+                  <ul className="space-y-2 text-gray-700">
+                    <li className="flex items-start gap-2">
+                      <span className="text-amber-500 mt-1">•</span>
+                      <span>Respect all community members and their time</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-amber-500 mt-1">•</span>
+                      <span>Communicate clearly and honestly about service expectations</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-amber-500 mt-1">•</span>
+                      <span>Show up on time for scheduled services</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-amber-500 mt-1">•</span>
+                      <span>Provide quality services that match your descriptions</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Prohibited Content</h3>
+                  <ul className="space-y-2 text-gray-700">
+                    <li className="flex items-start gap-2">
+                      <span className="text-red-500 mt-1">•</span>
+                      <span>Harassment, discrimination, or hate speech</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-red-500 mt-1">•</span>
+                      <span>Spam, scams, or fraudulent activities</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-red-500 mt-1">•</span>
+                      <span>Inappropriate or offensive content</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-red-500 mt-1">•</span>
+                      <span>Services that violate local laws or regulations</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Moderation Actions</h3>
+                  <div className="space-y-3">
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                      <h4 className="font-medium text-amber-900 mb-2">Warning</h4>
+                      <p className="text-sm text-amber-800">
+                        First-time violations or minor infractions result in a formal warning notification to the user.
+                      </p>
+                    </div>
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                      <h4 className="font-medium text-orange-900 mb-2">Service Visibility</h4>
+                      <p className="text-sm text-orange-800">
+                        Inappropriate services can be hidden from public view while maintaining the service record.
+                      </p>
+                    </div>
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <h4 className="font-medium text-red-900 mb-2">Account Ban</h4>
+                      <p className="text-sm text-red-800">
+                        Severe violations or repeated offenses result in account deactivation. Users can be unbanned if circumstances change.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">TimeBank Disputes</h3>
+                  <p className="text-gray-700 mb-3">
+                    When a no-show is reported, moderators can:
+                  </p>
+                  <ul className="space-y-2 text-gray-700">
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-500 mt-1">•</span>
+                      <span><strong>Confirm No-Show:</strong> Refund the party who showed up, apply karma penalty (-5), and complete/cancel handshake appropriately</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-green-500 mt-1">•</span>
+                      <span><strong>Dismiss Report:</strong> Complete the service normally and transfer TimeBank hours to the provider</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-yellow-500 mt-1">•</span>
+                      <span><strong>Pause Handshake:</strong> Temporarily pause the handshake for investigation before making a final decision</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
             </div>
           )}
         </main>
@@ -555,6 +991,68 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
           }}
           isLoading={actionLoading === selectedReport.id}
         />
+      )}
+
+      {/* Karma Adjustment Modal */}
+      {showKarmaModal && selectedUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Adjust Karma</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Adjust karma for {selectedUser.first_name} {selectedUser.last_name}
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                Current karma: {selectedUser.karma_score}
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label htmlFor="karma-adjustment" className="block text-sm font-medium text-gray-700 mb-2">
+                  Adjustment (positive or negative number)
+                </label>
+                <Input
+                  id="karma-adjustment"
+                  type="number"
+                  value={karmaAdjustment}
+                  onChange={(e) => setKarmaAdjustment(e.target.value)}
+                  placeholder="e.g., -10 or +5"
+                  className="w-full"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter a positive number to increase karma, negative to decrease
+                </p>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowKarmaModal(false);
+                  setKarmaAdjustment('');
+                  setSelectedUser(null);
+                }}
+                disabled={actionLoading === selectedUser.id}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAdjustKarma}
+                disabled={!karmaAdjustment || actionLoading === selectedUser.id}
+                className="bg-amber-500 hover:bg-amber-600 text-white"
+              >
+                {actionLoading === selectedUser.id ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  'Apply Adjustment'
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

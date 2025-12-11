@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { MapContainer, TileLayer, Circle, CircleMarker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import { getBadgeMeta } from '../lib/badges';
+import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
 interface ServiceLocation {
@@ -20,6 +21,7 @@ interface ServiceLocation {
 
 interface HomePageMapProps {
   services?: ServiceLocation[];
+  onNavigate?: (page: string, data?: { id: string; [key: string]: any }) => void;
 }
 
 const ISTANBUL_CENTER: [number, number] = [41.0082, 28.9784];
@@ -50,9 +52,24 @@ const normalizeArea = (value?: string) =>
     : '';
 
 const circleColors = {
-  Offer: '#22c55e',
-  Need: '#2563eb',
-  Mixed: '#f97316',
+  Offer: {
+    main: '#10b981',
+    light: '#34d399',
+    dark: '#059669',
+    gradient: 'from-green-400 to-emerald-500',
+  },
+  Need: {
+    main: '#3b82f6',
+    light: '#60a5fa',
+    dark: '#2563eb',
+    gradient: 'from-blue-400 to-indigo-500',
+  },
+  Mixed: {
+    main: '#f59e0b',
+    light: '#fbbf24',
+    dark: '#d97706',
+    gradient: 'from-amber-400 to-orange-500',
+  },
 };
 
 type MarkerGroup = {
@@ -62,7 +79,135 @@ type MarkerGroup = {
   type: 'Offer' | 'Need' | 'Mixed';
 };
 
-export function HomePageMap({ services = [] }: HomePageMapProps) {
+// Component to create circles with fixed geographic size (meters) that maintain size regardless of zoom
+// Middle circle is clickable and shows hover tooltip
+function ZoomResponsiveCircles({ 
+  position, 
+  colors, 
+  baseOuterRadius, 
+  baseMiddleRadius,
+  services,
+  onNavigate
+}: { 
+  position: [number, number]; 
+  colors: typeof circleColors.Offer;
+  baseOuterRadius: number; // in meters
+  baseMiddleRadius: number; // in meters
+  services: ServiceLocation[];
+  onNavigate?: (page: string, data?: { id: string; [key: string]: any }) => void;
+}) {
+  const map = useMap();
+  const outerCircleRef = useRef<L.Circle | null>(null);
+  const middleCircleRef = useRef<L.Circle | null>(null);
+
+  useEffect(() => {
+    // Create or update outer circle (uses meters, maintains geographic size)
+    if (!outerCircleRef.current) {
+      const outerCircle = L.circle(position, {
+        radius: baseOuterRadius,
+        color: colors.main,
+        fillColor: colors.main,
+        fillOpacity: 0.15,
+        weight: 3,
+        opacity: 0.6,
+        interactive: false,
+      });
+      outerCircle.addTo(map);
+      outerCircleRef.current = outerCircle;
+    } else {
+      outerCircleRef.current.setRadius(baseOuterRadius);
+      outerCircleRef.current.setLatLng(position);
+    }
+    
+    // Create or update middle circle (uses meters, maintains geographic size, clickable)
+    if (!middleCircleRef.current) {
+      const middleCircle = L.circle(position, {
+        radius: baseMiddleRadius,
+        color: colors.light,
+        fillColor: colors.light,
+        fillOpacity: 0.2,
+        weight: 2,
+        opacity: 0.5,
+        interactive: true,
+      });
+      
+      // Create tooltip content showing service count
+      const serviceCount = services.length;
+      const serviceText = serviceCount === 1 ? 'service' : 'services';
+      const firstService = services[0];
+      const tooltipContent = `
+        <div style="font-weight: 600; margin-bottom: 4px; color: white;">${firstService.title}</div>
+        <div style="font-size: 12px; color: rgba(255, 255, 255, 0.9);">${serviceCount} ${serviceText} • Click to view</div>
+      `;
+      
+      middleCircle.bindTooltip(tooltipContent, {
+        permanent: false,
+        direction: 'top',
+        className: 'custom-tooltip',
+        offset: [0, -10],
+      });
+      
+      // Handle click - navigate to first service or show popup if multiple
+      middleCircle.on('click', () => {
+        if (onNavigate && firstService) {
+          onNavigate('service-detail', { id: firstService.id });
+        }
+      });
+      
+      // Change cursor on hover
+      middleCircle.on('mouseover', function() {
+        this.setStyle({
+          fillOpacity: 0.3,
+          weight: 3,
+        });
+        if (map.getContainer()) {
+          map.getContainer().style.cursor = 'pointer';
+        }
+      });
+      
+      middleCircle.on('mouseout', function() {
+        this.setStyle({
+          fillOpacity: 0.2,
+          weight: 2,
+        });
+        if (map.getContainer()) {
+          map.getContainer().style.cursor = '';
+        }
+      });
+      
+      middleCircle.addTo(map);
+      middleCircleRef.current = middleCircle;
+    } else {
+      middleCircleRef.current.setRadius(baseMiddleRadius);
+      middleCircleRef.current.setLatLng(position);
+      
+      // Update tooltip content
+      const serviceCount = services.length;
+      const serviceText = serviceCount === 1 ? 'service' : 'services';
+      const firstService = services[0];
+      const tooltipContent = `
+        <div style="font-weight: 600; margin-bottom: 4px; color: white;">${firstService.title}</div>
+        <div style="font-size: 12px; color: rgba(255, 255, 255, 0.9);">${serviceCount} ${serviceText} • Click to view</div>
+      `;
+      middleCircleRef.current.setTooltipContent(tooltipContent);
+    }
+    
+    return () => {
+      if (outerCircleRef.current) {
+        map.removeLayer(outerCircleRef.current);
+        outerCircleRef.current = null;
+      }
+      if (middleCircleRef.current) {
+        map.removeLayer(middleCircleRef.current);
+        middleCircleRef.current = null;
+      }
+    };
+  }, [position, colors, map, baseOuterRadius, baseMiddleRadius, services, onNavigate]);
+
+  return null;
+}
+
+export function HomePageMap({ services = [], onNavigate }: HomePageMapProps) {
   const [isClient, setIsClient] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -149,7 +294,28 @@ export function HomePageMap({ services = [] }: HomePageMapProps) {
   }
 
   return (
-    <div ref={mapRef} className="w-full h-[400px] rounded-lg border border-gray-200 overflow-hidden" style={{ minHeight: '400px', position: 'relative', zIndex: 0 }}>
+    <div ref={mapRef} className="w-full h-[400px] rounded-lg border border-gray-200 overflow-hidden shadow-lg" style={{ minHeight: '400px', position: 'relative', zIndex: 0 }}>
+      <style>{`
+        .custom-popup .leaflet-popup-content-wrapper {
+          border-radius: 12px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .custom-popup .leaflet-popup-tip {
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .custom-tooltip {
+          background: rgba(0, 0, 0, 0.85);
+          color: white;
+          border: none;
+          border-radius: 8px;
+          padding: 8px 12px;
+          font-size: 13px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .custom-tooltip::before {
+          border-top-color: rgba(0, 0, 0, 0.85) !important;
+        }
+      `}</style>
       <MapContainer
         center={ISTANBUL_CENTER}
         zoom={11}
@@ -160,59 +326,27 @@ export function HomePageMap({ services = [] }: HomePageMapProps) {
         key="homepage-map"
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
           maxZoom={19}
         />
         {markerGroups.length > 0 && markerGroups.map((group, index) => {
-          const color = circleColors[group.type];
-          // Use fixed radius in meters (5000m = 5km) to maintain fuzzy location regardless of zoom
-          const radiusMeters = 5000;
+          const colors = circleColors[group.type];
+          // Base radii in meters - maintains geographic size regardless of zoom
+          const baseOuterRadius = 700; // 700 meters
+          const baseMiddleRadius = 400; // 400 meters
+          
           return (
             <React.Fragment key={`${group.label}-${index}-${group.position[0]}-${group.position[1]}`}>
-              <Circle
-                center={group.position}
-                radius={radiusMeters}
-                pathOptions={{ color, fillColor: color, fillOpacity: 0.3, weight: 2 }}
+              {/* Interactive circles - middle circle is clickable */}
+              <ZoomResponsiveCircles 
+                position={group.position}
+                colors={colors}
+                baseOuterRadius={baseOuterRadius}
+                baseMiddleRadius={baseMiddleRadius}
+                services={group.services}
+                onNavigate={onNavigate}
               />
-              <CircleMarker
-                center={group.position}
-                radius={8}
-                pathOptions={{ color, fillColor: color, fillOpacity: 0.9, weight: 2 }}
-              >
-                <Popup>
-                  <div className="space-y-2 min-w-[200px]">
-                    <div className="font-semibold text-gray-900">{group.label}</div>
-                    <div className="text-xs text-gray-500">
-                      {group.services.length} {group.services.length === 1 ? 'service' : 'services'} nearby
-                    </div>
-                    <ul className="text-sm text-gray-700 list-disc list-inside space-y-1 max-w-sm">
-                      {group.services.slice(0, 5).map((service) => {
-                        const provider = typeof service.user === 'object' ? service.user : null;
-                        const badgeMeta = provider?.badges && provider?.badges.length
-                          ? getBadgeMeta(provider.badges[0])
-                          : undefined;
-                        const BadgeIcon = badgeMeta?.icon;
-                        return (
-                          <li key={service.id}>
-                            <span className="font-medium text-gray-900">{service.title}</span>
-                            <span className="ml-2 text-xs uppercase tracking-wide text-gray-500">{service.type}</span>
-                            {badgeMeta && BadgeIcon && (
-                              <span className="ml-2 inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-amber-50 text-amber-700">
-                                <BadgeIcon className="w-3 h-3" />
-                                {badgeMeta.label}
-                              </span>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    {group.services.length > 5 && (
-                      <div className="text-xs text-gray-500">+{group.services.length - 5} more services in this area</div>
-                    )}
-                  </div>
-                </Popup>
-              </CircleMarker>
             </React.Fragment>
           );
         })}

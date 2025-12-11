@@ -29,7 +29,8 @@ from .models import (
 )
 from .serializers import (
     UserRegistrationSerializer, 
-    UserProfileSerializer, 
+    UserProfileSerializer,
+    AdminUserListSerializer,
     ServiceSerializer,
     TagSerializer,
     HandshakeSerializer,
@@ -2387,7 +2388,17 @@ class AdminReportViewSet(viewsets.ReadOnlyModelViewSet):
         # Only admins can access
         if self.request.user.role != 'admin':
             return Report.objects.none()
-        return Report.objects.filter(status='pending').order_by('-created_at')
+        
+        # Filter by status if provided in query params
+        status_filter = self.request.query_params.get('status', 'pending')
+        queryset = Report.objects.all()
+        
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        else:
+            queryset = queryset.filter(status='pending')
+        
+        return queryset.order_by('-created_at')
 
     @action(detail=True, methods=['post'], url_path='resolve', throttle_classes=[ConfirmationThrottle])
     def resolve_report(self, request, pk=None):
@@ -2627,9 +2638,16 @@ class AdminUserViewSet(viewsets.ViewSet):
     
     Administrative actions for user management (admin only).
     
+    **List Users:** GET /api/admin/users/
     **Warn User:** POST /api/admin/users/{id}/warn/
     **Ban User:** POST /api/admin/users/{id}/ban/
     **Adjust Karma:** POST /api/admin/users/{id}/adjust-karma/
+    
+    **List Users Query Parameters:**
+    - `search`: Search by email, first_name, or last_name
+    - `status`: Filter by status - 'active' or 'banned' (is_active=True/False)
+    - `page`: Page number for pagination
+    - `page_size`: Items per page (default: 20, max: 100)
     
     **Warn User Request:**
     ```json
@@ -2676,6 +2694,7 @@ class AdminUserViewSet(viewsets.ViewSet):
     **Rate Limiting:** 10 requests per hour per action
     """
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
 
     def check_admin(self, request):
         if request.user.role != 'admin':
@@ -2685,6 +2704,40 @@ class AdminUserViewSet(viewsets.ViewSet):
                 status_code=status.HTTP_403_FORBIDDEN
             )
         return None
+
+    def list(self, request):
+        """List all users with search and filter support (admin only)"""
+        admin_check = self.check_admin(request)
+        if admin_check:
+            return admin_check
+
+        queryset = User.objects.all().order_by('-date_joined')
+        
+        # Search by email, first_name, or last_name
+        search = request.query_params.get('search', '').strip()
+        if search:
+            queryset = queryset.filter(
+                Q(email__icontains=search) |
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search)
+            )
+        
+        # Filter by status
+        status_filter = request.query_params.get('status', '').strip().lower()
+        if status_filter == 'banned':
+            queryset = queryset.filter(is_active=False)
+        elif status_filter == 'active':
+            queryset = queryset.filter(is_active=True)
+        
+        # Paginate
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(queryset, request)
+        if page is not None:
+            serializer = AdminUserListSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+        
+        serializer = AdminUserListSerializer(queryset[:100], many=True)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'], url_path='warn', throttle_classes=[ConfirmationThrottle])
     def warn_user(self, request, pk=None):
@@ -2731,6 +2784,27 @@ class AdminUserViewSet(viewsets.ViewSet):
         user.save()
 
         return Response({'status': 'success', 'message': 'User banned'})
+
+    @action(detail=True, methods=['post'], url_path='unban', throttle_classes=[ConfirmationThrottle])
+    def unban_user(self, request, pk=None):
+        """REQ-ADM-006: Unban user (reactivate account)"""
+        admin_check = self.check_admin(request)
+        if admin_check:
+            return admin_check
+
+        try:
+            user = User.objects.get(id=pk)
+        except User.DoesNotExist:
+            return create_error_response(
+                'User not found',
+                code=ErrorCodes.NOT_FOUND,
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        user.is_active = True
+        user.save()
+
+        return Response({'status': 'success', 'message': 'User unbanned'})
 
     @action(detail=True, methods=['post'], url_path='adjust-karma', throttle_classes=[ConfirmationThrottle])
     def adjust_karma(self, request, pk=None):
