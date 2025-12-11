@@ -70,3 +70,4 @@ export const UI = {
   MODAL_ANIMATION_DELAY: 100, // 100ms delay for modal animations
 } as const;
 
+

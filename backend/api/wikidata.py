@@ -75,7 +75,7 @@ def search_wikidata_items(query: str, limit: int = 10) -> List[Dict]:
         
         # Add User-Agent header to avoid potential blocking
         headers = {
-            'User-Agent': 'TheHive-TimeBank/1.0 (https://github.com/your-repo)'
+            'User-Agent': 'TheHive/0.9 (https://github.com/yusufizzetmuratSWE-573)'
         }
         response = requests.get(WIKIDATA_API_URL, params=params, timeout=10, headers=headers)
         response.raise_for_status()
