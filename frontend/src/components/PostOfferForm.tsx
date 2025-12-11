@@ -15,6 +15,7 @@ import { CalendarIcon, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { serviceAPI, tagAPI, Tag } from '../lib/api';
 import { useToast } from './Toast';
+import { logger } from '../lib/logger';
 import { LocationPickerMap } from './LocationPickerMap';
 
 interface PostOfferFormProps {
@@ -195,7 +196,7 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
           setAvailableTags(mockTags);
         }
       } catch (err) {
-        console.error('Failed to fetch tags:', err);
+        logger.error('Failed to fetch tags', err instanceof Error ? err : new Error(String(err)));
         const mockTags: Tag[] = [
           { id: 'cooking', name: 'Cooking' },
           { id: 'music', name: 'Music' },
@@ -221,7 +222,7 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
           setLocationLoading(false);
         },
         (error) => {
-          console.error('Geolocation error:', error);
+          logger.error('Geolocation error', error instanceof Error ? error : new Error(String(error)));
           setLocationLoading(false);
         }
       );
@@ -317,7 +318,7 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
       showToast('Service offer published successfully!', 'success');
       onNavigate('dashboard');
     } catch (error: unknown) {
-      console.error('Failed to create service:', error);
+      logger.error('Failed to create service', error instanceof Error ? error : new Error(String(error)));
       const { getErrorMessage } = await import('../lib/types');
       const errorMessage = getErrorMessage(error, 'Failed to create service');
       showToast(errorMessage, 'error');

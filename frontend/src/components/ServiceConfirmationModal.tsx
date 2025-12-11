@@ -55,7 +55,7 @@ export function ServiceConfirmationModal({
             }
           })
           .catch((error) => {
-            console.error('Failed to fetch handshake:', error);
+            logger.error('Failed to fetch handshake', error instanceof Error ? error : new Error(String(error)), { handshakeId });
           });
       };
 
@@ -64,7 +64,7 @@ export function ServiceConfirmationModal({
       setIsLoading(false);
       
       // Refresh handshake data periodically to catch hour changes from other user
-      const refreshInterval = setInterval(fetchHandshake, 3000);
+      const refreshInterval = setInterval(fetchHandshake, POLLING_INTERVALS.HANDSHAKE);
       
       return () => clearInterval(refreshInterval);
     } else if (open && initialDuration) {
@@ -79,7 +79,7 @@ export function ServiceConfirmationModal({
       await onComplete(hoursValue);
       onClose();
     } catch (error) {
-      console.error('Failed to complete service:', error);
+      logger.error('Failed to complete service', error instanceof Error ? error : new Error(String(error)), { handshakeId });
     } finally {
       setIsSubmitting(false);
     }
@@ -237,10 +237,11 @@ export function ServiceConfirmationModal({
             <div className="space-y-3 my-6">
               <button
                 onClick={handleNoShow}
-                className="w-full p-4 border-2 border-red-200 rounded-lg hover:bg-red-50 hover:border-red-300 transition-colors text-left"
+                className="w-full p-4 border-2 border-red-200 rounded-lg hover:bg-red-50 hover:border-red-300 transition-colors text-left focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                aria-label="Report that my partner did not show up"
               >
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
+                  <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" aria-hidden="true" />
                   <div>
                     <div className="text-gray-900 mb-1">My partner did not show up</div>
                     <div className="text-sm text-gray-600">
@@ -255,10 +256,11 @@ export function ServiceConfirmationModal({
                   // Handle "Other" issue - could navigate to contact admin
                   onClose();
                 }}
-                className="w-full p-4 border-2 border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors text-left"
+                className="w-full p-4 border-2 border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors text-left focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                aria-label="Report other issue and contact admin"
               >
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-gray-600 mt-0.5" />
+                  <AlertTriangle className="w-5 h-5 text-gray-600 mt-0.5" aria-hidden="true" />
                   <div>
                     <div className="text-gray-900 mb-1">Other (Contact Admin)</div>
                     <div className="text-sm text-gray-600">

@@ -18,7 +18,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
         const data = await serviceAPI.list();
         setServices(data.slice(0, 10)); // Get first 10 for map display
       } catch (error) {
-        console.error('Failed to fetch services for map:', error);
+        logger.error('Failed to fetch services for map', error instanceof Error ? error : new Error(String(error)));
       }
     };
     fetchServices();

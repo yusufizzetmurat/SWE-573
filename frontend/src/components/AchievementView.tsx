@@ -3,30 +3,17 @@ import { Trophy, Lock, Award, Star, Zap, Heart, Clock, Users, Target, CheckCircl
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { userAPI, User } from '../lib/api';
+import { userAPI, User, BadgeProgress } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { BADGE_CONFIG, getBadgeMeta } from '../lib/badges';
 import { useToast } from './Toast';
+import { logger } from '../lib/logger';
 
 interface AchievementViewProps {
   onNavigate: (page: string, data?: Record<string, unknown>) => void;
   userBalance?: number;
   unreadNotifications?: number;
   onLogout?: () => void;
-}
-
-interface AchievementProgress {
-  badge: {
-    name: string;
-    description: string;
-    icon_url: string;
-    karma_points: number;
-    is_hidden: boolean;
-  };
-  earned: boolean;
-  current: number | null;
-  threshold: number | null;
-  progress_percent: number;
 }
 
 export function AchievementView({ 
@@ -37,7 +24,7 @@ export function AchievementView({
 }: AchievementViewProps) {
   const { user, isAuthenticated } = useAuth();
   const { showToast } = useToast();
-  const [achievements, setAchievements] = useState<Record<string, AchievementProgress>>({});
+  const [achievements, setAchievements] = useState<Record<string, BadgeProgress>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [selectedAchievement, setSelectedAchievement] = useState<string | null>(null);
 
@@ -50,7 +37,8 @@ export function AchievementView({
         const data = await userAPI.getBadgeProgress(user.id);
         setAchievements(data);
       } catch (error) {
-        console.error('Failed to fetch achievements:', error);
+        logger.error('Failed to fetch achievements', error instanceof Error ? error : new Error(String(error)), { userId: user.id });
+        showToast('Failed to load achievements. Please try again.', 'error');
       } finally {
         setIsLoading(false);
       }

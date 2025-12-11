@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import { authAPI, userAPI, User } from './api';
+import { logger } from './logger';
 
 interface AuthContextType {
   user: User | null;
@@ -23,7 +24,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return JSON.parse(stored);
       }
     } catch (e) {
-      console.error('Failed to parse stored user data:', e);
+      logger.error('Failed to parse stored user data', e instanceof Error ? e : new Error(String(e)));
     }
     return null;
   };
@@ -118,17 +119,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         userAPI.getMe()
           .then(saveUser)
           .catch((error) => {
-            console.error('Failed to fetch full user profile after login:', error);
+            logger.error('Failed to fetch full user profile after login', error instanceof Error ? error : new Error(String(error)));
           });
       } else {
         userAPI.getMe()
           .then(saveUser)
           .catch((error) => {
-            console.error('Failed to fetch user data after login:', error);
+            logger.error('Failed to fetch user data after login', error instanceof Error ? error : new Error(String(error)));
           });
       }
     } catch (error: unknown) {
-      console.error('Login error:', error);
+      logger.error('Login error', error instanceof Error ? error : new Error(String(error)), { email });
       throw error;
     }
   }, [saveUser]);
@@ -159,7 +160,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const userData = await userAPI.getMe();
       saveUser(userData);
     } catch (error) {
-      console.error('Failed to refresh user data:', error);
+      logger.error('Failed to refresh user data', error instanceof Error ? error : new Error(String(error)));
     }
   }, []);
 

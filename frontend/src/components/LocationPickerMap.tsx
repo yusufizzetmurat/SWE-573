@@ -66,7 +66,7 @@ export function LocationPickerMap({ onLocationSelect, initialLocation, required 
       
       // Double-check dimensions
       if (mapRef.current.offsetWidth === 0 || mapRef.current.offsetHeight === 0) {
-        console.error('Map container still has no dimensions');
+        logger.warn('Map container still has no dimensions');
         return;
       }
 
@@ -149,7 +149,7 @@ export function LocationPickerMap({ onLocationSelect, initialLocation, required 
             onLocationSelectRef.current({ lat, lng, area: areaName });
           }
         } catch (error) {
-          console.error('Geocoding error:', error);
+          logger.error('Geocoding error', error instanceof Error ? error : new Error(String(error)));
           setSelectedArea('Istanbul');
           if (isUserAction || !hasInitializedRef.current) {
             onLocationSelectRef.current({ lat, lng, area: 'Istanbul' });
@@ -190,7 +190,7 @@ export function LocationPickerMap({ onLocationSelect, initialLocation, required 
         try {
           mapInstanceRef.current.remove();
         } catch (e) {
-          console.error('Error removing map:', e);
+          logger.error('Error removing map', e instanceof Error ? e : new Error(String(e)));
         }
         mapInstanceRef.current = null;
         markerRef.current = null;

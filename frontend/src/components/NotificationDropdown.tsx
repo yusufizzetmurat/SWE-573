@@ -7,6 +7,8 @@ import {
 } from './ui/dropdown-menu';
 import { ScrollArea } from './ui/scroll-area';
 import { notificationAPI, Notification as APINotification } from '../lib/api';
+import { POLLING_INTERVALS } from '../lib/constants';
+import { logger } from '../lib/logger';
 
 interface Notification {
   id: string;
@@ -128,7 +130,7 @@ export function NotificationDropdown({
         }
       } catch (error) {
         if (isMounted) {
-          console.error('Failed to fetch notifications:', error);
+          logger.error('Failed to fetch notifications', error instanceof Error ? error : new Error(String(error)));
           setIsLoading(false);
         }
       }
@@ -136,7 +138,7 @@ export function NotificationDropdown({
 
     fetchNotifications();
     // Refresh every 60 seconds (less frequent to reduce load)
-    const interval = setInterval(fetchNotifications, 60000);
+    const interval = setInterval(fetchNotifications, POLLING_INTERVALS.NOTIFICATION_DROPDOWN);
     
     return () => {
       isMounted = false;
@@ -171,7 +173,7 @@ export function NotificationDropdown({
         onMarkAllRead();
       }
     } catch (error) {
-      console.error('Failed to mark all as read:', error);
+      logger.error('Failed to mark all as read', error instanceof Error ? error : new Error(String(error)));
     }
   };
 

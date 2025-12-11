@@ -50,7 +50,7 @@ export function TransactionHistoryPage({
           return;
         }
         
-        console.error('Failed to fetch transactions:', err);
+        logger.error('Failed to fetch transactions', err instanceof Error ? err : new Error(String(err)));
         const errorMessage = getErrorMessage(err, 'Failed to load transaction history. Please try again.');
         setError(errorMessage);
         setIsLoading(false);

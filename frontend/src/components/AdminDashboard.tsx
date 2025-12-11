@@ -63,7 +63,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       setReports(data);
     } catch (err) {
       setError('Failed to load reports. Please try again.');
-      console.error('Error fetching reports:', err);
+      logger.error('Error fetching reports', err instanceof Error ? err : new Error(String(err)));
     } finally {
       setLoading(false);
     }

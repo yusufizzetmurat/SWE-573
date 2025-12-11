@@ -40,8 +40,9 @@ export function Navbar({
             <button 
               onClick={() => onNavigate('dashboard')}
               className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              aria-label="Go to home page"
             >
-              <Hexagon className="w-8 h-8 fill-amber-500 text-amber-600" />
+              <Hexagon className="w-8 h-8 fill-amber-500 text-amber-600" aria-hidden="true" />
               <span className="tracking-tight text-gray-900">The Hive</span>
             </button>
 
@@ -54,8 +55,10 @@ export function Navbar({
                     ? 'bg-amber-50 text-amber-900'
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 }`}
+                aria-label="Browse services"
+                aria-current={activeLink === 'browse' ? 'page' : undefined}
               >
-                <Grid3x3 className="w-4 h-4" />
+                <Grid3x3 className="w-4 h-4" aria-hidden="true" />
                 Browse Services
               </button>
               <button
@@ -65,8 +68,10 @@ export function Navbar({
                     ? 'bg-amber-50 text-amber-900'
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 }`}
+                aria-label="View forums"
+                aria-current={activeLink === 'forum' ? 'page' : undefined}
               >
-                <MessageSquare className="w-4 h-4" />
+                <MessageSquare className="w-4 h-4" aria-hidden="true" />
                 Forums
               </button>
               <button
@@ -76,8 +81,10 @@ export function Navbar({
                     ? 'bg-amber-50 text-amber-900'
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 }`}
+                aria-label="View messages"
+                aria-current={activeLink === 'messages' ? 'page' : undefined}
               >
-                <MessageSquare className="w-4 h-4" />
+                <MessageSquare className="w-4 h-4" aria-hidden="true" />
                 Chat
               </button>
               <button
@@ -87,8 +94,10 @@ export function Navbar({
                     ? 'bg-amber-50 text-amber-900'
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 }`}
+                aria-label="View profile"
+                aria-current={activeLink === 'profile' ? 'page' : undefined}
               >
-                <UserCircle className="w-4 h-4" />
+                <UserCircle className="w-4 h-4" aria-hidden="true" />
                 Profile
               </button>
             </div>
@@ -126,10 +135,14 @@ export function Navbar({
                     }
                   }}
                 >
-                  <button className="relative flex items-center justify-center w-10 h-10 rounded-full hover:bg-gray-100 transition-colors">
-                    <Bell className="w-5 h-5 text-gray-600" />
+                  <button 
+                    className="relative flex items-center justify-center w-10 h-10 rounded-full hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+                    aria-label={`Notifications${unreadNotifications > 0 ? `, ${unreadNotifications} unread` : ''}`}
+                    aria-live="polite"
+                  >
+                    <Bell className="w-5 h-5 text-gray-600" aria-hidden="true" />
                     {unreadNotifications > 0 && (
-                      <span className="absolute top-1 right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-xs bg-red-500 text-white rounded-full">
+                      <span className="absolute top-1 right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-xs bg-red-500 text-white rounded-full" aria-label={`${unreadNotifications} unread notifications`}>
                         {unreadNotifications > 9 ? '9+' : unreadNotifications}
                       </span>
                     )}

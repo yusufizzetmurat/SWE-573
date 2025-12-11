@@ -7,6 +7,7 @@ import { ScrollArea } from './ui/scroll-area';
 import { publicChatAPI, PublicChatMessage, ChatRoom } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { useToast } from './Toast';
+import { logger } from '../lib/logger';
 import { useWebSocket } from '../lib/useWebSocket';
 import { getErrorMessage } from '../lib/types';
 
@@ -40,7 +41,7 @@ export function PublicChat({ serviceId, onNavigate }: PublicChatProps) {
       setHasMoreMessages(!!data.messages.next);
       setCurrentPage(1);
     } catch (error) {
-      console.error('Failed to fetch public chat:', error);
+      logger.error('Failed to fetch public chat', error instanceof Error ? error : new Error(String(error)), { serviceId });
       showToast('Failed to load discussion', 'error');
     } finally {
       setIsLoading(false);
@@ -86,7 +87,7 @@ export function PublicChat({ serviceId, onNavigate }: PublicChatProps) {
       });
     },
     onError: (error) => {
-      console.error('WebSocket error:', error);
+      logger.error('WebSocket error', error instanceof Error ? error : new Error(String(error)), { serviceId });
     },
   });
 
@@ -104,7 +105,7 @@ export function PublicChat({ serviceId, onNavigate }: PublicChatProps) {
       setHasMoreMessages(!!data.messages.next);
       setCurrentPage(nextPage);
     } catch (error) {
-      console.error('Failed to load more messages:', error);
+      logger.error('Failed to load more messages', error instanceof Error ? error : new Error(String(error)), { serviceId });
       showToast('Failed to load more messages', 'error');
     } finally {
       setIsLoadingMore(false);

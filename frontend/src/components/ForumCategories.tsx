@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   MessageSquare, Users, BookOpen, Lightbulb, Plus, ArrowRight, 
-  Calendar, MessageCircle, Loader2 
+  Calendar, MessageCircle, Loader2, X 
 } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { forumAPI } from '../lib/api';
 import type { ForumCategory, ForumCategoryColor } from '../lib/types';
 import { useToast } from './Toast';
+import { logger } from '../lib/logger';
 
 interface ForumCategoriesProps {
   onNavigate: (page: string, data?: Record<string, unknown>) => void;
@@ -67,6 +69,7 @@ export function ForumCategories({
   const [categories, setCategories] = useState<ForumCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showGuidelinesModal, setShowGuidelinesModal] = useState(false);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -75,7 +78,7 @@ export function ForumCategories({
       const data = await forumAPI.getCategories();
       setCategories(data);
     } catch (err) {
-      console.error('Failed to fetch forum categories:', err);
+      logger.error('Failed to fetch forum categories', err instanceof Error ? err : new Error(String(err)));
       setError('Failed to load forum categories. Please try again later.');
     } finally {
       setIsLoading(false);
@@ -241,88 +244,109 @@ export function ForumCategories({
         )}
 
         {/* Community Guidelines CTA */}
-        <div className="mt-12 bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl p-8 text-white">
+        <div className="mt-12 bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-8 text-white shadow-lg">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
-              <h3 className="text-white mb-2">New to the forums?</h3>
-              <p className="text-gray-300">
+              <h3 className="text-white text-xl font-semibold mb-2">New to the forums?</h3>
+              <p className="text-amber-50 text-base">
                 Please read our community guidelines before posting to ensure a 
                 respectful and welcoming environment for everyone.
               </p>
             </div>
             <Button 
-              variant="outline" 
-              className="border-gray-600 text-white hover:bg-gray-700 flex-shrink-0"
-              onClick={() => {
-                const guidelines = `Community Guidelines
-
-1. Be Respectful
-   - Treat all members with kindness and respect
-   - No harassment, discrimination, or hate speech
-   - Disagree constructively and professionally
-
-2. Stay On Topic
-   - Keep discussions relevant to the forum category
-   - Use appropriate categories for your posts
-   - Avoid spamming or off-topic content
-
-3. Share Knowledge
-   - Help others by sharing your expertise
-   - Ask questions when you need help
-   - Provide constructive feedback
-
-4. Follow TimeBank Principles
-   - Honor your commitments
-   - Communicate clearly about schedules
-   - Report issues through proper channels
-
-5. Privacy & Safety
-   - Don't share personal information publicly
-   - Report suspicious behavior
-   - Respect others' privacy
-
-6. Moderation
-   - Admins may remove inappropriate content
-   - Repeated violations may result in warnings or bans
-   - Appeals can be made through support channels
-
-Thank you for helping maintain a positive community!`;
-                const guidelinesModal = document.createElement('div');
-                guidelinesModal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50';
-                
-                const modalContent = document.createElement('div');
-                modalContent.className = 'bg-white rounded-lg p-6 max-w-2xl max-h-[80vh] overflow-y-auto shadow-xl mx-4';
-                
-                const title = document.createElement('h2');
-                title.className = 'text-2xl font-bold mb-4 text-gray-900';
-                title.textContent = 'Community Guidelines';
-                
-                const pre = document.createElement('pre');
-                pre.className = 'whitespace-pre-wrap text-sm text-gray-700';
-                pre.textContent = guidelines;
-                
-                const closeButton = document.createElement('button');
-                closeButton.className = 'mt-4 px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600';
-                closeButton.textContent = 'Close';
-                closeButton.addEventListener('click', () => guidelinesModal.remove());
-                
-                modalContent.appendChild(title);
-                modalContent.appendChild(pre);
-                modalContent.appendChild(closeButton);
-                guidelinesModal.appendChild(modalContent);
-                
-                // Close on backdrop click
-                guidelinesModal.addEventListener('click', (e) => {
-                  if (e.target === guidelinesModal) guidelinesModal.remove();
-                });
-                
-                document.body.appendChild(guidelinesModal);
-              }}
+              className="bg-white text-amber-600 hover:bg-amber-50 border-2 border-white font-semibold flex-shrink-0 shadow-md hover:shadow-lg transition-all"
+              onClick={() => setShowGuidelinesModal(true)}
             >
               Read Guidelines
             </Button>
           </div>
         </div>
+
+        {/* Guidelines Modal */}
+        <Dialog open={showGuidelinesModal} onOpenChange={setShowGuidelinesModal}>
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <BookOpen className="w-6 h-6 text-amber-500" />
+                Community Guidelines
+              </DialogTitle>
+              <DialogDescription className="text-gray-600">
+                Please review these guidelines to help maintain a positive and respectful community environment.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-6 mt-4">
+              <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-lg">
+                <h3 className="font-semibold text-gray-900 mb-2">1. Be Respectful</h3>
+                <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                  <li>Treat all members with kindness and respect</li>
+                  <li>No harassment, discrimination, or hate speech</li>
+                  <li>Disagree constructively and professionally</li>
+                </ul>
+              </div>
+
+              <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg">
+                <h3 className="font-semibold text-gray-900 mb-2">2. Stay On Topic</h3>
+                <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                  <li>Keep discussions relevant to the forum category</li>
+                  <li>Use appropriate categories for your posts</li>
+                  <li>Avoid spamming or off-topic content</li>
+                </ul>
+              </div>
+
+              <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded-r-lg">
+                <h3 className="font-semibold text-gray-900 mb-2">3. Share Knowledge</h3>
+                <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                  <li>Help others by sharing your expertise</li>
+                  <li>Ask questions when you need help</li>
+                  <li>Provide constructive feedback</li>
+                </ul>
+              </div>
+
+              <div className="bg-purple-50 border-l-4 border-purple-500 p-4 rounded-r-lg">
+                <h3 className="font-semibold text-gray-900 mb-2">4. Follow TimeBank Principles</h3>
+                <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                  <li>Honor your commitments</li>
+                  <li>Communicate clearly about schedules</li>
+                  <li>Report issues through proper channels</li>
+                </ul>
+              </div>
+
+              <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
+                <h3 className="font-semibold text-gray-900 mb-2">5. Privacy & Safety</h3>
+                <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                  <li>Don't share personal information publicly</li>
+                  <li>Report suspicious behavior</li>
+                  <li>Respect others' privacy</li>
+                </ul>
+              </div>
+
+              <div className="bg-gray-50 border-l-4 border-gray-500 p-4 rounded-r-lg">
+                <h3 className="font-semibold text-gray-900 mb-2">6. Moderation</h3>
+                <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                  <li>Admins may remove inappropriate content</li>
+                  <li>Repeated violations may result in warnings or bans</li>
+                  <li>Appeals can be made through support channels</li>
+                </ul>
+              </div>
+
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-4 mt-6">
+                <p className="text-gray-800 font-medium text-center">
+                  Thank you for helping maintain a positive community! 🙏
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end mt-6 pt-4 border-t border-gray-200">
+              <Button 
+                onClick={() => setShowGuidelinesModal(false)}
+                className="bg-amber-500 hover:bg-amber-600 text-white"
+              >
+                Got it!
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

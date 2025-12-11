@@ -16,7 +16,7 @@ export function ServiceList({ onServiceClick }: ServiceListProps) {
   const { data: services, loading, error, execute } = useApiCall(serviceAPI.list, {
     initialData: [],
     onError: (error) => {
-      console.error('Failed to load services:', error);
+      logger.error('Failed to load services', error instanceof Error ? error : new Error(String(error)));
     },
   });
 

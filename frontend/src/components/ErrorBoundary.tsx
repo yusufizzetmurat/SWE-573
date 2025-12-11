@@ -1,4 +1,5 @@
 import React from 'react';
+import { logger } from '../lib/logger';
 
 interface ErrorBoundaryProps {
   children?: React.ReactNode;
@@ -31,8 +32,12 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
-    // Log error to console
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    // Log error using logger
+    logger.error('ErrorBoundary caught an error', error, {
+      componentStack: errorInfo.componentStack,
+      errorName: error.name,
+      errorMessage: error.message,
+    });
     
     // Store error info in state
     this.setState({
@@ -43,9 +48,6 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     if (this.props.onError) {
       this.props.onError(error, errorInfo);
     }
-
-    // In production, you would send this to a monitoring service
-    // Example: Sentry.captureException(error, { extra: errorInfo });
   }
 
   resetError = (): void => {

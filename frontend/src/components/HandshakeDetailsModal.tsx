@@ -11,6 +11,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { useToast } from './Toast';
+import { logger } from '../lib/logger';
 
 interface HandshakeDetailsModalProps {
   open: boolean;
@@ -78,7 +79,7 @@ export function HandshakeDetailsModal({
       // On success, parent will close the modal (which triggers form reset via useEffect)
       // Don't reset isSubmitting here - let the modal close handle it
     } catch (error) {
-      console.error('Failed to submit handshake details:', error);
+      logger.error('Failed to submit handshake details', error instanceof Error ? error : new Error(String(error)), { handshakeId });
       // Re-throw error so parent component can handle it
       // Modal stays open so user can fix and retry
       setIsSubmitting(false);

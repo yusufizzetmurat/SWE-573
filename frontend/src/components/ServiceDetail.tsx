@@ -14,6 +14,7 @@ import { formatTimebank } from '../lib/utils';
 import { getErrorMessage, type NavigateData } from '../lib/types';
 import { PublicChat } from './PublicChat';
 import { CommentSection } from './CommentSection';
+import { logger } from '../lib/logger';
 
 interface ServiceDetailProps {
   onNavigate: (page: string) => void;
@@ -52,7 +53,7 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
           const fullService = await serviceAPI.get(serviceId);
           setService(fullService);
         } catch (err: unknown) {
-          console.error('Failed to fetch service:', err);
+          logger.error('Failed to fetch service', err instanceof Error ? err : new Error(String(err)), { serviceId });
           const errorMessage = getErrorMessage(err, 'Failed to load service details.');
           setError(errorMessage);
         } finally {
@@ -105,7 +106,7 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
           setHandshakeStatus(null);
         }
       } catch (err) {
-        console.error('Failed to check interest:', err);
+        logger.error('Failed to check interest', err instanceof Error ? err : new Error(String(err)), { serviceId: service?.id });
         setHasInterest(false);
         setHandshakeStatus(null);
       }

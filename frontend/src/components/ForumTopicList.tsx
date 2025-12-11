@@ -9,6 +9,7 @@ import { Avatar, AvatarImage, AvatarFallback } from './ui/avatar';
 import { forumAPI } from '../lib/api';
 import type { ForumTopic, ForumCategory } from '../lib/types';
 import { useToast } from './Toast';
+import { logger } from '../lib/logger';
 import { useAuth } from '../lib/auth-context';
 
 interface ForumTopicListProps {
@@ -70,7 +71,7 @@ export function ForumTopicList({
       setTotalPages(Math.ceil(topicsData.count / 20)); // Assuming 20 per page
       setCurrentPage(page);
     } catch (err) {
-      console.error('Failed to fetch forum topics:', err);
+      logger.error('Failed to fetch forum topics', err instanceof Error ? err : new Error(String(err)), { categorySlug });
       setError('Failed to load topics. Please try again later.');
     } finally {
       setIsLoading(false);

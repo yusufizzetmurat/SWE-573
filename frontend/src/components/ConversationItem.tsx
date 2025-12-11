@@ -48,10 +48,20 @@ export const ConversationItem = React.memo<ConversationItemProps>(
 
     return (
       <div
-        className={`p-4 border-b cursor-pointer transition-colors ${
+        className={`p-4 border-b cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 ${
           isSelected ? 'bg-primary/5 border-l-4 border-l-primary' : 'hover:bg-gray-50'
         }`}
         onClick={() => onClick?.(conversation)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onClick?.(conversation);
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={`Conversation with ${conversation.other_user.name} about ${conversation.service_title}`}
+        aria-pressed={isSelected}
       >
         <div className="flex items-start gap-3">
           <Avatar className="h-10 w-10">

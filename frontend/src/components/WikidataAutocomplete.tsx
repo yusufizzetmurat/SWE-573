@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Loader2, X } from 'lucide-react';
 import { Input } from './ui/input';
 import { wikidataAPI, WikidataItem, Tag } from '../lib/api';
+import { logger } from '../lib/logger';
 
 interface WikidataAutocompleteProps {
   onSelect: (tag: Tag) => void;
@@ -47,11 +48,16 @@ export function WikidataAutocomplete({
     abortControllerRef.current = new AbortController();
 
     try {
-      const items = await wikidataAPI.search(searchQuery, 10, abortControllerRef.current.signal);
+      const items = await wikidataAPI.search(searchQuery.trim(), 10, abortControllerRef.current.signal);
+      
+      // Check if request was aborted
+      if (abortControllerRef.current.signal.aborted) {
+        return;
+      }
       
       // Filter out items that are already selected
       const existingIds = new Set(existingTags.map(t => t.id));
-      const filteredItems = items.filter(item => !existingIds.has(item.id));
+      const filteredItems = items.filter(item => !existingIds.has(item.id) && item.id && item.label);
       
       setResults(filteredItems);
       setIsOpen(filteredItems.length > 0);
@@ -59,10 +65,10 @@ export function WikidataAutocomplete({
       setIsLoading(false);
     } catch (err) {
       // Ignore abort errors - don't reset loading state since a new request is in flight
-      if (err instanceof Error && err.name === 'AbortError') {
+      if (err instanceof Error && (err.name === 'AbortError' || err.name === 'CanceledError')) {
         return;
       }
-      console.error('Wikidata search error:', err);
+      logger.error('Wikidata search error', err instanceof Error ? err : new Error(String(err)), { query: searchQuery });
       setError('Failed to search. Please try again.');
       setResults([]);
       setIsOpen(true); // Show dropdown to display error
@@ -129,11 +135,86 @@ export function WikidataAutocomplete({
     inputRef.current?.focus();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!isOpen || results.length === 0) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
+  const handleKeyDown = async (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      
+      // If dropdown is open and has results, select highlighted item
+      if (isOpen && results.length > 0) {
+        if (highlightedIndex >= 0 && highlightedIndex < results.length) {
+          handleSelect(results[highlightedIndex]);
+        } else if (results.length > 0) {
+          // If no item is highlighted, select the first result
+          handleSelect(results[0]);
+        }
+        return;
       }
+      
+      // If query exists but no results showing, trigger search and add first result
+      if (query.trim().length >= 2 && !isLoading) {
+        try {
+          setIsLoading(true);
+          setError(null);
+          
+          // Cancel any pending debounced search
+          if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+            debounceTimerRef.current = null;
+          }
+          
+          // Cancel any pending request
+          if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+          }
+          
+          abortControllerRef.current = new AbortController();
+          const items = await wikidataAPI.search(query.trim(), 10, abortControllerRef.current.signal);
+          
+          // Check if request was aborted
+          if (abortControllerRef.current.signal.aborted) {
+            setIsLoading(false);
+            return;
+          }
+          
+          // Filter out items that are already selected and ensure they have required fields
+          const existingIds = new Set(existingTags.map(t => t.id));
+          const filteredItems = items.filter(item => 
+            !existingIds.has(item.id) && 
+            item.id && 
+            item.label
+          );
+          
+          if (filteredItems.length > 0) {
+            // Automatically select the first result
+            handleSelect(filteredItems[0]);
+            setResults([]);
+            setIsOpen(false);
+          } else {
+            setError('No matching tags found. Please try a different search term.');
+            setResults([]);
+            setIsOpen(true);
+          }
+          setIsLoading(false);
+        } catch (err) {
+          if (err instanceof Error && (err.name === 'AbortError' || err.name === 'CanceledError')) {
+            setIsLoading(false);
+            return;
+          }
+          logger.error('Wikidata search error on Enter', err instanceof Error ? err : new Error(String(err)), { query });
+          setError('Failed to search. Please check your connection and try again.');
+          setResults([]);
+          setIsOpen(true);
+          setIsLoading(false);
+        }
+        return;
+      }
+      
+      // If query is too short, do nothing
+      return;
+    }
+
+    // Handle other keys only when dropdown is open
+    if (!isOpen || results.length === 0) {
       return;
     }
 
@@ -149,12 +230,6 @@ export function WikidataAutocomplete({
         setHighlightedIndex(prev => 
           prev > 0 ? prev - 1 : results.length - 1
         );
-        break;
-      case 'Enter':
-        e.preventDefault();
-        if (highlightedIndex >= 0 && highlightedIndex < results.length) {
-          handleSelect(results[highlightedIndex]);
-        }
         break;
       case 'Escape':
         setIsOpen(false);
@@ -260,7 +335,12 @@ export function WikidataAutocomplete({
       {/* Helper text */}
       {query.length > 0 && query.length < 2 && !isOpen && (
         <p className="mt-1 text-xs text-gray-500">
-          Type at least 2 characters to search
+          Type at least 2 characters to search, then press Enter to add
+        </p>
+      )}
+      {query.length >= 2 && !isOpen && !isLoading && results.length === 0 && (
+        <p className="mt-1 text-xs text-amber-600">
+          Press Enter to search and add the first matching tag
         </p>
       )}
     </div>

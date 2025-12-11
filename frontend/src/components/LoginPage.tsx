@@ -48,7 +48,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
       await login(formData.email, formData.password);
       onNavigate('dashboard');
     } catch (error: unknown) {
-      console.error('Login failed:', error);
+      logger.error('Login failed', error instanceof Error ? error : new Error(String(error)));
       const errorMessage = getErrorMessage(error, 'Login failed. Please check your credentials.');
       setError(errorMessage);
     } finally {

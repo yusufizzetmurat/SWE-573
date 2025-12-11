@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { MessageSquare, CheckCircle, Send, ChevronDown, ChevronUp, CornerDownRight, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
@@ -10,6 +10,7 @@ import { useToast } from './Toast';
 import { getErrorMessage } from '../lib/types';
 import { formatTimebank } from '../lib/utils';
 import { getBadgeMeta } from '../lib/badges';
+import { logger } from '../lib/logger';
 
 interface CommentSectionProps {
   serviceId: string;
@@ -85,8 +86,17 @@ function CommentItem({
     <div className={`${isReply ? 'ml-8 pl-4 border-l-2 border-gray-100' : ''}`}>
       <div className="flex gap-3">
         <Avatar 
-          className="w-8 h-8 cursor-pointer hover:ring-2 hover:ring-amber-300 transition-all"
+          className="w-8 h-8 cursor-pointer hover:ring-2 hover:ring-amber-300 transition-all focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 rounded-full"
           onClick={() => onNavigate('public-profile', { userId: comment.user_id })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onNavigate('public-profile', { userId: comment.user_id });
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label={`View ${comment.user_name}'s profile`}
         >
           {comment.user_avatar_url && (
             <AvatarImage src={comment.user_avatar_url} alt={comment.user_name} />
@@ -106,7 +116,8 @@ function CommentItem({
             )}
             <button
               onClick={() => onNavigate('public-profile', { userId: comment.user_id })}
-              className="font-medium text-gray-900 hover:text-amber-600 transition-colors"
+              className="font-medium text-gray-900 hover:text-amber-600 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 rounded"
+              aria-label={`View ${comment.user_name}'s profile`}
             >
               {comment.user_name}
             </button>
@@ -154,9 +165,11 @@ function CommentItem({
               {isAuthenticated && (
                 <button
                   onClick={() => setShowReplyForm(!showReplyForm)}
-                  className="text-xs text-gray-500 hover:text-amber-600 flex items-center gap-1"
+                  className="text-xs text-gray-500 hover:text-amber-600 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 rounded px-1"
+                  aria-label={showReplyForm ? 'Cancel reply' : 'Reply to comment'}
+                  aria-expanded={showReplyForm}
                 >
-                  <CornerDownRight className="w-3 h-3" />
+                  <CornerDownRight className="w-3 h-3" aria-hidden="true" />
                   Reply
                 </button>
               )}
@@ -164,16 +177,18 @@ function CommentItem({
               {replyCount > 0 && (
                 <button
                   onClick={() => setShowReplies(!showReplies)}
-                  className="text-xs text-gray-500 hover:text-amber-600 flex items-center gap-1"
+                  className="text-xs text-gray-500 hover:text-amber-600 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 rounded px-1"
+                  aria-label={showReplies ? `Hide ${replyCount} replies` : `Show ${replyCount} replies`}
+                  aria-expanded={showReplies}
                 >
                   {showReplies ? (
                     <>
-                      <ChevronUp className="w-3 h-3" />
+                      <ChevronUp className="w-3 h-3" aria-hidden="true" />
                       Hide {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
                     </>
                   ) : (
                     <>
-                      <ChevronDown className="w-3 h-3" />
+                      <ChevronDown className="w-3 h-3" aria-hidden="true" />
                       Show {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
                     </>
                   )}
@@ -249,9 +264,6 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
   const [page, setPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   
-  const [commentText, setCommentText] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  
   const [reviewableHandshakes, setReviewableHandshakes] = useState<ReviewableHandshake[]>([]);
   const [selectedHandshake, setSelectedHandshake] = useState<string | null>(null);
   const [showReviewForm, setShowReviewForm] = useState(false);
@@ -277,7 +289,7 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
       setHasMore(!!response.next);
       setPage(pageNum);
     } catch (error) {
-      console.error('Failed to fetch comments:', error);
+      logger.error('Failed to fetch comments', error instanceof Error ? error : new Error(String(error)), { serviceId });
     } finally {
       setIsLoading(false);
       setIsLoadingMore(false);
@@ -290,7 +302,7 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
       const handshakes = await commentAPI.getReviewableHandshakes(serviceId);
       setReviewableHandshakes(handshakes);
     } catch (error) {
-      console.error('Failed to fetch reviewable handshakes:', error);
+      logger.error('Failed to fetch reviewable handshakes', error instanceof Error ? error : new Error(String(error)), { serviceId });
     }
   }, [serviceId, isAuthenticated]);
 
@@ -298,23 +310,6 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
     fetchComments();
     fetchReviewableHandshakes();
   }, [fetchComments, fetchReviewableHandshakes]);
-
-  const handleSubmitComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!commentText.trim() || isSubmitting) return;
-
-    setIsSubmitting(true);
-    try {
-      await commentAPI.create(serviceId, commentText.trim());
-      setCommentText('');
-      fetchComments();
-      showToast('Comment posted!', 'success');
-    } catch (error) {
-      showToast(getErrorMessage(error, 'Failed to post comment'), 'error');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -432,59 +427,19 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
         </div>
       )}
 
-      {/* Regular Comment Form */}
-      {isAuthenticated ? (
-        <form onSubmit={handleSubmitComment} className="mb-6">
-          <div className="flex gap-3">
-            <Avatar className="w-8 h-8">
-              {user?.avatar_url && (
-                <AvatarImage src={user.avatar_url} alt={`${user.first_name} ${user.last_name}`} />
-              )}
-              <AvatarFallback className="bg-amber-100 text-amber-700 text-xs">
-                {user?.first_name?.[0]}{user?.last_name?.[0]}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1">
-              <Textarea
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Ask a question or share your thoughts..."
-                className="min-h-[60px] resize-none"
-                maxLength={2000}
-              />
-              <div className="flex justify-end mt-2">
-                <Button
-                  type="submit"
-                  disabled={!commentText.trim() || isSubmitting}
-                  className="bg-amber-500 hover:bg-amber-600"
-                  size="sm"
-                >
-                  {isSubmitting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4 mr-1" />
-                      Post
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
+      {/* Info Message - Only Verified Reviews */}
+      <div className="mb-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
+        <div className="flex items-start gap-3">
+          <CheckCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-1">Verified Reviews</h3>
+            <p className="text-sm text-gray-700">
+              This section displays verified reviews from completed service exchanges only. 
+              Reviews are automatically created when users complete a service and provide feedback.
+            </p>
           </div>
-        </form>
-      ) : (
-        <div className="mb-6 p-4 bg-gray-50 rounded-lg text-center">
-          <p className="text-gray-600 text-sm">
-            <button 
-              onClick={() => onNavigate('login')}
-              className="text-amber-600 hover:text-amber-700 font-medium"
-            >
-              Sign in
-            </button>
-            {' '}to leave a comment or review.
-          </p>
         </div>
-      )}
+      </div>
 
       {/* Comments List */}
       {isLoading ? (

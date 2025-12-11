@@ -5,6 +5,7 @@ import { getErrorMessage, POLLING_INTERVALS, type NavigateData, type RegisterFor
 import type { Service } from './lib/api';
 import { Button } from './components/ui/button';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { logger } from './lib/logger';
 
 // Eager load critical components
 import { HomePage } from './components/HomePage';
@@ -165,7 +166,7 @@ function AppContent() {
           return;
         }
         if (isMounted && error?.response?.status !== 401) {
-          console.error('Failed to fetch notifications:', error);
+          logger.error('Failed to fetch notifications', error instanceof Error ? error : new Error(String(error)));
         }
         if (isMounted) {
           setUnreadNotifications(0);
@@ -234,7 +235,7 @@ function AppContent() {
         setShowWelcomeModal(true);
       }, 500);
     } catch (error: unknown) {
-      console.error("Registration failed:", error);
+      logger.error('Registration failed', error instanceof Error ? error : new Error(String(error)));
       const errorMessage = getErrorMessage(error, 'Registration failed. Please check your information and try again.');
       // Don't show toast here - let RegistrationPage handle it
       throw error; // Re-throw so RegistrationPage can handle it
@@ -246,7 +247,7 @@ function AppContent() {
       await login(email, password);
       handleNavigate('dashboard');
     } catch (error: unknown) {
-      console.error("Login failed:", error);
+      logger.error('Login failed', error instanceof Error ? error : new Error(String(error)));
       const errorMessage = getErrorMessage(error, 'Login failed');
       showToast(`Login failed: ${errorMessage}`, 'error');
     }

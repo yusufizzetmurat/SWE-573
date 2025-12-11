@@ -9,6 +9,7 @@ import { Avatar, AvatarImage, AvatarFallback } from './ui/avatar';
 import { forumAPI } from '../lib/api';
 import type { ForumTopic, ForumPost } from '../lib/types';
 import { useToast } from './Toast';
+import { logger } from '../lib/logger';
 import { useAuth } from '../lib/auth-context';
 import {
   DropdownMenu,
@@ -73,7 +74,7 @@ export function ForumTopicDetail({
       const calculatedPages = Math.ceil(topicData.reply_count / 20);
       setTotalPages(calculatedPages > 0 ? calculatedPages : 1);
     } catch (err) {
-      console.error('Failed to fetch topic:', err);
+      logger.error('Failed to fetch topic', err instanceof Error ? err : new Error(String(err)), { topicId });
       setError('Failed to load topic. Please try again later.');
     } finally {
       setIsLoading(false);
@@ -87,7 +88,7 @@ export function ForumTopicDetail({
       setTotalPages(Math.ceil(postsData.count / 20));
       setCurrentPage(page);
     } catch (err) {
-      console.error('Failed to fetch posts:', err);
+      logger.error('Failed to fetch posts', err instanceof Error ? err : new Error(String(err)), { topicId });
       showToast('Failed to load replies', 'error');
     }
   }, [topicId, showToast]);
@@ -123,7 +124,7 @@ export function ForumTopicDetail({
         setTopic({ ...topic, reply_count: topic.reply_count + 1 });
       }
     } catch (err) {
-      console.error('Failed to post reply:', err);
+      logger.error('Failed to post reply', err instanceof Error ? err : new Error(String(err)), { topicId });
       showToast('Failed to post reply. Please try again.', 'error');
     } finally {
       setIsSending(false);
@@ -140,7 +141,7 @@ export function ForumTopicDetail({
       setEditText('');
       showToast('Reply updated successfully!', 'success');
     } catch (err) {
-      console.error('Failed to update post:', err);
+      logger.error('Failed to update post', err instanceof Error ? err : new Error(String(err)), { postId: post.id });
       showToast('Failed to update reply. Please try again.', 'error');
     }
   };
@@ -158,7 +159,7 @@ export function ForumTopicDetail({
         setTopic({ ...topic, reply_count: Math.max(0, topic.reply_count - 1) });
       }
     } catch (err) {
-      console.error('Failed to delete post:', err);
+      logger.error('Failed to delete post', err instanceof Error ? err : new Error(String(err)), { postId: post.id });
       showToast('Failed to delete reply. Please try again.', 'error');
     }
   };

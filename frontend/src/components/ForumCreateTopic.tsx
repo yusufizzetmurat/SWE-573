@@ -6,6 +6,7 @@ import { Input } from './ui/input';
 import { forumAPI } from '../lib/api';
 import type { ForumCategory } from '../lib/types';
 import { useToast } from './Toast';
+import { logger } from '../lib/logger';
 import { useAuth } from '../lib/auth-context';
 import { getErrorMessage } from '../lib/types';
 
@@ -50,7 +51,7 @@ export function ForumCreateTopic({
         }
       }
     } catch (err) {
-      console.error('Failed to fetch categories:', err);
+      logger.error('Failed to fetch categories', err instanceof Error ? err : new Error(String(err)));
       showToast('Failed to load categories', 'error');
     } finally {
       setIsLoadingCategories(false);
@@ -110,7 +111,7 @@ export function ForumCreateTopic({
       showToast('Topic created successfully!', 'success');
       onNavigate('forum-topic', { topicId: newTopic.id, topicTitle: newTopic.title });
     } catch (err) {
-      console.error('Failed to create topic:', err);
+      logger.error('Failed to create topic', err instanceof Error ? err : new Error(String(err)), { categorySlug });
       const errorMessage = getErrorMessage(err, 'Failed to create topic. Please try again.');
       showToast(errorMessage, 'error');
     } finally {

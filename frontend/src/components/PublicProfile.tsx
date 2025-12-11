@@ -78,7 +78,7 @@ export function PublicProfile({
         }
 
       } catch (err) {
-        console.error('Failed to fetch profile:', err);
+        logger.error('Failed to fetch profile', err instanceof Error ? err : new Error(String(err)), { userId });
         setError('Failed to load profile');
       } finally {
         setIsLoading(false);

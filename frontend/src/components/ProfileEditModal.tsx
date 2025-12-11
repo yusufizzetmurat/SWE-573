@@ -111,7 +111,7 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
       onUpdate();
       onClose();
     } catch (err: unknown) {
-      console.error('Failed to update profile:', err);
+      logger.error('Failed to update profile', err instanceof Error ? err : new Error(String(err)));
       const { getErrorMessage } = await import('../lib/types');
       const errorMessage = getErrorMessage(err, 'Failed to update profile');
       setError(errorMessage);

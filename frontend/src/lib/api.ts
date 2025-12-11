@@ -71,6 +71,22 @@ export interface WikidataItem {
   description?: string; // "high-level programming language"
 }
 
+export interface BadgeInfo {
+  name: string;
+  description: string;
+  icon_url: string;
+  karma_points: number;
+  is_hidden: boolean;
+}
+
+export interface BadgeProgress {
+  badge: BadgeInfo;
+  earned: boolean;
+  current: number | null;
+  threshold: number | null;
+  progress_percent: number;
+}
+
 export interface RegisterData {
   email: string;
   password: string;
@@ -145,7 +161,7 @@ export const userAPI = {
     return response.data;
   },
 
-  getBadgeProgress: async (userId: string, signal?: AbortSignal): Promise<Record<string, any>> => {
+  getBadgeProgress: async (userId: string, signal?: AbortSignal): Promise<Record<string, BadgeProgress>> => {
     const response = await apiClient.get(`/users/${userId}/badge-progress/`, { signal });
     return response.data;
   },
@@ -284,7 +300,7 @@ export const handshakeAPI = {
   },
 
   confirm: async (handshakeId: string, hours?: number, signal?: AbortSignal): Promise<Handshake> => {
-    const payload: any = {};
+    const payload: { hours?: number } = {};
     if (hours !== undefined) {
       payload.hours = hours;
     }

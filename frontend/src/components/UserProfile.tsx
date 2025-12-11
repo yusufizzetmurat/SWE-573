@@ -11,6 +11,7 @@ import { serviceAPI, handshakeAPI, userAPI, Service, Handshake, Comment } from '
 import { ProfileEditModal } from './ProfileEditModal';
 import { formatTimebank } from '../lib/utils';
 import { useToast } from './Toast';
+import { logger } from '../lib/logger';
 import { BADGE_CONFIG, getBadgeMeta } from '../lib/badges';
 
 interface UserProfileProps {
@@ -197,7 +198,7 @@ export function UserProfile({
               setVerifiedReviews(reviews);
             }
           } catch (error) {
-            console.error('Failed to fetch verified reviews:', error);
+            logger.error('Failed to fetch verified reviews', error instanceof Error ? error : new Error(String(error)));
           }
         }
       } catch (error: any) {
@@ -209,7 +210,7 @@ export function UserProfile({
           return;
         }
         
-        console.error('Failed to fetch user data:', error);
+        logger.error('Failed to fetch user data', error instanceof Error ? error : new Error(String(error)));
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -272,8 +273,8 @@ export function UserProfile({
           <Button 
             variant="secondary"
             size="sm"
-            className="absolute top-4 right-4 bg-white/90 hover:bg-white"
-            onClick={() => setIsEditModalOpen(true)}
+            className="absolute top-4 right-4 bg-white/90 hover:bg-white z-10"
+            onClick={() => setShowEditModal(true)}
           >
             <Edit className="w-4 h-4 mr-2" />
             Edit Banner
@@ -303,8 +304,8 @@ export function UserProfile({
                 {isOwnProfile && (
                   <Button 
                     size="sm" 
-                    className="absolute bottom-2 right-2 w-8 h-8 p-0 rounded-full bg-white hover:bg-gray-100 text-gray-700 border border-gray-300"
-                    onClick={() => setIsEditModalOpen(true)}
+                    className="absolute bottom-2 right-2 w-8 h-8 p-0 rounded-full bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 z-10"
+                    onClick={() => setShowEditModal(true)}
                   >
                     <Edit className="w-4 h-4" />
                   </Button>
@@ -759,7 +760,7 @@ export function UserProfile({
                             onNavigate('post-need', serviceData);
                           }
                         } catch (error) {
-                          console.error('Failed to repost service:', error);
+                          logger.error('Failed to repost service', error instanceof Error ? error : new Error(String(error)), { serviceId: service.id });
                           showToast('Failed to repost service. Please try again.', 'error');
                         }
                       };

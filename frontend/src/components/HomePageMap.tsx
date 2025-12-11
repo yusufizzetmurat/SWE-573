@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Circle, CircleMarker, Popup } from 'react-leaflet';
 import { getBadgeMeta } from '../lib/badges';
 import 'leaflet/dist/leaflet.css';
 
@@ -166,47 +166,54 @@ export function HomePageMap({ services = [] }: HomePageMapProps) {
         />
         {markerGroups.length > 0 && markerGroups.map((group, index) => {
           const color = circleColors[group.type];
-          const radius = 20 + Math.min(group.services.length * 3, 20);
+          // Use fixed radius in meters (5000m = 5km) to maintain fuzzy location regardless of zoom
+          const radiusMeters = 5000;
           return (
-            <CircleMarker
-              key={`${group.label}-${index}-${group.position[0]}-${group.position[1]}`}
-              center={group.position}
-              radius={radius}
-              pathOptions={{ color, fillColor: color, fillOpacity: 0.7, weight: 2 }}
-            >
-              <Popup>
-                <div className="space-y-2 min-w-[200px]">
-                  <div className="font-semibold text-gray-900">{group.label}</div>
-                  <div className="text-xs text-gray-500">
-                    {group.services.length} {group.services.length === 1 ? 'service' : 'services'} nearby
+            <React.Fragment key={`${group.label}-${index}-${group.position[0]}-${group.position[1]}`}>
+              <Circle
+                center={group.position}
+                radius={radiusMeters}
+                pathOptions={{ color, fillColor: color, fillOpacity: 0.3, weight: 2 }}
+              />
+              <CircleMarker
+                center={group.position}
+                radius={8}
+                pathOptions={{ color, fillColor: color, fillOpacity: 0.9, weight: 2 }}
+              >
+                <Popup>
+                  <div className="space-y-2 min-w-[200px]">
+                    <div className="font-semibold text-gray-900">{group.label}</div>
+                    <div className="text-xs text-gray-500">
+                      {group.services.length} {group.services.length === 1 ? 'service' : 'services'} nearby
+                    </div>
+                    <ul className="text-sm text-gray-700 list-disc list-inside space-y-1 max-w-sm">
+                      {group.services.slice(0, 5).map((service) => {
+                        const provider = typeof service.user === 'object' ? service.user : null;
+                        const badgeMeta = provider?.badges && provider?.badges.length
+                          ? getBadgeMeta(provider.badges[0])
+                          : undefined;
+                        const BadgeIcon = badgeMeta?.icon;
+                        return (
+                          <li key={service.id}>
+                            <span className="font-medium text-gray-900">{service.title}</span>
+                            <span className="ml-2 text-xs uppercase tracking-wide text-gray-500">{service.type}</span>
+                            {badgeMeta && BadgeIcon && (
+                              <span className="ml-2 inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-amber-50 text-amber-700">
+                                <BadgeIcon className="w-3 h-3" />
+                                {badgeMeta.label}
+                              </span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {group.services.length > 5 && (
+                      <div className="text-xs text-gray-500">+{group.services.length - 5} more services in this area</div>
+                    )}
                   </div>
-                  <ul className="text-sm text-gray-700 list-disc list-inside space-y-1 max-w-sm">
-                    {group.services.slice(0, 5).map((service) => {
-                      const provider = typeof service.user === 'object' ? service.user : null;
-                      const badgeMeta = provider?.badges && provider?.badges.length
-                        ? getBadgeMeta(provider.badges[0])
-                        : undefined;
-                      const BadgeIcon = badgeMeta?.icon;
-                      return (
-                        <li key={service.id}>
-                          <span className="font-medium text-gray-900">{service.title}</span>
-                          <span className="ml-2 text-xs uppercase tracking-wide text-gray-500">{service.type}</span>
-                          {badgeMeta && BadgeIcon && (
-                            <span className="ml-2 inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-amber-50 text-amber-700">
-                              <BadgeIcon className="w-3 h-3" />
-                              {badgeMeta.label}
-                            </span>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {group.services.length > 5 && (
-                    <div className="text-xs text-gray-500">+{group.services.length - 5} more services in this area</div>
-                  )}
-                </div>
-              </Popup>
-            </CircleMarker>
+                </Popup>
+              </CircleMarker>
+            </React.Fragment>
           );
         })}
       </MapContainer>

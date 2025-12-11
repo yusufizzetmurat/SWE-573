@@ -11,6 +11,8 @@ import { formatTimebank } from '../lib/utils';
 import { getErrorMessage, type NavigateData, type ApiError } from '../lib/types';
 import { getBadgeMeta } from '../lib/badges';
 import { HomePageMap } from './HomePageMap';
+import { logger } from '../lib/logger';
+import { POLLING_INTERVALS, DEBOUNCE_DELAYS, GEOLOCATION_CONFIG, DISTANCE_SEARCH } from '../lib/constants';
 
 interface DashboardProps {
   onNavigate: (page: string, data?: NavigateData) => void;
@@ -29,7 +31,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
   
   // Location-based search state
   const [userLocation, setUserLocation] = useState<{lat: number; lng: number} | null>(null);
-  const [distanceKm, setDistanceKm] = useState<number>(10);
+  const [distanceKm, setDistanceKm] = useState<number>(DISTANCE_SEARCH.DEFAULT_KM);
   const [debouncedDistanceKm, setDebouncedDistanceKm] = useState<number>(10);
   const [locationEnabled, setLocationEnabled] = useState(() => {
     // Load from localStorage for persistence
@@ -51,7 +53,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
     
     searchDebounceRef.current = setTimeout(() => {
       setDebouncedSearchQuery(searchQuery);
-    }, 500);
+    }, DEBOUNCE_DELAYS.SEARCH);
     
     return () => {
       if (searchDebounceRef.current) {
@@ -68,7 +70,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
     
     distanceDebounceRef.current = setTimeout(() => {
       setDebouncedDistanceKm(distanceKm);
-    }, 300);
+    }, DEBOUNCE_DELAYS.DISTANCE_SLIDER);
     
     return () => {
       if (distanceDebounceRef.current) {
@@ -115,9 +117,9 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
         setLocationLoading(false);
       },
       {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 300000 // Cache for 5 minutes
+        enableHighAccuracy: GEOLOCATION_CONFIG.ENABLE_HIGH_ACCURACY,
+        timeout: GEOLOCATION_CONFIG.TIMEOUT,
+        maximumAge: GEOLOCATION_CONFIG.MAXIMUM_AGE
       }
     );
   }, []);
@@ -228,7 +230,7 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
           return;
         }
         
-        console.error('Failed to fetch services:', err);
+        logger.error('Failed to fetch services', err instanceof Error ? err : new Error(String(err)));
         const errorMessage = getErrorMessage(err, 'Failed to load services. Please try again.');
         setError(errorMessage);
         setIsLoading(false);
@@ -237,12 +239,12 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
 
     fetchServices();
 
-    // Auto-refresh services every 30 seconds to catch status changes
+    // Auto-refresh services to catch status changes
     const refreshInterval = setInterval(() => {
       if (isMounted) {
         fetchServices();
       }
-    }, 30000);
+    }, POLLING_INTERVALS.SERVICES);
 
     // Refresh when page becomes visible
     const handleVisibilityChange = () => {
@@ -335,12 +337,13 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
           <div className="mb-6 space-y-4">
             {/* Text Search */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" aria-hidden="true" />
               <Input
                 placeholder="Search services, skills, or tags..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
+                aria-label="Search services"
               />
             </div>
             
@@ -393,10 +396,15 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
                     <Slider
                       value={[distanceKm]}
                       onValueChange={([value]) => setDistanceKm(value)}
-                      min={1}
-                      max={50}
+                      min={DISTANCE_SEARCH.MIN_KM}
+                      max={DISTANCE_SEARCH.MAX_KM}
                       step={1}
                       className="w-full"
+                      aria-label="Search distance in kilometers"
+                      aria-valuemin={DISTANCE_SEARCH.MIN_KM}
+                      aria-valuemax={DISTANCE_SEARCH.MAX_KM}
+                      aria-valuenow={distanceKm}
+                      aria-valuetext={`${distanceKm} kilometers`}
                       style={{
                         // Improve contrast for slider track and thumb
                         '--slider-track-bg': '#e5e7eb',
@@ -453,6 +461,8 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
                     ? 'bg-amber-500 text-white'
                     : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
                 }`}
+                aria-label={`Filter by ${filter.label}`}
+                aria-pressed={activeFilter === filter.id}
               >
                 {filter.label}
               </button>

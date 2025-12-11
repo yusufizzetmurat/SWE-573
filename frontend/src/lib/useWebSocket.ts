@@ -74,16 +74,16 @@ export function useWebSocket({
           if (data.type === 'chat_message' && data.message) {
             onMessageRef.current?.(data.message);
           } else if (data.type === 'error') {
-            console.error('WebSocket error message:', data.error);
+            logger.error('WebSocket error message', undefined, { error: data.error, url });
             onErrorRef.current?.(event);
           }
         } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
+          logger.error('Failed to parse WebSocket message', error instanceof Error ? error : new Error(String(error)), { url });
         }
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket connection error:', error);
+        logger.error('WebSocket connection error', error instanceof Error ? error : new Error(String(error)), { url });
         onErrorRef.current?.(error);
       };
 
@@ -107,7 +107,7 @@ export function useWebSocket({
         }
       };
     } catch (error) {
-      console.error('Failed to create WebSocket:', error);
+      logger.error('Failed to create WebSocket', error instanceof Error ? error : new Error(String(error)), { url });
       onErrorRef.current?.(error as Event);
     }
   }, [url, token, enabled]);
@@ -147,8 +147,9 @@ export function useWebSocket({
     return () => {
       disconnect();
     };
+    // connect and disconnect are stable callbacks, no need to include in deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, token, url]); // connect and disconnect are stable, url changes trigger reconnect
+  }, [enabled, token, url]); // url changes trigger reconnect
 
   return {
     isConnected,

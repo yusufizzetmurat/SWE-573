@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { ArrowLeft, Send, Check, AlertCircle, MessageSquare, CheckCircle, Star } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
@@ -20,6 +20,8 @@ import { getErrorMessage, type ApiError } from '../lib/types';
 import { HandshakeDetailsModal } from './HandshakeDetailsModal';
 import { ProviderDetailsModal } from './ProviderDetailsModal';
 import { useWebSocket } from '../lib/useWebSocket';
+import { logger } from '../lib/logger';
+import { POLLING_INTERVALS } from '../lib/constants';
 
 interface ChatPageProps {
   onNavigate: (page: string) => void;
@@ -56,6 +58,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
   }, [selectedChat]);
 
   // Define fetchConversations function using useCallback for stability
+  // Note: selectedChatRef is used to avoid stale closure issues
   const fetchConversations = useCallback(async (setLoading: boolean = false, abortSignal?: AbortSignal) => {
     try {
       if (setLoading) {
@@ -88,7 +91,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
         return;
       }
       
-      console.error('Failed to fetch conversations:', error);
+      logger.error('Failed to fetch conversations', error instanceof Error ? error : new Error(String(error)));
     } finally {
       if (setLoading) {
         setIsLoading(false);
@@ -108,12 +111,12 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
 
     loadConversations();
 
-    // Auto-refresh conversations every 15 seconds to catch handshake status changes
+    // Auto-refresh conversations to catch handshake status changes
     const refreshInterval = setInterval(() => {
       if (isMounted) {
         fetchConversations(false, abortController.signal);
       }
-    }, 15000);
+    }, POLLING_INTERVALS.CONVERSATIONS);
 
     // Refresh when page becomes visible
     const handleVisibilityChange = () => {
@@ -185,7 +188,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
         
         if (duplicateByContent) {
           // This appears to be a duplicate, don't add it
-          console.warn('Duplicate message detected and ignored:', message);
+          logger.warn('Duplicate message detected and ignored', undefined, { messageId: message.id });
           return prev;
         }
         
@@ -196,7 +199,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
       fetchConversations(false);
     },
     onError: (error) => {
-      console.error('WebSocket error:', error);
+      logger.error('WebSocket error', error instanceof Error ? error : new Error(String(error)));
     },
   });
 
@@ -221,7 +224,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
         if (error?.name === 'AbortError' || error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
           return;
         }
-        console.error('Failed to fetch messages:', error);
+        logger.error('Failed to fetch messages', error instanceof Error ? error : new Error(String(error)), { handshakeId: selectedChat?.handshake_id });
       }
     };
 
@@ -260,7 +263,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
         setIsLoadingMore(false);
         return;
       }
-      console.error('Failed to load more messages:', error);
+      logger.error('Failed to load more messages', error instanceof Error ? error : new Error(String(error)), { handshakeId: selectedChat?.handshake_id });
       showToast('Failed to load more messages', 'error');
     } finally {
       if (!abortController.signal.aborted) {
@@ -339,12 +342,12 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
       
       // Refresh conversations in background to ensure consistency
       fetchConversations(false).catch(err => {
-        console.error('Failed to refresh conversations:', err);
+        logger.error('Failed to refresh conversations', err instanceof Error ? err : new Error(String(err)));
       });
       
       // Sync with server to get actual balance
       refreshUser().catch(err => {
-        console.error('Failed to refresh user:', err);
+        logger.error('Failed to refresh user', err instanceof Error ? err : new Error(String(err)));
       });
     } catch (error: unknown) {
       // Rollback optimistic update on error
@@ -353,13 +356,13 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
       }
       
       // Log the full error for debugging
-      console.error('Failed to initiate handshake:', error);
+      logger.error('Failed to initiate handshake', error instanceof Error ? error : new Error(String(error)));
       
       const apiError = error as { response?: { data?: { conflict?: boolean; conflict_details?: any; detail?: string; code?: string } } };
       const errorData = apiError?.response?.data;
       
       // Log the error data for debugging
-      console.error('Error data:', errorData);
+      logger.debug('Error data', undefined, { errorData });
       
       // Check for schedule conflict
       if (errorData?.conflict) {
@@ -397,7 +400,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
         
         // Refresh in background to sync with server
         fetchConversations(false).catch(err => {
-          console.error('Failed to refresh conversations:', err);
+          logger.error('Failed to refresh conversations', err instanceof Error ? err : new Error(String(err)));
         });
       } else if (errorData?.code === 'PERMISSION_DENIED') {
         showToast('You do not have permission to initiate this handshake.', 'error');
@@ -458,7 +461,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
       
       // Refresh in background
       fetchConversations(false).catch(err => {
-        console.error('Failed to refresh conversations:', err);
+        logger.error('Failed to refresh conversations', err instanceof Error ? err : new Error(String(err)));
       });
     } catch (error: unknown) {
       const errorMessage = getErrorMessage(error);
@@ -491,7 +494,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
       
       // Refresh in background
       fetchConversations(false).catch(err => {
-        console.error('Failed to refresh conversations:', err);
+        logger.error('Failed to refresh conversations', err instanceof Error ? err : new Error(String(err)));
       });
     } catch (error: unknown) {
       const errorMessage = getErrorMessage(error);
@@ -603,9 +606,11 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
                       <button
                         key={conversation.handshake_id}
                         onClick={() => setSelectedChat(conversation)}
-                        className={`w-full p-4 text-left hover:bg-gray-50 transition-colors ${
+                        className={`w-full p-4 text-left hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 ${
                           selectedChat?.handshake_id === conversation.handshake_id ? 'bg-amber-50' : ''
                         }`}
+                        aria-label={`Open conversation with ${conversation.other_user.name} about ${conversation.service_title}`}
+                        aria-pressed={selectedChat?.handshake_id === conversation.handshake_id}
                       >
                         <div className="flex items-start gap-3">
                           <Avatar className="w-12 h-12 flex-shrink-0">
@@ -679,7 +684,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
                                     setShowHandshakeDetailsModal(true);
                                   } else if (selectedChat.provider_initiated) {
                                     showToast('You have already initiated this handshake.', 'info');
-                                    fetchConversations(false).catch(err => console.error('Failed to refresh:', err));
+                                    fetchConversations(false).catch(err => logger.error('Failed to refresh', err instanceof Error ? err : new Error(String(err))));
                                   }
                                 }}
                                 className="bg-green-500 hover:bg-green-600 text-white whitespace-nowrap"
@@ -937,13 +942,15 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
                         }
                       }}
                       className="flex-1"
+                      aria-label="Message input"
                     />
                     <Button 
                       onClick={handleSendMessage}
                       className="bg-orange-500 hover:bg-orange-600 text-white"
                       disabled={!messageInput.trim()}
+                      aria-label="Send message"
                     >
-                      <Send className="w-4 h-4" />
+                      <Send className="w-4 h-4" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>
