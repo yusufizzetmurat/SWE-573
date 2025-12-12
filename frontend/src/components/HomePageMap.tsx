@@ -4,6 +4,8 @@ import { getAchievementMeta } from '../lib/achievements';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
+const IS_E2E = import.meta.env.VITE_E2E === '1';
+
 interface ServiceLocation {
   id: string;
   title: string;
@@ -208,6 +210,17 @@ function ZoomResponsiveCircles({
 }
 
 export function HomePageMap({ services = [], onNavigate }: HomePageMapProps) {
+  if (IS_E2E) {
+    return (
+      <div className="w-full h-[450px] rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center pointer-events-none">
+        <div className="text-center px-6">
+          <div className="text-gray-900 font-semibold">Map disabled in E2E</div>
+          <div className="text-sm text-gray-600 mt-1">Prevents flaky pointer and render issues in headless browsers.</div>
+        </div>
+      </div>
+    );
+  }
+
   const [isClient, setIsClient] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
   const [mapReady, setMapReady] = useState(false);

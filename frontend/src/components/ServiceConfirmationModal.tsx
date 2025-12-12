@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, Clock, User, AlertTriangle, X, Edit2 } from 'lucide-react';
 import { formatTimebank } from '../lib/utils';
+import { POLLING_INTERVALS } from '../lib/constants';
 import {
   Dialog,
   DialogContent,
@@ -12,6 +13,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { handshakeAPI, type Handshake } from '../lib/api';
+import { logger } from '../lib/logger';
 
 interface ServiceConfirmationModalProps {
   open: boolean;
@@ -45,28 +47,35 @@ export function ServiceConfirmationModal({
 
   useEffect(() => {
     if (open && handshakeId) {
-      const fetchHandshake = () => {
-        handshakeAPI.get(handshakeId)
-          .then((data) => {
-            setHandshake(data);
-            // Only update hours if user is not currently editing
-            if (!isEditingHours) {
-              setHours(data.provisioned_hours.toString());
-            }
-          })
-          .catch((error) => {
-            logger.error('Failed to fetch handshake', error instanceof Error ? error : new Error(String(error)), { handshakeId });
-          });
+      let isActive = true;
+
+      const fetchHandshake = async () => {
+        try {
+          setIsLoading(true);
+          const data = await handshakeAPI.get(handshakeId);
+          if (!isActive) return;
+          setHandshake(data);
+          if (!isEditingHours) {
+            setHours(data.provisioned_hours.toString());
+          }
+        } catch (error) {
+          logger.error('Failed to fetch handshake', error instanceof Error ? error : new Error(String(error)), { handshakeId });
+        } finally {
+          if (isActive) {
+            setIsLoading(false);
+          }
+        }
       };
 
-      setIsLoading(true);
       fetchHandshake();
-      setIsLoading(false);
       
       // Refresh handshake data periodically to catch hour changes from other user
       const refreshInterval = setInterval(fetchHandshake, POLLING_INTERVALS.HANDSHAKE);
       
-      return () => clearInterval(refreshInterval);
+      return () => {
+        isActive = false;
+        clearInterval(refreshInterval);
+      };
     } else if (open && initialDuration) {
       setHours(initialDuration.toString());
     }

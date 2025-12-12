@@ -1,13 +1,9 @@
 import React, { useState, useEffect, useCallback, memo } from 'react';
-import { MessageSquare, CheckCircle, Send, ChevronDown, ChevronUp, CornerDownRight, Loader2 } from 'lucide-react';
+import { MessageSquare, CheckCircle, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
-import { Textarea } from './ui/textarea';
 import { Avatar, AvatarImage, AvatarFallback } from './ui/avatar';
 import { Badge } from './ui/badge';
-import { commentAPI, Comment, CommentReply, ReviewableHandshake } from '../lib/api';
-import { useAuth } from '../lib/auth-context';
-import { useToast } from './Toast';
-import { getErrorMessage } from '../lib/types';
+import { commentAPI, Comment, CommentReply } from '../lib/api';
 import { formatTimebank } from '../lib/utils';
 import { getAchievementMeta } from '../lib/achievements';
 import { logger } from '../lib/logger';
@@ -34,46 +30,16 @@ function formatRelativeTime(dateString: string): string {
 
 function CommentItem({ 
   comment, 
-  serviceId,
   onReplyAdded,
   onNavigate,
   isReply = false
 }: { 
   comment: Comment | CommentReply; 
-  serviceId: string;
   onReplyAdded: () => void;
   onNavigate: (page: string, data?: Record<string, unknown>) => void;
   isReply?: boolean;
 }) {
-  const { isAuthenticated, user } = useAuth();
-  const { showToast } = useToast();
-  const [showReplyForm, setShowReplyForm] = useState(false);
-  const [replyText, setReplyText] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showReplies, setShowReplies] = useState(false);
-
   const fullComment = comment as Comment;
-  const replies = fullComment.replies || [];
-  const replyCount = fullComment.reply_count || 0;
-
-  const handleSubmitReply = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!replyText.trim() || isSubmitting) return;
-
-    setIsSubmitting(true);
-    try {
-      await commentAPI.create(serviceId, replyText.trim(), comment.id);
-      setReplyText('');
-      setShowReplyForm(false);
-      setShowReplies(true);
-      onReplyAdded();
-      showToast('Reply posted!', 'success');
-    } catch (error) {
-      showToast(getErrorMessage(error, 'Failed to post reply'), 'error');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const initials = comment.user_name
     .split(' ')
@@ -159,95 +125,6 @@ function CommentItem({
               comment.body
             )}
           </p>
-
-          {!isReply && !comment.is_deleted && (
-            <div className="flex items-center gap-4 mt-2">
-              {isAuthenticated && (
-                <button
-                  onClick={() => setShowReplyForm(!showReplyForm)}
-                  className="text-xs text-gray-500 hover:text-amber-600 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 rounded px-1"
-                  aria-label={showReplyForm ? 'Cancel reply' : 'Reply to comment'}
-                  aria-expanded={showReplyForm}
-                >
-                  <CornerDownRight className="w-3 h-3" aria-hidden="true" />
-                  Reply
-                </button>
-              )}
-              
-              {replyCount > 0 && (
-                <button
-                  onClick={() => setShowReplies(!showReplies)}
-                  className="text-xs text-gray-500 hover:text-amber-600 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 rounded px-1"
-                  aria-label={showReplies ? `Hide ${replyCount} replies` : `Show ${replyCount} replies`}
-                  aria-expanded={showReplies}
-                >
-                  {showReplies ? (
-                    <>
-                      <ChevronUp className="w-3 h-3" aria-hidden="true" />
-                      Hide {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="w-3 h-3" aria-hidden="true" />
-                      Show {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-          )}
-
-          {showReplyForm && (
-            <form onSubmit={handleSubmitReply} className="mt-3">
-              <Textarea
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                placeholder="Write a reply..."
-                className="min-h-[60px] text-sm resize-none"
-                maxLength={2000}
-              />
-              <div className="flex justify-end gap-2 mt-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setShowReplyForm(false);
-                    setReplyText('');
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={!replyText.trim() || isSubmitting}
-                  className="bg-amber-500 hover:bg-amber-600"
-                >
-                  {isSubmitting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    'Reply'
-                  )}
-                </Button>
-              </div>
-            </form>
-          )}
-
-          {showReplies && replies.length > 0 && (
-            <div className="mt-3 space-y-3">
-              {replies.map((reply) => (
-                <CommentItem
-                  key={reply.id}
-                  comment={reply as Comment}
-                  serviceId={serviceId}
-                  onReplyAdded={onReplyAdded}
-                  onNavigate={onNavigate}
-                  isReply
-                />
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -255,20 +132,11 @@ function CommentItem({
 }
 
 export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
-  const { isAuthenticated, user } = useAuth();
-  const { showToast } = useToast();
-  
   const [comments, setComments] = useState<Comment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [page, setPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  
-  const [reviewableHandshakes, setReviewableHandshakes] = useState<ReviewableHandshake[]>([]);
-  const [selectedHandshake, setSelectedHandshake] = useState<string | null>(null);
-  const [showReviewForm, setShowReviewForm] = useState(false);
-  const [reviewText, setReviewText] = useState('');
-  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
   const fetchComments = useCallback(async (pageNum: number = 1, append: boolean = false) => {
     try {
@@ -277,7 +145,7 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
 
       const response = await commentAPI.list(serviceId, pageNum);
       
-      // Filter to show only verified reviews
+      // Service detail is read-only: show verified reviews only.
       const verifiedReviews = response.results.filter(c => c.is_verified_review && !c.is_deleted);
       
       if (append) {
@@ -296,40 +164,9 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
     }
   }, [serviceId]);
 
-  const fetchReviewableHandshakes = useCallback(async () => {
-    if (!isAuthenticated) return;
-    try {
-      const handshakes = await commentAPI.getReviewableHandshakes(serviceId);
-      setReviewableHandshakes(handshakes);
-    } catch (error) {
-      logger.error('Failed to fetch reviewable handshakes', error instanceof Error ? error : new Error(String(error)), { serviceId });
-    }
-  }, [serviceId, isAuthenticated]);
-
   useEffect(() => {
     fetchComments();
-    fetchReviewableHandshakes();
-  }, [fetchComments, fetchReviewableHandshakes]);
-
-  const handleSubmitReview = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reviewText.trim() || !selectedHandshake || isSubmittingReview) return;
-
-    setIsSubmittingReview(true);
-    try {
-      await commentAPI.create(serviceId, reviewText.trim(), undefined, selectedHandshake);
-      setReviewText('');
-      setSelectedHandshake(null);
-      setShowReviewForm(false);
-      fetchComments();
-      fetchReviewableHandshakes();
-      showToast('Review posted!', 'success');
-    } catch (error) {
-      showToast(getErrorMessage(error, 'Failed to post review'), 'error');
-    } finally {
-      setIsSubmittingReview(false);
-    }
-  };
+  }, [fetchComments]);
 
   const loadMore = () => {
     if (!isLoadingMore && hasMore) {
@@ -344,88 +181,7 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
           <MessageSquare className="w-5 h-5 text-amber-500" />
           Comments & Reviews
         </h3>
-        
-        {reviewableHandshakes.length > 0 && !showReviewForm && (
-          <Button
-            onClick={() => {
-              setShowReviewForm(true);
-              if (reviewableHandshakes.length === 1) {
-                setSelectedHandshake(reviewableHandshakes[0].id);
-              }
-            }}
-            className="bg-green-500 hover:bg-green-600 text-white"
-            size="sm"
-          >
-            <CheckCircle className="w-4 h-4 mr-1" />
-            Write a Verified Review
-          </Button>
-        )}
       </div>
-
-      {/* Verified Review Form */}
-      {showReviewForm && (
-        <div className="mb-6 p-4 bg-green-50 rounded-lg border border-green-200">
-          <h4 className="font-medium text-green-800 mb-3 flex items-center gap-2">
-            <CheckCircle className="w-4 h-4" />
-            Write a Verified Review
-          </h4>
-          
-          {reviewableHandshakes.length > 1 && (
-            <div className="mb-3">
-              <label className="block text-sm text-gray-700 mb-1">Select transaction:</label>
-              <select
-                value={selectedHandshake || ''}
-                onChange={(e) => setSelectedHandshake(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              >
-                <option value="">Select a transaction...</option>
-                {reviewableHandshakes.map((h) => (
-                  <option key={h.id} value={h.id}>
-                    {formatTimebank(h.provisioned_hours)} hours - {new Date(h.completed_at).toLocaleDateString()}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          
-          <form onSubmit={handleSubmitReview}>
-            <Textarea
-              value={reviewText}
-              onChange={(e) => setReviewText(e.target.value)}
-              placeholder="Share your experience with this service..."
-              className="min-h-[80px] resize-none mb-3"
-              maxLength={2000}
-            />
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setShowReviewForm(false);
-                  setReviewText('');
-                  setSelectedHandshake(null);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                size="sm"
-                disabled={!reviewText.trim() || !selectedHandshake || isSubmittingReview}
-                className="bg-green-500 hover:bg-green-600"
-              >
-                {isSubmittingReview ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-1" />
-                ) : (
-                  <CheckCircle className="w-4 h-4 mr-1" />
-                )}
-                Post Verified Review
-              </Button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {/* Info Message - Only Verified Reviews */}
       <div className="mb-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
@@ -434,8 +190,7 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
           <div>
             <h3 className="font-semibold text-gray-900 mb-1">Verified Reviews</h3>
             <p className="text-sm text-gray-700">
-              This section displays verified reviews from completed service exchanges only. 
-              Reviews are automatically created when users complete a service and provide feedback.
+              This section displays verified reviews from completed service exchanges only.
             </p>
           </div>
         </div>
@@ -458,7 +213,6 @@ export function CommentSection({ serviceId, onNavigate }: CommentSectionProps) {
             <CommentItem
               key={comment.id}
               comment={comment}
-              serviceId={serviceId}
               onReplyAdded={() => fetchComments()}
               onNavigate={onNavigate}
             />

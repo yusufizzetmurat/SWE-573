@@ -75,14 +75,14 @@ class TestCacheServiceList:
     def test_cache_service_list(self, mock_cache):
         """Test caching service list"""
         services = [{'id': 'service-1', 'title': 'Test Service'}]
-        cache_service_list(services)
+        cache_service_list({}, services)
         mock_cache.set.assert_called_once()
     
     @patch('api.cache_utils.CacheManager')
     def test_get_cached_service_list(self, mock_cache):
         """Test retrieving cached service list"""
         mock_cache.get.return_value = [{'id': 'service-1', 'title': 'Test Service'}]
-        result = get_cached_service_list()
+        result = get_cached_service_list({})
         assert result is not None
         mock_cache.get.assert_called_once()
     
@@ -90,7 +90,7 @@ class TestCacheServiceList:
     def test_invalidate_service_lists(self, mock_cache):
         """Test invalidating service list cache"""
         invalidate_service_lists()
-        assert mock_cache.delete.call_count >= 1
+        mock_cache.delete_pattern.assert_called_once_with("service_list")
 
 
 @pytest.mark.unit
@@ -149,7 +149,10 @@ class TestInvalidateOnChange:
     @patch('api.cache_utils.invalidate_service_detail')
     def test_invalidate_on_service_change(self, mock_detail, mock_hot, mock_lists):
         """Test cache invalidation on service change"""
-        service = ServiceFactory()
+        service = MagicMock()
+        service.id = 'service-1'
+        service.user = MagicMock()
+        service.user.id = 'user-1'
         invalidate_on_service_change(service)
         mock_lists.assert_called_once()
         mock_hot.assert_called_once()
@@ -158,6 +161,7 @@ class TestInvalidateOnChange:
     @patch('api.cache_utils.invalidate_user_profile')
     def test_invalidate_on_user_change(self, mock_invalidate):
         """Test cache invalidation on user change"""
-        user = UserFactory()
+        user = MagicMock()
+        user.id = 'user-1'
         invalidate_on_user_change(user)
         mock_invalidate.assert_called_once_with(str(user.id))

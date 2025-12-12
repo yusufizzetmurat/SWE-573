@@ -1,46 +1,79 @@
 """
 Custom throttle classes for rate limiting sensitive operations
 """
-from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
+import os
+
+from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle, UserRateThrottle
 
 
-class ConfirmationThrottle(UserRateThrottle):
+def _is_truthy_env(*names: str) -> bool:
+    for name in names:
+        value = os.environ.get(name) or ''
+        if str(value).strip().lower() in {'1', 'true', 'yes', 'y', 'on'}:
+            return True
+    return False
+
+
+def _should_bypass_throttling() -> bool:
+    # E2E mode should bypass throttling to keep tests deterministic.
+    # DISABLE_THROTTLING/NO_THROTTLE are explicit overrides (use carefully).
+    return _is_truthy_env('DJANGO_E2E', 'E2E', 'DISABLE_THROTTLING', 'NO_THROTTLE')
+
+
+class E2EAwareAnonRateThrottle(AnonRateThrottle):
+    def allow_request(self, request, view):
+        if _should_bypass_throttling():
+            return True
+        return super().allow_request(request, view)
+
+
+class E2EAwareUserRateThrottle(UserRateThrottle):
+    def allow_request(self, request, view):
+        if _should_bypass_throttling():
+            return True
+        return super().allow_request(request, view)
+
+
+class E2EAwareScopedRateThrottle(ScopedRateThrottle):
+    def allow_request(self, request, view):
+        if _should_bypass_throttling():
+            return True
+        return super().allow_request(request, view)
+
+
+class ConfirmationThrottle(E2EAwareUserRateThrottle):
     """
     Throttle for service confirmation operations.
-    Limits to 10 requests per hour per user to prevent abuse.
+    Rate is controlled by REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['confirm'].
     """
-    rate = '10/hour'
     scope = 'confirm'
 
 
-class HandshakeThrottle(UserRateThrottle):
+class HandshakeThrottle(E2EAwareUserRateThrottle):
     """
     Throttle for handshake creation and initiation operations.
-    Limits to 20 requests per hour per user to prevent spam.
+    Rate is controlled by REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['handshake'].
     """
-    rate = '20/hour'
     scope = 'handshake'
 
 
-class SensitiveOperationThrottle(UserRateThrottle):
+class SensitiveOperationThrottle(E2EAwareUserRateThrottle):
     """
     Throttle for sensitive operations (password changes, account modifications).
-    Limits to 10 requests per hour per user.
+    Rate is controlled by REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['sensitive'].
     """
-    rate = '10/hour'
     scope = 'sensitive'
 
 
-class ReputationThrottle(UserRateThrottle):
+class ReputationThrottle(E2EAwareUserRateThrottle):
     """
     Throttle for reputation submissions.
-    Limits to 5 requests per hour per user to prevent abuse.
+    Rate is controlled by REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['reputation'].
     """
-    rate = '5/hour'
     scope = 'reputation'
 
 
-class ProgressiveRateThrottle(UserRateThrottle):
+class ProgressiveRateThrottle(E2EAwareUserRateThrottle):
     """
     Progressive rate limiting based on user reputation (karma_score).
     Users with higher karma get higher rate limits.

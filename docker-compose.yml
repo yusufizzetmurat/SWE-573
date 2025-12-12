@@ -19,6 +19,8 @@ services:
       - DB_HOST=db
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - DJANGO_E2E=${DJANGO_E2E:-0}
+      - E2E=${E2E:-0}
 
   frontend:
     build: ./frontend
@@ -32,6 +34,7 @@ services:
       - backend
     environment:
       - VITE_API_URL=http://localhost:8000/api
+      - VITE_E2E=${VITE_E2E:-0}
 
   db:
     image: postgis/postgis:15-3.4

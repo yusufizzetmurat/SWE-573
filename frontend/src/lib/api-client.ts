@@ -1,7 +1,8 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { API_TIMEOUT } from './constants';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+const DEFAULT_API_BASE_URL = import.meta.env.MODE === 'test' ? '/api' : 'http://localhost:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL;
 
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({

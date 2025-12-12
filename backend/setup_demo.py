@@ -488,6 +488,8 @@ def simulate_handshake_workflow(service, requester, provider_initiated_days_ago=
         Handshake.objects.filter(pk=handshake.pk).update(created_at=created_at_time)
         handshake.refresh_from_db()
         
+        # Conversation participants are always: requester and service owner
+        service_owner = service.user
         provider, receiver = get_provider_and_receiver(handshake)
         
         exact_locations = {
@@ -510,16 +512,33 @@ def simulate_handshake_workflow(service, requester, provider_initiated_days_ago=
         handshake.updated_at = created_at_time + timedelta(hours=4)
         handshake.save()
         
-        chat_messages = [
-            (requester, f"Hi! I'm interested in your {service.title.lower()}. When would work for you?"),
-            (provider, f"Great! I've set the details. We can meet at {handshake.exact_location}. Does the scheduled time work for you?"),
-            (requester, "Yes, that works perfectly! Looking forward to it."),
-            (provider, "Excellent! See you then. Feel free to ask if you have any questions before we meet."),
-        ]
+        # Replace the default initial message (created by HandshakeService) with a more natural, two-sided conversation.
+        ChatMessage.objects.filter(handshake=handshake).delete()
+
+        if service.type == 'Offer':
+            # Service owner offers help; requester is asking for it.
+            chat_messages = [
+                (requester, f"Hi {service_owner.first_name}! I'm interested in your {service.title.lower()}."),
+                (requester, "Do you have availability this week?"),
+                (service_owner, "Hi! Yes — happy to help. I can do a short session and we can adjust if needed."),
+                (service_owner, f"For in-person, let's meet at {handshake.exact_location}. Does the scheduled time work for you?" if service.location_type == 'In-Person' else "Since this is online, we can meet on the scheduled time. Does that work for you?"),
+                (requester, "That works perfectly. Thank you!"),
+                (service_owner, "Great. If anything changes, just message me here."),
+            ]
+        else:
+            # Service owner needs help; requester is offering it.
+            chat_messages = [
+                (requester, f"Hi {service_owner.first_name}! I saw your post: {service.title}. I can help with this."),
+                (requester, "What outcome are you aiming for, and what timeline works for you?"),
+                (service_owner, "Thanks! I mostly need help getting started and making sure I do it the right way."),
+                (service_owner, f"If you're okay with it, let's meet at {handshake.exact_location}. Does the scheduled time work?" if service.location_type == 'In-Person' else "Can we do a quick online session at the scheduled time?"),
+                (requester, "Yes, the scheduled time works. Feel free to share any context/details beforehand."),
+                (service_owner, "Perfect — really appreciate it. I'll send what I have before the session."),
+            ]
         
         base_time = created_at_time
         for i, (sender, body) in enumerate(chat_messages):
-            msg_time = base_time + timedelta(hours=i*2)
+            msg_time = base_time + timedelta(minutes=12 + i * 11)
             ChatMessage.objects.create(
                 handshake=handshake,
                 sender=sender,
@@ -686,7 +705,7 @@ reputation_data = [
 
 for handshake, giver, receiver, punctual, helpful, kind, comment in reputation_data:
     try:
-        ReputationRep.objects.create(
+        rep = ReputationRep.objects.create(
             handshake=handshake,
             giver=giver,
             receiver=receiver,
@@ -696,36 +715,24 @@ for handshake, giver, receiver, punctual, helpful, kind, comment in reputation_d
             comment=comment,
             created_at=handshake.updated_at + timedelta(hours=2)
         )
+
+        # Seed a verified review for Service Detail from the reputation comment.
+        if comment:
+            Comment.objects.create(
+                service=handshake.service,
+                user=giver,
+                body=comment,
+                is_verified_review=True,
+                related_handshake=handshake,
+                created_at=rep.created_at
+            )
         print(f"  Added reputation: {giver.first_name} -> {receiver.first_name}")
     except Exception as e:
         print(f"  Error adding reputation: {e}")
 
 print("\n[7/8] Creating comments and forum content...")
 
-comment_data = [
-    (elif_manti, cem, "This sounds amazing! I've always wanted to learn how to make manti. What ingredients do we need?", False, None),
-    (elif_manti, zeynep, "I took this workshop last month - it was fantastic! Elif is a great teacher.", False, None),
-    (ayse_gardening, elif_user, "This is exactly what I need! Can we do it on a Sunday instead?", False, None),
-    (can_photography, burak, "Would love to join! What time in the morning?", False, None),
-    (zeynep_language, can, "Great service! Zeynep is very patient and makes conversation practice fun.", True, handshake5),
-    (cem_chess_offer, burak, "Cem is an excellent teacher. My chess game improved significantly after our sessions!", True, handshake8),
-    (mehmet_genealogy, elif_user, "Mehmet helped me discover so much about my family. Highly recommend!", True, handshake9),
-    (deniz_tech, mehmet, "Deniz was very clear and patient. Now I can use WhatsApp and email easily!", True, handshake4),
-]
-
-for service, user, body, is_verified, related_handshake in comment_data:
-    try:
-        Comment.objects.create(
-            service=service,
-            user=user,
-            body=body,
-            is_verified_review=is_verified,
-            related_handshake=related_handshake,
-            created_at=timezone.now() - timedelta(days=random.randint(1, 20))
-        )
-        print(f"  Added comment on {service.title[:30]}...")
-    except Exception as e:
-        print(f"  Error adding comment: {e}")
+print("  Service comments are not seeded (verified reviews come from completed exchanges only)")
 
 forum_category, _ = ForumCategory.objects.get_or_create(
     slug='general',

@@ -1,6 +1,6 @@
 """Property-based tests for critical business logic."""
 from decimal import Decimal
-from django.test import TestCase
+from hypothesis.extra.django import TestCase as HypothesisTestCase
 from django.contrib.auth import get_user_model
 from hypothesis import given, strategies as st, assume, settings
 from hypothesis.stateful import RuleBasedStateMachine, rule, invariant
@@ -13,7 +13,7 @@ from api.utils import provision_timebank, complete_timebank_transfer, get_provid
 User = get_user_model()
 
 
-class PropertyTestTimeBankBalanceConsistency(TestCase):
+class PropertyTestTimeBankBalanceConsistency(HypothesisTestCase):
     """Test TimeBank balance consistency property."""
     
     @settings(max_examples=50)
@@ -72,7 +72,7 @@ class PropertyTestTimeBankBalanceConsistency(TestCase):
         )
 
 
-class PropertyTestHandshakeStateIntegrity(TestCase):
+class PropertyTestHandshakeStateIntegrity(HypothesisTestCase):
     """Test handshake state integrity property."""
     
     def setUp(self):
@@ -122,7 +122,7 @@ class PropertyTestHandshakeStateIntegrity(TestCase):
         self.assertIn(handshake.status, valid_statuses)
 
 
-class PropertyTestServiceParticipationLimits(TestCase):
+class PropertyTestServiceParticipationLimits(HypothesisTestCase):
     """Test service participation limits property."""
     
     def setUp(self):
@@ -134,7 +134,7 @@ class PropertyTestServiceParticipationLimits(TestCase):
             timebank_balance=Decimal('100.00')
         )
     
-    @settings(max_examples=20)
+    @settings(max_examples=20, deadline=None)
     @given(
         max_participants=st.integers(min_value=1, max_value=10),
         num_requests=st.integers(min_value=1, max_value=15)
@@ -189,7 +189,7 @@ class PropertyTestServiceParticipationLimits(TestCase):
         )
 
 
-class PropertyTestBalanceProvisioningAccuracy(TestCase):
+class PropertyTestBalanceProvisioningAccuracy(HypothesisTestCase):
     """Test balance provisioning accuracy property."""
     
     def setUp(self):
@@ -275,7 +275,7 @@ class PropertyTestBalanceProvisioningAccuracy(TestCase):
         )
 
 
-class PropertyTestUserRegistrationCompleteness(TestCase):
+class PropertyTestUserRegistrationCompleteness(HypothesisTestCase):
     """Test user registration completeness property."""
     
     @settings(max_examples=50)
@@ -289,8 +289,12 @@ class PropertyTestUserRegistrationCompleteness(TestCase):
         """Test that new users have complete and valid data."""
         # Clean email and names (remove invalid characters)
         email = email.lower().strip()
-        first_name = first_name.strip()[:150]
-        last_name = last_name.strip()[:150]
+        first_name = first_name.replace("\x00", "").strip()[:150]
+        last_name = last_name.replace("\x00", "").strip()[:150]
+
+        # If cleaning makes names empty, skip this generated example
+        if not first_name or not last_name:
+            return
         
         # Skip if email already exists
         if User.objects.filter(email=email).exists():

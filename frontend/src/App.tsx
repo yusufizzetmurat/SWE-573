@@ -338,11 +338,19 @@ function AppContent() {
     }
   };
 
-  const handleSubmitReps = async (handshakeId: string, reps: { punctual: boolean; helpful: boolean; kind: boolean }) => {
+  const handleSubmitReps = async (
+    handshakeId: string,
+    payload: { punctual: boolean; helpful: boolean; kind: boolean; comment?: string }
+  ) => {
     try {
       const { reputationAPI } = await import('./lib/api');
       // Map 'kind' to 'kindness' as expected by API
-      await reputationAPI.submit(handshakeId, { punctual: reps.punctual, helpful: reps.helpful, kindness: reps.kind });
+      await reputationAPI.submit(handshakeId, {
+        punctual: payload.punctual,
+        helpful: payload.helpful,
+        kindness: payload.kind,
+        comment: payload.comment,
+      });
       refreshUser();
       setShowPositiveRep(false);
       showToast('Reputation submitted successfully!', 'success');

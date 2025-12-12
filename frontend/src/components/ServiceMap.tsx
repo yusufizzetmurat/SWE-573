@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { MapPin } from 'lucide-react';
-import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import type * as Leaflet from 'leaflet';
 
 interface ServiceMapProps {
   locationType: 'In-Person' | 'Online';
@@ -23,27 +23,42 @@ const ISTANBUL_DISTRICTS: Record<string, { lat: number; lng: number; name: strin
   'Atasehir': { lat: 40.9833, lng: 29.1167, name: 'Ataşehir' },
 };
 
-// Fix for default marker icons in Leaflet
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-});
+const IS_E2E = import.meta.env.VITE_E2E === '1';
 
 export function ServiceMap({ locationType, locationArea, locationDetails, locationLat, locationLng }: ServiceMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
+  const mapInstanceRef = useRef<Leaflet.Map | null>(null);
 
   useEffect(() => {
+    if (IS_E2E) {
+      return;
+    }
+
     if (locationType === 'Online' || !mapRef.current) {
       return;
     }
 
+    const container = mapRef.current as any;
+
+    // In dev/StrictMode or fast tab transitions, Leaflet can leave a stamped container behind
+    // if init fails mid-way; clear it so we can safely recreate.
+    if (!mapInstanceRef.current && container?._leaflet_id) {
+      try {
+        delete container._leaflet_id;
+      } catch {
+        // ignore
+      }
+    }
+
     // Clean up existing map
     if (mapInstanceRef.current) {
-      mapInstanceRef.current.remove();
-      mapInstanceRef.current = null;
+      try {
+        mapInstanceRef.current.remove();
+      } catch {
+        // ignore
+      } finally {
+        mapInstanceRef.current = null;
+      }
     }
 
     // Determine coordinates: use district lookup for fuzzy location (never show exact coordinates)
@@ -63,72 +78,128 @@ export function ServiceMap({ locationType, locationArea, locationDetails, locati
       lng = 28.9784;
     }
 
-    // Create map centered on the location (always use district-level zoom for fuzzy location)
-    const map = L.map(mapRef.current, {
-      center: [lat, lng],
-      zoom: 13, // Always use district-level zoom to hide exact location
-      zoomControl: true,
-      attributionControl: true,
-    });
+    let cancelled = false;
+    let map: Leaflet.Map | null = null;
 
-    // Add CartoDB Positron tiles (light theme, matches HomePageMap)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      maxZoom: 19,
-    }).addTo(map);
+    (async () => {
+      try {
+        const leafletModule = await import('leaflet');
+        const L = ((leafletModule as any).default ?? leafletModule) as typeof import('leaflet');
 
-    // Add circles with fixed geographic size (meters) to show approximate area (not exact address)
-    let outerCircle: L.Circle | null = null;
-    let middleCircle: L.Circle | null = null;
-    
-    const updateCircles = () => {
-      // Radius values in meters - maintains geographic size regardless of zoom
-      const outerRadius = 500; // 500 meters
-      const middleRadius = 300; // 300 meters
-      
-      // Update or create outer circle (uses meters, maintains geographic size)
-      if (!outerCircle) {
-        outerCircle = L.circle([lat, lng], {
-          radius: outerRadius,
-          color: '#10b981',
-          fillColor: '#10b981',
-          fillOpacity: 0.15,
-          weight: 3,
-          opacity: 0.6,
-        });
-        outerCircle.addTo(map);
-      } else {
-        outerCircle.setRadius(outerRadius);
+        if (cancelled) return;
+
+        // Fix for default marker icons in Leaflet
+        try {
+          if ((L as any)?.Icon?.Default?.prototype) {
+            try {
+              delete (L as any).Icon.Default.prototype._getIconUrl;
+            } catch {
+              // ignore
+            }
+          }
+
+          (L as any).Icon.Default.mergeOptions({
+            iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+            iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+          });
+        } catch {
+          // ignore
+        }
+
+        // Create map centered on the location (always use district-level zoom for fuzzy location)
+        map = (L as any).map(mapRef.current!, {
+          center: [lat, lng],
+          zoom: 13, // Always use district-level zoom to hide exact location
+          zoomControl: true,
+          attributionControl: true,
+        }) as Leaflet.Map;
+
+        // Store immediately so cleanup can always remove it, even if subsequent steps throw.
+        mapInstanceRef.current = map;
+
+        (L as any)
+          .tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            maxZoom: 19,
+          })
+          .addTo(map);
+
+        // Add circles with fixed geographic size (meters) to show approximate area (not exact address)
+        (L as any)
+          .circle([lat, lng], {
+            radius: 500,
+            color: '#10b981',
+            fillColor: '#10b981',
+            fillOpacity: 0.15,
+            weight: 3,
+            opacity: 0.6,
+          })
+          .addTo(map);
+
+        (L as any)
+          .circle([lat, lng], {
+            radius: 300,
+            color: '#34d399',
+            fillColor: '#34d399',
+            fillOpacity: 0.2,
+            weight: 2,
+            opacity: 0.5,
+          })
+          .addTo(map);
+
+      } catch {
+        // ignore map failures; UI still renders location summary below.
       }
-      
-      // Update or create middle circle (uses meters, maintains geographic size)
-      if (!middleCircle) {
-        middleCircle = L.circle([lat, lng], {
-          radius: middleRadius,
-          color: '#34d399',
-          fillColor: '#34d399',
-          fillOpacity: 0.2,
-          weight: 2,
-          opacity: 0.5,
-        });
-        middleCircle.addTo(map);
-      } else {
-        middleCircle.setRadius(middleRadius);
-      }
-    };
-    
-    // Circles maintain geographic size automatically, no need for zoom updates
-    updateCircles(); // Initial render
-
-    mapInstanceRef.current = map;
+    })();
 
     return () => {
+      cancelled = true;
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
+        try {
+          mapInstanceRef.current.remove();
+        } catch {
+          // ignore
+        } finally {
+          mapInstanceRef.current = null;
+        }
+      }
+      if (map) {
+        try {
+          map.remove();
+        } catch {
+          // ignore
+        } finally {
+          map = null;
+        }
+      }
+
+      // Extra safety: ensure Leaflet's container stamp is cleared.
+      const el = mapRef.current as any;
+      if (el?._leaflet_id) {
+        try {
+          delete el._leaflet_id;
+        } catch {
+          // ignore
+        }
       }
     };
-  }, [locationType, locationArea, locationLat, locationLng]);
+  }, [locationType, locationArea]);
+
+  if (IS_E2E) {
+    return (
+      <div className="w-full h-64 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg flex items-center justify-center border border-gray-200 pointer-events-none">
+        <div className="text-center">
+          <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center mx-auto mb-3">
+            <MapPin className="w-8 h-8 text-gray-600" />
+          </div>
+          <p className="text-gray-700 font-medium">Map disabled in E2E</p>
+          <p className="text-sm text-gray-600 mt-1">{locationType === 'Online' ? 'Online Service' : 'In-person area shown without map'}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (locationType === 'Online') {
     return (

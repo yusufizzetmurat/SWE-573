@@ -78,7 +78,7 @@ class TestProvisionTimebank:
             service=service,
             requester=receiver,
             status='pending',
-            provisioned_hours=Decimal('0.00')
+            provisioned_hours=Decimal('2.00')
         )
         
         provision_timebank(handshake)

@@ -5,12 +5,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BrowserRouter } from 'react-router-dom'
-import Dashboard from '../Dashboard'
+import { Dashboard } from '../Dashboard'
 import { AuthProvider } from '../../lib/auth-context'
 import { ToastProvider } from '../Toast'
 import { testUsers, testServices } from '../../test/fixtures/test-data'
 import { server } from '../../test/setup'
-import { rest } from 'msw'
+import { http, HttpResponse } from 'msw'
 
 const renderWithProviders = (component: React.ReactElement) => {
   return render(
@@ -31,18 +31,16 @@ describe('Dashboard Integration', () => {
 
   it('loads and displays services from API', async () => {
     server.use(
-      rest.get('/api/users/me/', (req, res, ctx) => {
-        return res(ctx.json(testUsers[0]))
-      }),
-      rest.get('/api/services/', (req, res, ctx) => {
-        return res(ctx.json({
+      http.get('/api/users/me/', () => HttpResponse.json(testUsers[0])),
+      http.get('/api/services/', () =>
+        HttpResponse.json({
           results: testServices,
           count: testServices.length,
-        }))
-      })
+        })
+      )
     )
 
-    renderWithProviders(<Dashboard />)
+    renderWithProviders(<Dashboard onNavigate={() => {}} />)
 
     await waitFor(() => {
       expect(screen.getByText(testServices[0].title)).toBeInTheDocument()
@@ -51,15 +49,13 @@ describe('Dashboard Integration', () => {
 
   it('handles API error gracefully', async () => {
     server.use(
-      rest.get('/api/users/me/', (req, res, ctx) => {
-        return res(ctx.json(testUsers[0]))
-      }),
-      rest.get('/api/services/', (req, res, ctx) => {
-        return res(ctx.status(500), ctx.json({ detail: 'Internal server error' }))
-      })
+      http.get('/api/users/me/', () => HttpResponse.json(testUsers[0])),
+      http.get('/api/services/', () =>
+        HttpResponse.json({ detail: 'Internal server error' }, { status: 500 })
+      )
     )
 
-    renderWithProviders(<Dashboard />)
+    renderWithProviders(<Dashboard onNavigate={() => {}} />)
 
     await waitFor(() => {
       expect(screen.getByText(/error/i)).toBeInTheDocument()
@@ -68,22 +64,19 @@ describe('Dashboard Integration', () => {
 
   it('filters services by type', async () => {
     server.use(
-      rest.get('/api/users/me/', (req, res, ctx) => {
-        return res(ctx.json(testUsers[0]))
-      }),
-      rest.get('/api/services/', (req, res, ctx) => {
-        const type = req.url.searchParams.get('type')
-        const filtered = type 
-          ? testServices.filter(s => s.type === type)
-          : testServices
-        return res(ctx.json({
+      http.get('/api/users/me/', () => HttpResponse.json(testUsers[0])),
+      http.get('/api/services/', ({ request }) => {
+        const url = new URL(request.url);
+        const type = url.searchParams.get('type');
+        const filtered = type ? testServices.filter((s) => s.type === type) : testServices;
+        return HttpResponse.json({
           results: filtered,
           count: filtered.length,
-        }))
+        });
       })
     )
 
-    renderWithProviders(<Dashboard />)
+    renderWithProviders(<Dashboard onNavigate={() => {}} />)
 
     await waitFor(() => {
       expect(screen.getByText(testServices[0].title)).toBeInTheDocument()

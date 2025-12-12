@@ -71,6 +71,11 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
+    def save(self, *args, **kwargs):
+        if self.timebank_balance is None:
+            self.timebank_balance = Decimal('3.00')
+        super().save(*args, **kwargs)
+
     class Meta:
         indexes = [
             models.Index(fields=['email']),
@@ -216,15 +221,26 @@ class Service(models.Model):
             if 'status' in update_fields and self.status == 'Active':
                 should_calculate_hot_score = True
         
+        defer_hot_score_calculation = False
         if should_calculate_hot_score and self.status == 'Active':
+            # UUID primary keys are assigned before the first DB save, so use
+            # the model state (and created_at) to detect "new" instances.
+            if self._state.adding or self.created_at is None:
+                defer_hot_score_calculation = True
+            else:
+                from .ranking import calculate_hot_score
+                self.hot_score = calculate_hot_score(self)
+                if update_fields is not None:
+                    update_fields_set = set(update_fields)
+                    update_fields_set.add('hot_score')
+                    kwargs['update_fields'] = list(update_fields_set)
+
+        super().save(*args, **kwargs)
+
+        if defer_hot_score_calculation:
             from .ranking import calculate_hot_score
             self.hot_score = calculate_hot_score(self)
-            if update_fields is not None:
-                update_fields_set = set(update_fields)
-                update_fields_set.add('hot_score')
-                kwargs['update_fields'] = list(update_fields_set)
-        
-        super().save(*args, **kwargs)
+            super().save(update_fields=['hot_score'])
 
     def __str__(self):
         return self.title

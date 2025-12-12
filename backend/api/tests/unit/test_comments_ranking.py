@@ -422,15 +422,15 @@ class CommentAPITest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
     
     def test_create_comment_authenticated(self):
-        """Test that authenticated users can create comments"""
+        """Test that authenticated users cannot create service comments (read-only endpoint)"""
         self.client.force_authenticate(user=self.user)
         
         url = reverse('service-comments', kwargs={'service_id': self.service.id})
         data = {'body': 'Great service!'}
         response = self.client.post(url, data, format='json')
         
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Comment.objects.count(), 1)
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertEqual(Comment.objects.count(), 0)
     
     def test_create_comment_unauthenticated(self):
         """Test that unauthenticated users cannot create comments"""
@@ -441,7 +441,7 @@ class CommentAPITest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
     
     def test_create_reply(self):
-        """Test creating a reply to a comment"""
+        """Test that replies cannot be created via service comments API (read-only endpoint)"""
         self.client.force_authenticate(user=self.user)
         
         parent = Comment.objects.create(
@@ -454,11 +454,11 @@ class CommentAPITest(TestCase):
         data = {'body': 'Reply!', 'parent_id': str(parent.id)}
         response = self.client.post(url, data, format='json')
         
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Comment.objects.count(), 2)
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertEqual(Comment.objects.count(), 1)
     
     def test_cannot_reply_to_reply(self):
-        """Test that replies cannot have replies (single-level threading)"""
+        """Test that service comments API rejects posting (read-only endpoint)"""
         self.client.force_authenticate(user=self.user)
         
         parent = Comment.objects.create(
@@ -477,10 +477,10 @@ class CommentAPITest(TestCase):
         data = {'body': 'Reply to reply!', 'parent_id': str(reply.id)}
         response = self.client.post(url, data, format='json')
         
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
     
     def test_edit_own_comment(self):
-        """Test editing own comment"""
+        """Test that service comments API rejects edits (read-only endpoint)"""
         self.client.force_authenticate(user=self.user)
         
         comment = Comment.objects.create(
@@ -496,12 +496,12 @@ class CommentAPITest(TestCase):
         data = {'body': 'Updated text'}
         response = self.client.patch(url, data, format='json')
         
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
         comment.refresh_from_db()
-        self.assertEqual(comment.body, 'Updated text')
+        self.assertEqual(comment.body, 'Original text')
     
     def test_cannot_edit_others_comment(self):
-        """Test that users cannot edit others' comments"""
+        """Test that service comments API rejects edits (read-only endpoint)"""
         self.client.force_authenticate(user=self.user)
         
         comment = Comment.objects.create(
@@ -517,10 +517,10 @@ class CommentAPITest(TestCase):
         data = {'body': 'Hacked!'}
         response = self.client.patch(url, data, format='json')
         
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
     
     def test_delete_own_comment(self):
-        """Test soft deleting own comment"""
+        """Test that service comments API rejects deletes (read-only endpoint)"""
         self.client.force_authenticate(user=self.user)
         
         comment = Comment.objects.create(
@@ -535,12 +535,12 @@ class CommentAPITest(TestCase):
         })
         response = self.client.delete(url)
         
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
         comment.refresh_from_db()
-        self.assertTrue(comment.is_deleted)
+        self.assertFalse(comment.is_deleted)
     
     def test_service_owner_can_delete_any_comment(self):
-        """Test that service owners can delete any comment on their service"""
+        """Test that service comments API rejects deletes even for service owners (read-only endpoint)"""
         self.client.force_authenticate(user=self.other_user)  # Service owner
         
         comment = Comment.objects.create(
@@ -555,7 +555,10 @@ class CommentAPITest(TestCase):
         })
         response = self.client.delete(url)
         
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+        comment.refresh_from_db()
+        self.assertFalse(comment.is_deleted)
 
 
 class NegativeRepAPITest(TestCase):
@@ -689,8 +692,7 @@ class ServiceHotScoreSortingTest(TestCase):
             type='Offer',
             duration=Decimal('1.00'),
             location_type='Online',
-            schedule_type='One-Time',
-            hot_score=0.5
+            schedule_type='One-Time'
         )
         self.service2 = Service.objects.create(
             user=self.user,
@@ -699,8 +701,7 @@ class ServiceHotScoreSortingTest(TestCase):
             type='Offer',
             duration=Decimal('1.00'),
             location_type='Online',
-            schedule_type='One-Time',
-            hot_score=10.0
+            schedule_type='One-Time'
         )
         self.service3 = Service.objects.create(
             user=self.user,
@@ -709,9 +710,14 @@ class ServiceHotScoreSortingTest(TestCase):
             type='Offer',
             duration=Decimal('1.00'),
             location_type='Online',
-            schedule_type='One-Time',
-            hot_score=5.0
+            schedule_type='One-Time'
         )
+
+        # Service.save() calculates hot_score automatically for active services,
+        # so set deterministic test values directly in DB.
+        Service.objects.filter(pk=self.service1.pk).update(hot_score=0.5)
+        Service.objects.filter(pk=self.service2.pk).update(hot_score=10.0)
+        Service.objects.filter(pk=self.service3.pk).update(hot_score=5.0)
     
     def test_sort_by_hot_score(self):
         """Test sorting services by hot score"""

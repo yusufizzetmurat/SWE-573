@@ -171,7 +171,11 @@ export function Navbar({
                 {/* User Profile Dropdown */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="flex items-center justify-center w-10 h-10 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors">
+                    <button
+                      className="flex items-center justify-center w-10 h-10 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+                      data-testid="navbar-user-menu"
+                      aria-label="Open user menu"
+                    >
                       <User className="w-5 h-5" />
                     </button>
                   </DropdownMenuTrigger>

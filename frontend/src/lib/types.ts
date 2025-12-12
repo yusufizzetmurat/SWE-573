@@ -102,6 +102,7 @@ export function getErrorMessage(error: unknown, defaultMessage: string = ERROR_M
     // Check for response.data
     if (apiError.response?.data) {
       const data = apiError.response.data;
+      const detail = data.detail ? (typeof data.detail === 'string' ? data.detail : String(data.detail)) : '';
       
       // New standardized format: { detail, code, field_errors? }
       if (data.detail && data.code) {
@@ -114,10 +115,38 @@ export function getErrorMessage(error: unknown, defaultMessage: string = ERROR_M
         }
         return data.detail;
       }
-      
+
+      // Collect field-level errors (e.g., {"email": ["user with this email already exists."]})
+      const fieldErrors: string[] = [];
+
+      if (data.field_errors && typeof data.field_errors === 'object') {
+        for (const [field, errors] of Object.entries(data.field_errors)) {
+          if (Array.isArray(errors)) {
+            fieldErrors.push(`${field}: ${errors.join(', ')}`);
+          }
+        }
+      }
+
+      for (const key in data) {
+        if (key !== 'detail' && key !== 'error' && key !== 'message' && key !== 'code' && key !== 'field_errors') {
+          if (Array.isArray(data[key])) {
+            const messages = (data[key] as unknown[])
+              .filter((v): v is string => typeof v === 'string')
+              .map((msg) => `${key}: ${msg}`);
+            fieldErrors.push(...messages);
+          } else if (typeof data[key] === 'string') {
+            fieldErrors.push(`${key}: ${data[key]}`);
+          }
+        }
+      }
+
+      if (detail && fieldErrors.length > 0) {
+        return `${detail} ${fieldErrors.join('. ')}`;
+      }
+
       // Legacy support: Check for old error format
-      if (data.detail) {
-        return typeof data.detail === 'string' ? data.detail : String(data.detail);
+      if (detail) {
+        return detail;
       }
       if (data.error) {
         return typeof data.error === 'string' ? data.error : String(data.error);
@@ -125,19 +154,7 @@ export function getErrorMessage(error: unknown, defaultMessage: string = ERROR_M
       if (data.message) {
         return typeof data.message === 'string' ? data.message : String(data.message);
       }
-      
-      // Handle field-level errors (e.g., {"email": ["user with this email already exists."]})
-      const fieldErrors: string[] = [];
-      for (const key in data) {
-        if (key !== 'detail' && key !== 'error' && key !== 'message' && key !== 'code' && key !== 'field_errors') {
-          if (Array.isArray(data[key])) {
-            const messages = (data[key] as string[]).map(msg => `${key}: ${msg}`);
-            fieldErrors.push(...messages);
-          } else if (typeof data[key] === 'string') {
-            fieldErrors.push(`${key}: ${data[key]}`);
-          }
-        }
-      }
+
       if (fieldErrors.length > 0) {
         return fieldErrors.join('. ');
       }

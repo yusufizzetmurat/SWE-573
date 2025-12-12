@@ -59,7 +59,7 @@ class TestUserProfileView:
 @pytest.mark.django_db
 @pytest.mark.integration
 class TestUserHistoryView:
-    """Test UserHistoryView (GET /api/users/me/history/)"""
+    """Test UserHistoryView (GET /api/users/{id}/history/)"""
     
     def test_get_user_history(self):
         """Test retrieving user transaction history"""
@@ -75,7 +75,7 @@ class TestUserHistoryView:
         client = AuthenticatedAPIClient()
         client.authenticate_user(user)
         
-        response = client.get('/api/users/me/history/')
+        response = client.get(f'/api/users/{user.id}/history/')
         assert response.status_code == status.HTTP_200_OK
         assert isinstance(response.data, list)
     
@@ -85,7 +85,7 @@ class TestUserHistoryView:
         client = AuthenticatedAPIClient()
         client.authenticate_user(user)
         
-        response = client.get('/api/users/me/history/')
+        response = client.get(f'/api/users/{user.id}/history/')
         assert response.status_code == status.HTTP_200_OK
         assert response.data == []
 
@@ -152,9 +152,10 @@ class TestUserVerifiedReviewsView:
         
         response = client.get(f'/api/users/{user.id}/verified-reviews/')
         assert response.status_code == status.HTTP_200_OK
-        assert isinstance(response.data, list)
-        if len(response.data) > 0:
-            assert response.data[0]['is_verified_review'] is True
+        assert isinstance(response.data, dict)
+        assert 'results' in response.data
+        if len(response.data['results']) > 0:
+            assert response.data['results'][0]['is_verified_review'] is True
 
 
 @pytest.mark.django_db

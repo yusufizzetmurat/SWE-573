@@ -72,6 +72,14 @@ class UserSummarySerializer(serializers.ModelSerializer):
         except (AttributeError, Exception):
             return []
 
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_featured_badge(self, obj):
+        """Return the featured badge ID, with a fallback to the first badge."""
+        if getattr(obj, 'featured_achievement_id', None):
+            return obj.featured_achievement_id
+        badges = self.get_badges(obj)
+        return badges[0] if badges else None
+
 class AdminUserListSerializer(serializers.ModelSerializer):
     """Simplified serializer for admin user list view"""
     class Meta:
@@ -83,14 +91,6 @@ class AdminUserListSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
     
-    @extend_schema_field(OpenApiTypes.STR)
-    def get_featured_badge(self, obj):
-        """Return featured achievement ID or first badge ID as fallback"""
-        if obj.featured_achievement_id:
-            return obj.featured_achievement_id
-        badges = self.get_badges(obj)
-        return badges[0] if badges else None
-
 @extend_schema_serializer(
     examples=[
         OpenApiExample(
@@ -340,7 +340,10 @@ class ServiceSerializer(serializers.ModelSerializer):
         tag_names = validated_data.pop('tag_names', [])
         
         # Extract media data URLs if provided
-        media_data_urls = self.context['request'].data.get('media', [])
+        request = self.context.get('request')
+        media_data_urls = []
+        if request is not None and hasattr(request, 'data'):
+            media_data_urls = request.data.get('media', [])
         if not isinstance(media_data_urls, list):
             media_data_urls = []
         
@@ -378,8 +381,11 @@ class ServiceSerializer(serializers.ModelSerializer):
             except (ValueError, TypeError, Exception):
                 validated_data.pop('location_lng', None)
         
-        # The user will be passed in from the View
-        validated_data['user'] = self.context['request'].user
+        # Prefer explicit user passed via serializer.save(user=...)
+        if 'user' not in validated_data:
+            if request is None or not hasattr(request, 'user'):
+                raise serializers.ValidationError({'user': 'User is required'})
+            validated_data['user'] = request.user
         service = super().create(validated_data)
         
         # Collect all tags to add
@@ -885,6 +891,7 @@ class NotificationSerializer(serializers.ModelSerializer):
                 'is_punctual': True,
                 'is_helpful': True,
                 'is_kind': False,
+                'comment': 'Great experience. Very professional and helpful.',
                 'created_at': '2024-01-01T12:00:00Z'
             },
             response_only=True
@@ -895,7 +902,8 @@ class NotificationSerializer(serializers.ModelSerializer):
                 'handshake_id': '123e4567-e89b-12d3-a456-426614174002',
                 'punctual': True,
                 'helpful': True,
-                'kindness': False
+                'kindness': False,
+                'comment': 'Optional verified review text'
             },
             request_only=True
         )
@@ -909,7 +917,7 @@ class ReputationRepSerializer(serializers.ModelSerializer):
         model = ReputationRep
         fields = [
             'id', 'handshake', 'giver', 'giver_name', 'receiver', 'receiver_name',
-            'is_punctual', 'is_helpful', 'is_kind', 'created_at'
+            'is_punctual', 'is_helpful', 'is_kind', 'comment', 'created_at'
         ]
 
     @extend_schema_field(OpenApiTypes.STR)
@@ -1289,6 +1297,15 @@ class CommentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Cannot reply to a reply. Only top-level comments can have replies.')
         
         return value
+
+    def create(self, validated_data):
+        parent_id = validated_data.pop('parent_id', None)
+        validated_data.pop('handshake_id', None)
+
+        if parent_id is not None:
+            validated_data['parent_id'] = parent_id
+
+        return super().create(validated_data)
 
 
 class CommentReplySerializer(serializers.ModelSerializer):

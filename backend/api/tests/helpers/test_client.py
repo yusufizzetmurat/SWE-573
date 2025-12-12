@@ -10,6 +10,10 @@ User = get_user_model()
 
 class AuthenticatedAPIClient(APIClient):
     """APIClient with authentication helpers"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.raise_request_exception = True
     
     def authenticate_user(self, user):
         """Authenticate a user and set Authorization header"""

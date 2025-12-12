@@ -178,7 +178,6 @@ export function ForumCreateTopic({
                   className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 ${
                     errors.category ? 'border-red-500' : 'border-gray-300'
                   }`}
-                  disabled={!!categorySlug}
                 >
                   <option value="">Select a category...</option>
                   {categories.map(category => (

@@ -47,12 +47,56 @@ class CacheManager:
     
     @staticmethod
     def delete_pattern(pattern: str) -> None:
+        """Best-effort delete for cache backends that support pattern deletes.
+
+        - If using django-redis, use its connection helper.
+        - If using Django's built-in RedisCache, connect via redis-py.
+        - Otherwise, fall back to clearing the whole cache (better than leaving stale data).
+        """
+
+        # Try django-redis first if present.
         try:
-            from django_redis import get_redis_connection
+            from django_redis import get_redis_connection  # type: ignore
+
             conn = get_redis_connection("default")
-            keys = conn.keys(f"*{pattern}*")
+            match = f"*{pattern}*"
+            keys = conn.keys(match)
             if keys:
                 conn.delete(*keys)
+            return
+        except Exception:
+            pass
+
+        # Try Django's built-in RedisCache (django.core.cache.backends.redis.RedisCache).
+        try:
+            backend = settings.CACHES.get('default', {}).get('BACKEND', '')
+            location = settings.CACHES.get('default', {}).get('LOCATION')
+
+            if isinstance(location, (list, tuple)):
+                location = location[0] if location else None
+
+            if location and 'redis' in str(backend).lower():
+                import redis  # type: ignore
+
+                client = redis.Redis.from_url(str(location))
+                match = f"*{pattern}*"
+
+                # Use SCAN to avoid blocking Redis on large keyspaces.
+                batch: list[bytes] = []
+                for key in client.scan_iter(match=match, count=500):
+                    batch.append(key)
+                    if len(batch) >= 500:
+                        client.delete(*batch)
+                        batch.clear()
+                if batch:
+                    client.delete(*batch)
+                return
+        except Exception:
+            pass
+
+        # Fallback: clear cache to avoid serving stale data.
+        try:
+            cache.clear()
         except Exception:
             pass
     

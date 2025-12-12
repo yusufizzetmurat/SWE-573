@@ -480,12 +480,17 @@ export interface ReputationRep {
 }
 
 export const reputationAPI = {
-  submit: async (handshakeId: string, reps: {punctual: boolean, helpful: boolean, kindness: boolean}, signal?: AbortSignal): Promise<ReputationRep> => {
+  submit: async (
+    handshakeId: string,
+    reps: { punctual: boolean; helpful: boolean; kindness: boolean; comment?: string },
+    signal?: AbortSignal
+  ): Promise<ReputationRep> => {
     const response = await apiClient.post('/reputation/', {
       handshake_id: handshakeId,
       punctual: reps.punctual,
       helpful: reps.helpful,
-      kindness: reps.kindness
+      kindness: reps.kindness,
+      comment: reps.comment
     }, { signal });
     return response.data;
   },

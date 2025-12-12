@@ -8,11 +8,12 @@ import {
   DialogTitle,
 } from './ui/dialog';
 import { Button } from './ui/button';
+import { Textarea } from './ui/textarea';
 
 interface PositiveRepModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (reps: { punctual: boolean; helpful: boolean; kind: boolean }) => void;
+  onSubmit: (payload: { punctual: boolean; helpful: boolean; kind: boolean; comment?: string }) => void;
   userName?: string;
 }
 
@@ -28,6 +29,8 @@ export function PositiveRepModal({
     kind: false,
   });
 
+  const [comment, setComment] = useState('');
+
   const toggleRep = (rep: 'punctual' | 'helpful' | 'kind') => {
     setSelectedReps(prev => ({
       ...prev,
@@ -36,15 +39,17 @@ export function PositiveRepModal({
   };
 
   const handleSubmit = () => {
-    onSubmit(selectedReps);
+    onSubmit({ ...selectedReps, comment: comment.trim() || undefined });
     onClose();
     // Reset for next time
     setSelectedReps({ punctual: false, helpful: false, kind: false });
+    setComment('');
   };
 
   const handleSkip = () => {
     onClose();
     setSelectedReps({ punctual: false, helpful: false, kind: false });
+    setComment('');
   };
 
   return (
@@ -149,6 +154,20 @@ export function PositiveRepModal({
               )}
             </div>
           </button>
+        </div>
+
+        {/* Optional verified review text */}
+        <div className="mt-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Verified review (optional)
+          </label>
+          <Textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder={`Share a short note about your experience with ${userName}...`}
+            className="min-h-[90px] resize-none"
+            maxLength={2000}
+          />
         </div>
 
         {/* Action Buttons */}

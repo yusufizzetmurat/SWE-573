@@ -187,7 +187,7 @@ class TestCommentSerializer:
         user = UserFactory()
         serializer = CommentSerializer(data={
             'body': 'This is a reply',
-            'parent': str(parent.id)
+            'parent_id': str(parent.id)
         })
         assert serializer.is_valid()
         reply = serializer.save(user=user, service=parent.service)

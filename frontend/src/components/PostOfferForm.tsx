@@ -364,6 +364,7 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
               <Label htmlFor="title">Offer Title *</Label>
               <Input
                 id="title"
+                data-testid="post-offer-title"
                 placeholder="e.g., Manti Cooking Lesson"
                 className="mt-2"
                 value={formData.title}
@@ -380,6 +381,7 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
               <Label htmlFor="description">Description *</Label>
               <Textarea
                 id="description"
+                data-testid="post-offer-description"
                 placeholder="Describe what you're offering, what participants will learn or experience, and any requirements..."
                 className="mt-2 min-h-[180px]"
                 value={formData.description}
@@ -435,7 +437,7 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
                   value={formData.duration}
                   onValueChange={(value) => setFormData({ ...formData, duration: value })}
                 >
-                  <SelectTrigger id="duration" className="mt-2">
+                  <SelectTrigger id="duration" className="mt-2" data-testid="post-offer-duration">
                     <SelectValue placeholder="Select duration" />
                   </SelectTrigger>
                   <SelectContent>
@@ -453,6 +455,7 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
                 <Label htmlFor="participants">Maximum Participants *</Label>
                 <Input
                   id="participants"
+                  data-testid="post-offer-participants"
                   type="number"
                   min="1"
                   max="20"
@@ -473,7 +476,7 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
                 value={formData.location_type}
                 onValueChange={(value) => setFormData({ ...formData, location_type: value })}
               >
-                <SelectTrigger id="location_type" className="mt-2">
+                <SelectTrigger id="location_type" className="mt-2" data-testid="post-offer-location-type">
                   <SelectValue placeholder="Select location type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -521,13 +524,13 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
                 id="schedule-type"
               >
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="one-time" id="one-time" />
+                  <RadioGroupItem value="one-time" id="one-time" data-testid="schedule-type-one-time" />
                   <Label htmlFor="one-time" className="cursor-pointer">
                     One-time Event
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="recurrent" id="recurrent" />
+                  <RadioGroupItem value="recurrent" id="recurrent" data-testid="schedule-type-recurrent" />
                   <Label htmlFor="recurrent" className="cursor-pointer">
                     Recurrent Event
                   </Label>
@@ -672,7 +675,7 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
                   <div>
                     <Label htmlFor="recurring-frequency" className="text-sm text-gray-700 mb-2 block">Frequency</Label>
                     <Select value={recurringFrequency} onValueChange={(v: string) => setRecurringFrequency(v)}>
-                      <SelectTrigger id="recurring-frequency" className="bg-white">
+                      <SelectTrigger id="recurring-frequency" className="bg-white" data-testid="recurring-frequency">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -720,7 +723,7 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
                           value={recurringHour}
                           onValueChange={(hour) => updateRecurringScheduleTime(hour, recurringMinute, recurringPeriod)}
                         >
-                          <SelectTrigger className="w-20 bg-white border-amber-300">
+                          <SelectTrigger className="w-20 bg-white border-amber-300" data-testid="recurring-hour">
                             <SelectValue placeholder="Hour" />
                           </SelectTrigger>
                           <SelectContent
@@ -746,7 +749,7 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
                           value={recurringMinute}
                           onValueChange={(minute) => updateRecurringScheduleTime(recurringHour, minute, recurringPeriod)}
                         >
-                          <SelectTrigger className="w-20 bg-white border-amber-300">
+                          <SelectTrigger className="w-20 bg-white border-amber-300" data-testid="recurring-minute">
                             <SelectValue placeholder="Min" />
                           </SelectTrigger>
                           <SelectContent
@@ -771,7 +774,7 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
                           value={recurringPeriod}
                           onValueChange={(period) => updateRecurringScheduleTime(recurringHour, recurringMinute, period as 'AM' | 'PM')}
                         >
-                          <SelectTrigger className="w-20 bg-white border-amber-300">
+                          <SelectTrigger className="w-20 bg-white border-amber-300" data-testid="recurring-period">
                             <SelectValue placeholder="AM" />
                           </SelectTrigger>
                           <SelectContent
@@ -893,6 +896,7 @@ export function PostOfferForm({ onNavigate, userBalance = 1, unreadNotifications
                 type="submit"
                 className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
                 disabled={isSubmitting}
+                data-testid="post-offer-submit"
               >
                 {isSubmitting ? 'Publishing...' : 'Publish Offer'}
               </Button>

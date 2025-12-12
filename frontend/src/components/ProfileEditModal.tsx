@@ -6,6 +6,7 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { userAPI, User } from '../lib/api';
+import { logger } from '../lib/logger';
 
 interface ProfileEditModalProps {
   open: boolean;
@@ -112,16 +113,28 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
       onClose();
     } catch (err: unknown) {
       logger.error('Failed to update profile', err instanceof Error ? err : new Error(String(err)));
-      const { getErrorMessage } = await import('../lib/types');
-      const errorMessage = getErrorMessage(err, 'Failed to update profile');
-      setError(errorMessage);
+      const responseData = (err as any)?.response?.data;
+      if (responseData && typeof responseData.detail === 'string' && responseData.detail.trim()) {
+        setError(responseData.detail);
+      } else {
+        const { getErrorMessage } = await import('../lib/types');
+        const errorMessage = getErrorMessage(err, 'Failed to update profile');
+        setError(errorMessage);
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          onClose();
+        }
+      }}
+    >
       <DialogContent className="max-w-2xl max-h-[90vh] p-0 flex flex-col overflow-hidden">
         <div className="flex-shrink-0 bg-white px-6 pt-6 pb-4 border-b">
           <DialogHeader>
@@ -166,6 +179,7 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
               <Label htmlFor="bio">Bio</Label>
               <Textarea
                 id="bio"
+                data-testid="profile-edit-bio"
                 placeholder="Tell us about yourself..."
                 value={formData.bio}
                 onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
@@ -305,7 +319,7 @@ export function ProfileEditModal({ open, onClose, user, onUpdate }: ProfileEditM
             <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button type="submit" className="bg-orange-500 hover:bg-orange-600" disabled={isSubmitting}>
+            <Button type="submit" className="bg-orange-500 hover:bg-orange-600" disabled={isSubmitting} data-testid="profile-edit-submit">
               {isSubmitting ? 'Saving...' : 'Save Changes'}
             </Button>
           </form>

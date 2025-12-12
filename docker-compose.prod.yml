@@ -25,6 +25,8 @@ services:
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - THROTTLE_RELAXED=${THROTTLE_RELAXED:-1}
+      - DISABLE_THROTTLING=${DISABLE_THROTTLING:-0}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]

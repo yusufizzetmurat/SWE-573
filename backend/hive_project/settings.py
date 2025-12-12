@@ -22,6 +22,25 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 
+
+def _is_truthy_env(name: str) -> bool:
+    value = os.environ.get(name, '')
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+
+
+DJANGO_E2E = _is_truthy_env('DJANGO_E2E') or _is_truthy_env('E2E')
+
+# Throttling controls
+# - THROTTLE_RELAXED: keep throttling on, but raise limits to avoid UX issues for small deployments.
+# - DISABLE_THROTTLING / NO_THROTTLE: bypass throttling entirely (use carefully).
+_throttle_relaxed_explicit = os.environ.get('THROTTLE_RELAXED') is not None or os.environ.get('RELAX_THROTTLING') is not None
+THROTTLE_RELAXED = (
+    _is_truthy_env('THROTTLE_RELAXED')
+    or _is_truthy_env('RELAX_THROTTLING')
+    or (not _throttle_relaxed_explicit and not DEBUG)
+)
+DISABLE_THROTTLING = _is_truthy_env('DISABLE_THROTTLING') or _is_truthy_env('NO_THROTTLE')
+
 SECRET_KEY = os.environ.get('SECRET_KEY')
 if not SECRET_KEY:
     if DEBUG:
@@ -109,6 +128,36 @@ DATABASES = {
         'PORT': '5432',
     }
 }
+
+# Cache Configuration
+# - In docker-compose, Redis is available and ensures DRF throttling is centralized.
+# - Outside docker, fall back to local memory cache.
+REDIS_HOST = os.environ.get('REDIS_HOST')
+REDIS_PORT = os.environ.get('REDIS_PORT', '6379')
+REDIS_DB = os.environ.get('REDIS_DB', '1')
+REDIS_URL = os.environ.get('REDIS_URL')
+
+if REDIS_URL:
+    _cache_location = REDIS_URL
+elif REDIS_HOST:
+    _cache_location = f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+else:
+    _cache_location = None
+
+if _cache_location:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': _cache_location,
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'hive-locmem',
+        }
+    }
 
 # Use new custom User model
 AUTH_USER_MODEL = 'api.User'
@@ -199,8 +248,8 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ),
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
+        'api.throttles.E2EAwareAnonRateThrottle',
+        'api.throttles.E2EAwareUserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '20/hour',        # Reduced from 100/hour (REQ-NF-SEC-002)
@@ -216,6 +265,55 @@ REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'EXCEPTION_HANDLER': 'api.exceptions.custom_exception_handler',
 }
+
+# Relaxed throttling: for small/private deployments where UX matters more than strict abuse prevention.
+# This keeps throttling enabled but effectively makes it "hard to hit" during normal usage.
+if THROTTLE_RELAXED:
+    REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {
+        **REST_FRAMEWORK.get('DEFAULT_THROTTLE_RATES', {}),
+        'anon': '500/hour',
+        'user': '10000/hour',
+        'registration': '200/hour',
+        'handshake': '500/hour',
+        'chat': '5000/hour',
+        'confirm': '200/hour',
+        'sensitive': '200/hour',
+        'reputation': '200/hour',
+        'admin': '1000/hour',
+    }
+
+# E2E mode: keep production/security defaults intact, but make automated tests deterministic.
+# We still keep throttle classes enabled (E2E-aware wrappers will bypass), and bump rates
+# as a safety net for any non-wrapped throttles.
+if DJANGO_E2E:
+    REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {
+        **REST_FRAMEWORK.get('DEFAULT_THROTTLE_RATES', {}),
+        'anon': '100000/hour',
+        'user': '100000/hour',
+        'registration': '100000/hour',
+        'handshake': '100000/hour',
+        'chat': '100000/hour',
+        'confirm': '100000/hour',
+        'sensitive': '100000/hour',
+        'reputation': '100000/hour',
+        'admin': '100000/hour',
+    }
+
+# Explicit throttle disable (overrides everything): used for local demos or tightly controlled deployments.
+# Throttles will be bypassed by api.throttles.* classes when this is enabled.
+if DISABLE_THROTTLING:
+    REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {
+        **REST_FRAMEWORK.get('DEFAULT_THROTTLE_RATES', {}),
+        'anon': '1000000/hour',
+        'user': '1000000/hour',
+        'registration': '1000000/hour',
+        'handshake': '1000000/hour',
+        'chat': '1000000/hour',
+        'confirm': '1000000/hour',
+        'sensitive': '1000000/hour',
+        'reputation': '1000000/hour',
+        'admin': '1000000/hour',
+    }
 
 # Simple JWT Configuration
 from datetime import timedelta

@@ -26,9 +26,10 @@ class TestChatViewSet:
         client = AuthenticatedAPIClient()
         client.authenticate_user(user)
         
-        response = client.get('/api/chat/conversations/')
+        response = client.get('/api/chats/')
         assert response.status_code == status.HTTP_200_OK
-        assert isinstance(response.data, list)
+        assert 'results' in response.data
+        assert any(item['handshake_id'] == str(handshake.id) for item in response.data['results'])
     
     def test_get_conversation_messages(self):
         """Test retrieving messages for a conversation"""
@@ -41,9 +42,10 @@ class TestChatViewSet:
         client = AuthenticatedAPIClient()
         client.authenticate_user(user)
         
-        response = client.get(f'/api/chat/conversations/{handshake.id}/messages/')
+        response = client.get(f'/api/chats/{handshake.id}/')
         assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 3
+        assert response.data['count'] == 3
+        assert len(response.data['results']) == 3
     
     def test_send_message(self):
         """Test sending a chat message"""
@@ -55,7 +57,8 @@ class TestChatViewSet:
         client = AuthenticatedAPIClient()
         client.authenticate_user(requester)
         
-        response = client.post(f'/api/chat/conversations/{handshake.id}/messages/', {
+        response = client.post('/api/chats/', {
+            'handshake_id': str(handshake.id),
             'body': 'Hello, I am interested!'
         })
         assert response.status_code == status.HTTP_201_CREATED
@@ -75,7 +78,8 @@ class TestChatViewSet:
         client = AuthenticatedAPIClient()
         client.authenticate_user(user2)
         
-        response = client.post(f'/api/chat/conversations/{handshake.id}/messages/', {
+        response = client.post('/api/chats/', {
+            'handshake_id': str(handshake.id),
             'body': 'Unauthorized message'
         })
         assert response.status_code == status.HTTP_403_FORBIDDEN
@@ -89,27 +93,40 @@ class TestPublicChatViewSet:
     def test_get_public_chat_room(self):
         """Test retrieving public chat room for a service"""
         service = ServiceFactory()
-        client = APIClient()
+        user = UserFactory()
+        client = AuthenticatedAPIClient()
+        client.authenticate_user(user)
         
         response = client.get(f'/api/public-chat/{service.id}/')
         assert response.status_code == status.HTTP_200_OK
-        assert 'id' in response.data
-        assert 'name' in response.data
+        assert 'room' in response.data
+        assert 'messages' in response.data
+        assert 'id' in response.data['room']
+        assert 'name' in response.data['room']
     
     def test_get_public_chat_messages(self):
         """Test retrieving public chat messages"""
         service = ServiceFactory()
         user = UserFactory()
+        room, _ = ChatRoom.objects.get_or_create(
+            related_service=service,
+            defaults={
+                'name': f"Discussion: {service.title}",
+                'type': 'public',
+            }
+        )
         PublicChatMessage.objects.create(
-            room=service.chat_room,
+            room=room,
             sender=user,
             body='Public message'
         )
-        
-        client = APIClient()
-        response = client.get(f'/api/public-chat/{service.id}/messages/')
+
+        client = AuthenticatedAPIClient()
+        client.authenticate_user(UserFactory())
+        response = client.get(f'/api/public-chat/{service.id}/')
         assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 1
+        assert response.data['messages']['count'] == 1
+        assert len(response.data['messages']['results']) == 1
     
     def test_send_public_message(self):
         """Test sending public chat message"""
@@ -119,7 +136,7 @@ class TestPublicChatViewSet:
         client = AuthenticatedAPIClient()
         client.authenticate_user(user)
         
-        response = client.post(f'/api/public-chat/{service.id}/messages/', {
+        response = client.post(f'/api/public-chat/{service.id}/', {
             'body': 'Public question about this service'
         })
         assert response.status_code == status.HTTP_201_CREATED

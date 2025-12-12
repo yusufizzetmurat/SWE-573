@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from api.tests.helpers.factories import (
-    UserFactory, ForumCategoryFactory, ForumTopicFactory, ForumPostFactory
+    UserFactory, AdminUserFactory, ForumCategoryFactory, ForumTopicFactory, ForumPostFactory
 )
 from api.tests.helpers.test_client import AuthenticatedAPIClient
 from api.models import ForumCategory, ForumTopic, ForumPost
@@ -38,7 +38,7 @@ class TestForumCategoryViewSet:
     
     def test_create_category_admin_only(self):
         """Test only admins can create categories"""
-        admin = UserFactory(role='admin')
+        admin = AdminUserFactory()
         regular_user = UserFactory()
         
         client = AuthenticatedAPIClient()
@@ -152,7 +152,8 @@ class TestForumPostViewSet:
         client = APIClient()
         response = client.get(f'/api/forum/topics/{topic.id}/posts/')
         assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 5
+        assert response.data['count'] == 5
+        assert len(response.data['results']) == 5
     
     def test_create_post(self):
         """Test creating a forum post"""

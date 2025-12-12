@@ -39,14 +39,14 @@ describe('LoginPage', () => {
     renderWithProviders(<LoginPage onNavigate={mockOnNavigate} />)
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /log in/i })).toBeInTheDocument()
   })
 
   it('validates required fields', async () => {
     const user = userEvent.setup()
     renderWithProviders(<LoginPage onNavigate={mockOnNavigate} />)
     
-    const submitButton = screen.getByRole('button', { name: /sign in/i })
+    const submitButton = screen.getByRole('button', { name: /log in/i })
     await user.click(submitButton)
     
     await waitFor(() => {
@@ -75,14 +75,17 @@ describe('LoginPage', () => {
     
     const emailInput = screen.getByLabelText(/email/i)
     const passwordInput = screen.getByLabelText(/password/i)
-    const submitButton = screen.getByRole('button', { name: /sign in/i })
+    const submitButton = screen.getByRole('button', { name: /log in/i })
     
     await user.type(emailInput, 'test@example.com')
     await user.type(passwordInput, 'password123')
     await user.click(submitButton)
     
     await waitFor(() => {
-      expect(authAPI.login).toHaveBeenCalledWith('test@example.com', 'password123')
+      expect(authAPI.login).toHaveBeenCalledWith({
+        email: 'test@example.com',
+        password: 'password123',
+      })
     })
   })
 
@@ -95,7 +98,7 @@ describe('LoginPage', () => {
     
     const emailInput = screen.getByLabelText(/email/i)
     const passwordInput = screen.getByLabelText(/password/i)
-    const submitButton = screen.getByRole('button', { name: /sign in/i })
+    const submitButton = screen.getByRole('button', { name: /log in/i })
     
     await user.type(emailInput, 'test@example.com')
     await user.type(passwordInput, 'wrongpassword')

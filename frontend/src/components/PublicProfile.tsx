@@ -8,6 +8,7 @@ import { userAPI, serviceAPI, User, Service, UserHistoryItem } from '../lib/api'
 import { useAuth } from '../lib/auth-context';
 import { formatTimebank } from '../lib/utils';
 import { ACHIEVEMENT_CONFIG, getAchievementMeta, NEWCOMER_TAG } from '../lib/achievements';
+import { logger } from '../lib/logger';
 
 interface PublicProfileProps {
   onNavigate: (page: string, data?: unknown) => void;
@@ -213,7 +214,7 @@ export function PublicProfile({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" data-testid="public-profile-page">
       <Navbar 
         activeLink="browse" 
         userBalance={userBalance}
@@ -260,7 +261,7 @@ export function PublicProfile({
 
             {/* Name and Info */}
             <div className="pb-2">
-              <h1 className="text-2xl font-bold text-gray-900 mb-1">{userName}</h1>
+              <h1 className="text-2xl font-bold text-gray-900 mb-1" data-testid="public-profile-name">{userName}</h1>
               <div className="flex items-center gap-4 text-gray-600 text-sm">
                 <div className="flex items-center gap-1">
                   <Award className="w-4 h-4 text-amber-500" />
@@ -364,11 +365,11 @@ export function PublicProfile({
             </div>
 
             {/* Badges */}
-            {earnedBadges.length > 0 && (
+            {earnedAchievements.length > 0 && (
               <div className="bg-white rounded-xl border border-gray-200 p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">Badges</h3>
                 <div className="grid grid-cols-3 gap-3">
-                  {earnedBadges.map((badge) => {
+                  {earnedAchievements.map((badge) => {
                     const Icon = badge.icon;
                     return (
                       <div 

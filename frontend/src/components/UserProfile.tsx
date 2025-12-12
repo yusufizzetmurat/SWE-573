@@ -342,6 +342,7 @@ export function UserProfile({
                 <Button 
                   className="bg-amber-500 hover:bg-amber-600"
                   onClick={() => setShowEditModal(true)}
+                  data-testid="profile-edit-open"
                 >
                   <Edit className="w-4 h-4 mr-2" />
                   Edit Profile

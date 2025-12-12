@@ -4,7 +4,6 @@ from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
-from rest_framework.throttling import AnonRateThrottle, UserRateThrottle, ScopedRateThrottle
 from rest_framework.pagination import PageNumberPagination
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -18,7 +17,15 @@ import bleach
 
 logger = logging.getLogger(__name__)
 
-from .throttles import ConfirmationThrottle, HandshakeThrottle, SensitiveOperationThrottle, ReputationThrottle
+from .throttles import (
+    ConfirmationThrottle,
+    E2EAwareAnonRateThrottle as AnonRateThrottle,
+    E2EAwareScopedRateThrottle as ScopedRateThrottle,
+    E2EAwareUserRateThrottle as UserRateThrottle,
+    HandshakeThrottle,
+    ReputationThrottle,
+    SensitiveOperationThrottle,
+)
 from .exceptions import create_error_response, ErrorCodes
 
 from .models import (
@@ -547,7 +554,7 @@ class UserVerifiedReviewsView(APIView):
     """
     User Verified Reviews
     
-    Get all verified reviews received by a user (reviews about their services).
+    Get all verified reviews received by a user (from completed exchanges).
     
     **GET /api/users/{id}/verified-reviews/** - Get user's verified reviews
     
@@ -583,13 +590,21 @@ class UserVerifiedReviewsView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Get verified reviews where the user is the service provider
+        # Verified reviews are stored as Comment rows created from reputation submissions.
+        # A review's *target user* is the other party in the linked handshake.
+        # We derive “reviews received by target_user” without schema changes:
+        # - Reviews about the service owner: service__user == target_user AND comment.user == handshake.requester
+        # - Reviews about the requester: handshake.requester == target_user AND comment.user == service.owner
+        from django.db.models import F, Q
         from .models import Comment
         comments = Comment.objects.filter(
-            service__user=target_user,
             is_verified_review=True,
-            is_deleted=False
-        ).select_related('user', 'service').prefetch_related(
+            is_deleted=False,
+            related_handshake__isnull=False,
+        ).filter(
+            Q(service__user=target_user, related_handshake__requester=F('user'))
+            | Q(related_handshake__requester=target_user, service__user=F('user'))
+        ).select_related('user', 'service', 'related_handshake').prefetch_related(
             Prefetch(
                 'user__badges',
                 queryset=UserBadge.objects.select_related('badge')
@@ -705,11 +720,6 @@ class ServiceViewSet(viewsets.ModelViewSet):
         queryset = self.filter_queryset(self.get_queryset())
         paginator = self.pagination_class()
         
-        page_size = request.query_params.get('page_size', '20')
-        request.query_params._mutable = True
-        request.query_params['page_size'] = page_size
-        request.query_params._mutable = False
-        
         page = paginator.paginate_queryset(queryset, request)
         
         if page is not None:
@@ -814,12 +824,21 @@ class ServiceViewSet(viewsets.ModelViewSet):
         return response
     
     def perform_update(self, serializer):
+        service = serializer.instance
+        if service.user != self.request.user and getattr(self.request.user, 'role', None) != 'admin':
+            raise PermissionDenied('Attempting to modify another user\'s service')
+
         super().perform_update(serializer)
         invalidate_service_lists()
+        invalidate_user_services(str(service.user.id))
     
     def perform_destroy(self, instance):
+        if instance.user != self.request.user and getattr(self.request.user, 'role', None) != 'admin':
+            raise PermissionDenied('Attempting to delete another user\'s service')
+
         super().perform_destroy(instance)
         invalidate_service_lists()
+        invalidate_user_services(str(instance.user.id))
 
     @action(detail=True, methods=['post'], url_path='toggle-visibility')
     def toggle_visibility(self, request, pk=None):
@@ -2285,10 +2304,10 @@ class ReputationViewSet(viewsets.ModelViewSet):
     
     **Business Rules:**
     - Can only submit reputation for completed handshakes
-    - Only SERVICE RECEIVER can submit reputation for SERVICE PROVIDER
-    - Can only submit reputation once per handshake
-    - Each positive attribute increases provider's karma by 1
-    - May trigger badge assignment for provider
+    - Either handshake participant can submit reputation for the other party
+    - Can only submit reputation once per handshake (per giver)
+    - Each positive attribute increases the reviewed user's karma by 1
+    - May trigger badge assignment for the reviewed user
     
     **Error Scenarios:**
     - 400 Bad Request: Handshake not completed, reputation already submitted
@@ -2308,6 +2327,7 @@ class ReputationViewSet(viewsets.ModelViewSet):
     def create(self, request):
         """Submit positive reputation"""
         handshake_id = request.data.get('handshake_id')
+        raw_comment = (request.data.get('comment') or '').strip()
         
         try:
             handshake = Handshake.objects.select_related(
@@ -2322,25 +2342,19 @@ class ReputationViewSet(viewsets.ModelViewSet):
 
         user = request.user
         
-        # Only SERVICE RECEIVER can give reputation to SERVICE PROVIDER
+        # Determine provider/receiver, then target the *other* party.
         from .utils import get_provider_and_receiver
         provider, receiver = get_provider_and_receiver(handshake)
-        
-        # Check if current user is the receiver (only receivers can give reputation)
-        if user != receiver:
-            return create_error_response(
-                'Only the service receiver can submit reputation for the service provider',
-                code=ErrorCodes.PERMISSION_DENIED,
-                status_code=status.HTTP_403_FORBIDDEN
-            )
-        
-        # Check if user is not a participant at all
+
+        # Check if user is not a participant
         if user not in [provider, receiver]:
             return create_error_response(
                 'Not authorized - you are not a participant in this handshake',
                 code=ErrorCodes.PERMISSION_DENIED,
                 status_code=status.HTTP_403_FORBIDDEN
             )
+
+        target_user = receiver if user == provider else provider
 
         # Check if rep already given
         existing = ReputationRep.objects.filter(handshake=handshake, giver=user).first()
@@ -2352,13 +2366,20 @@ class ReputationViewSet(viewsets.ModelViewSet):
             )
 
         try:
+            cleaned_comment = None
+            if raw_comment:
+                cleaned_comment = bleach.clean(raw_comment, tags=[], strip=True).strip()[:2000]
+                if not cleaned_comment:
+                    cleaned_comment = None
+
             rep = ReputationRep.objects.create(
                 handshake=handshake,
-                giver=user,  # This is the receiver
-                receiver=provider,  # Reputation goes to the provider
+                giver=user,
+                receiver=target_user,  # Reputation goes to the other party
                 is_punctual=request.data.get('punctual', False),
                 is_helpful=request.data.get('helpful', False),
-                is_kind=request.data.get('kindness', False)
+                is_kind=request.data.get('kindness', False),
+                comment=cleaned_comment
             )
         except IntegrityError:
             # Handle race condition where duplicate rep was created between check and create
@@ -2368,14 +2389,32 @@ class ReputationViewSet(viewsets.ModelViewSet):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
+        # Create a verified review entry for Service Detail from the reputation comment.
+        # This is intentionally the only write-path for service verified reviews.
+        if rep.comment:
+            existing_review = Comment.objects.filter(
+                related_handshake=handshake,
+                user=user,
+                is_verified_review=True,
+                is_deleted=False
+            ).exists()
+            if not existing_review:
+                Comment.objects.create(
+                    service=handshake.service,
+                    user=user,
+                    body=rep.comment,
+                    is_verified_review=True,
+                    related_handshake=handshake
+                )
+
         # Check and assign badges for receiver
-        receiver_badges = check_and_assign_badges(receiver)
-        if receiver_badges:
+        target_badges = check_and_assign_badges(target_user)
+        if target_badges:
             # Fetch all badges at once to avoid N+1 queries
-            badges_dict = {badge.id: badge.name for badge in Badge.objects.filter(id__in=receiver_badges)}
-            badge_names = [badges_dict.get(bid, f"Badge {bid}") for bid in receiver_badges]
+            badges_dict = {badge.id: badge.name for badge in Badge.objects.filter(id__in=target_badges)}
+            badge_names = [badges_dict.get(bid, f"Badge {bid}") for bid in target_badges]
             create_notification(
-                user=receiver,
+                user=target_user,
                 notification_type='positive_rep',
                 title='New Badge Earned!',
                 message=f"Congratulations! You earned: {', '.join(badge_names)}",
@@ -2392,8 +2431,8 @@ class ReputationViewSet(viewsets.ModelViewSet):
         if rep.is_kind:
             karma_gain += 1
         
-        provider.karma_score += karma_gain
-        provider.save()
+        target_user.karma_score += karma_gain
+        target_user.save()
         
         # Invalidate conversations cache so UI updates to show reputation was submitted
         invalidate_conversations(str(provider.id))
@@ -3218,10 +3257,17 @@ class CommentViewSet(viewsets.ViewSet):
             'user__badges',
             queryset=UserBadge.objects.select_related('badge')
         )
+        from django.db.models import F
         comments = Comment.objects.filter(
             service=service,
             parent__isnull=True,
             is_deleted=False
+        ).filter(
+            is_verified_review=True,
+            related_handshake__isnull=False,
+            # Only show verified reviews *about the service owner* (service.user).
+            # For both Offer and Need handshakes, the review about service.user is written by handshake.requester.
+            related_handshake__requester=F('user')
         ).select_related('user', 'related_handshake', 'service').prefetch_related(
             user_badges_prefetch,
             Prefetch(
@@ -3259,177 +3305,11 @@ class CommentViewSet(viewsets.ViewSet):
         - User must be either provider or receiver of the handshake
         - User can only post one verified review per handshake
         """
-        service = self._get_service(service_id)
-        if service is None:
-            return create_error_response(
-                'Service not found',
-                code=ErrorCodes.NOT_FOUND,
-                status_code=status.HTTP_404_NOT_FOUND
-            )
-
-        serializer = CommentSerializer(data=request.data)
-        if not serializer.is_valid():
-            return create_error_response(
-                serializer.errors,
-                code=ErrorCodes.VALIDATION_ERROR,
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Sanitize body
-        body = bleach.clean(
-            serializer.validated_data['body'],
-            tags=[],
-            strip=True
-        ).strip()[:2000]
-
-        if not body:
-            return create_error_response(
-                'Comment body is required',
-                code=ErrorCodes.VALIDATION_ERROR,
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Handle parent comment (for replies)
-        parent = None
-        parent_id = serializer.validated_data.get('parent_id')
-        if parent_id:
-            try:
-                parent = Comment.objects.get(id=parent_id, service=service, is_deleted=False)
-                # Enforce single-level threading
-                if parent.parent is not None:
-                    return create_error_response(
-                        'Cannot reply to a reply. Only top-level comments can have replies.',
-                        code=ErrorCodes.VALIDATION_ERROR,
-                        status_code=status.HTTP_400_BAD_REQUEST
-                    )
-            except Comment.DoesNotExist:
-                return create_error_response(
-                    'Parent comment not found',
-                    code=ErrorCodes.NOT_FOUND,
-                    status_code=status.HTTP_404_NOT_FOUND
-                )
-
-        # Handle verified review (with handshake validation)
-        is_verified_review = False
-        related_handshake = None
-        handshake_id = serializer.validated_data.get('handshake_id')
-        
-        # Verified reviews must be top-level comments (not replies)
-        if handshake_id and parent:
-            return create_error_response(
-                'Verified reviews must be top-level comments, not replies',
-                code=ErrorCodes.VALIDATION_ERROR,
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if handshake_id:
-            try:
-                handshake = Handshake.objects.select_related('service', 'requester').get(id=handshake_id)
-            except Handshake.DoesNotExist:
-                return create_error_response(
-                    'Handshake not found',
-                    code=ErrorCodes.NOT_FOUND,
-                    status_code=status.HTTP_404_NOT_FOUND
-                )
-            
-            # Verify handshake is for this service
-            if handshake.service_id != service.id:
-                return create_error_response(
-                    'Handshake does not belong to this service',
-                    code=ErrorCodes.VALIDATION_ERROR,
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Verify handshake is completed
-            if handshake.status != 'completed':
-                return create_error_response(
-                    'Can only post verified review for completed transactions',
-                    code=ErrorCodes.INVALID_STATE,
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Determine provider based on service type
-            if service.type == 'Offer':
-                provider = service.user
-                receiver = handshake.requester
-            else:  # Need
-                provider = handshake.requester
-                receiver = service.user
-            
-            # Verify user is either provider or receiver
-            if request.user.id not in [provider.id, receiver.id]:
-                return create_error_response(
-                    'You must be a participant of this transaction to post a verified review',
-                    code=ErrorCodes.PERMISSION_DENIED,
-                    status_code=status.HTTP_403_FORBIDDEN
-                )
-            
-            # Check for duplicate verified review (exclude soft-deleted reviews)
-            existing_review = Comment.objects.filter(
-                related_handshake=handshake,
-                user=request.user,
-                is_verified_review=True,
-                is_deleted=False
-            ).exists()
-            
-            if existing_review:
-                return create_error_response(
-                    'You have already posted a verified review for this transaction',
-                    code=ErrorCodes.ALREADY_EXISTS,
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            is_verified_review = True
-            related_handshake = handshake
-
-        # Create comment
-        comment = Comment.objects.create(
-            service=service,
-            user=request.user,
-            parent=parent,
-            body=body,
-            is_verified_review=is_verified_review,
-            related_handshake=related_handshake
+        return create_error_response(
+            'Service comments are read-only. Verified reviews are created from reputation submissions for completed exchanges.',
+            code=ErrorCodes.VALIDATION_ERROR,
+            status_code=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-
-        # Award karma for posting a comment (+1, +2 for verified review)
-        karma_points = 2 if is_verified_review else 1
-        request.user.karma_score = F("karma_score") + karma_points
-        request.user.save(update_fields=['karma_score'])
-        request.user.refresh_from_db(fields=['karma_score'])
-
-        # Award karma to service owner for receiving a comment (+1, +2 for verified review)
-        if service.user != request.user:
-            service.user.karma_score = F("karma_score") + karma_points
-            service.user.save(update_fields=['karma_score'])
-            service.user.refresh_from_db(fields=['karma_score'])
-
-        # Check and assign badges for the commenter
-        check_and_assign_badges(request.user)
-
-        # Notify service owner about new comment (if not self-comment)
-        if service.user != request.user:
-            comment_type = "verified review" if is_verified_review else ("reply" if parent else "comment")
-            create_notification(
-                user=service.user,
-                notification_type='new_comment',
-                title=f'New {comment_type} on your service',
-                message=f'{request.user.first_name} left a {comment_type} on "{service.title}"',
-                service=service
-            )
-
-        # Notify parent comment author about reply
-        if parent and parent.user != request.user:
-            create_notification(
-                user=parent.user,
-                notification_type='comment_reply',
-                title='New reply to your comment',
-                message=f'{request.user.first_name} replied to your comment on "{service.title}"',
-                service=service
-            )
-
-        serializer = CommentSerializer(comment)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @track_performance
     def partial_update(self, request, service_id=None, pk=None):
@@ -3438,53 +3318,11 @@ class CommentViewSet(viewsets.ViewSet):
         
         Only the comment author can edit their comment.
         """
-        service = self._get_service(service_id)
-        if service is None:
-            return create_error_response(
-                'Service not found',
-                code=ErrorCodes.NOT_FOUND,
-                status_code=status.HTTP_404_NOT_FOUND
-            )
-
-        try:
-            comment = Comment.objects.get(id=pk, service=service)
-        except Comment.DoesNotExist:
-            return create_error_response(
-                'Comment not found',
-                code=ErrorCodes.NOT_FOUND,
-                status_code=status.HTTP_404_NOT_FOUND
-            )
-
-        # Only author can edit
-        if comment.user != request.user:
-            return create_error_response(
-                'You can only edit your own comments',
-                code=ErrorCodes.PERMISSION_DENIED,
-                status_code=status.HTTP_403_FORBIDDEN
-            )
-
-        # Cannot edit deleted comments
-        if comment.is_deleted:
-            return create_error_response(
-                'Cannot edit a deleted comment',
-                code=ErrorCodes.INVALID_STATE,
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        body = (request.data.get('body', '') or '').strip()
-        if not body:
-            return create_error_response(
-                'Comment body is required',
-                code=ErrorCodes.VALIDATION_ERROR,
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Sanitize and update
-        comment.body = bleach.clean(body, tags=[], strip=True).strip()[:2000]
-        comment.save(update_fields=['body', 'updated_at'])
-
-        serializer = CommentSerializer(comment)
-        return Response(serializer.data)
+        return create_error_response(
+            'Service comments are read-only.',
+            code=ErrorCodes.VALIDATION_ERROR,
+            status_code=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
 
     @track_performance
     def destroy(self, request, service_id=None, pk=None):
@@ -3493,36 +3331,11 @@ class CommentViewSet(viewsets.ViewSet):
         
         Only the comment author or service owner can delete a comment.
         """
-        service = self._get_service(service_id)
-        if service is None:
-            return create_error_response(
-                'Service not found',
-                code=ErrorCodes.NOT_FOUND,
-                status_code=status.HTTP_404_NOT_FOUND
-            )
-
-        try:
-            comment = Comment.objects.get(id=pk, service=service)
-        except Comment.DoesNotExist:
-            return create_error_response(
-                'Comment not found',
-                code=ErrorCodes.NOT_FOUND,
-                status_code=status.HTTP_404_NOT_FOUND
-            )
-
-        # Only author or service owner can delete
-        if comment.user != request.user and service.user != request.user:
-            return create_error_response(
-                'You can only delete your own comments or comments on your services',
-                code=ErrorCodes.PERMISSION_DENIED,
-                status_code=status.HTTP_403_FORBIDDEN
-            )
-
-        # Soft delete
-        comment.is_deleted = True
-        comment.save(update_fields=['is_deleted', 'updated_at'])
-
-        return Response({'status': 'deleted'}, status=status.HTTP_200_OK)
+        return create_error_response(
+            'Service comments are read-only.',
+            code=ErrorCodes.VALIDATION_ERROR,
+            status_code=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
 
     @track_performance
     def reviewable_handshakes(self, request, service_id=None):
@@ -3534,8 +3347,7 @@ class CommentViewSet(viewsets.ViewSet):
         - Handshake is completed
         - User has not already posted a verified review
         """
-        if not request.user.is_authenticated:
-            return Response({'handshakes': []})
+        return Response({'handshakes': []})
 
         service = self._get_service(service_id)
         if service is None:
@@ -3696,9 +3508,6 @@ class NegativeRepViewSet(viewsets.ViewSet):
         target_user.karma_score = F("karma_score") - karma_penalty
         target_user.save(update_fields=['karma_score'])
         target_user.refresh_from_db(fields=['karma_score'])
-
-        # Check badges for the receiver (might lose eligibility)
-        check_and_assign_badges(target_user)
 
         # Notify the receiver about negative feedback (without specific details)
         create_notification(

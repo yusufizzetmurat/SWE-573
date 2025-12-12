@@ -2,67 +2,52 @@
  * Unit tests for ServiceCard component
  */
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
-import ServiceCard from '../ServiceCard'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { ServiceCard } from '../ServiceCard'
 import { testServices } from '../../test/fixtures/test-data'
 
 describe('ServiceCard', () => {
   it('renders service information', () => {
     const service = testServices[0]
-    render(
-      <BrowserRouter>
-        <ServiceCard service={service} />
-      </BrowserRouter>
-    )
+    render(<ServiceCard service={service} />)
     
     expect(screen.getByText(service.title)).toBeInTheDocument()
     expect(screen.getByText(service.description)).toBeInTheDocument()
   })
 
-  it('displays service type badge', () => {
+  it('displays service type text', () => {
     const service = testServices[0]
-    render(
-      <BrowserRouter>
-        <ServiceCard service={service} />
-      </BrowserRouter>
-    )
+    render(<ServiceCard service={service} />)
     
-    expect(screen.getByText(service.type)).toBeInTheDocument()
+    expect(screen.getByText(service.type === 'Offer' ? /offering/i : /seeking/i)).toBeInTheDocument()
   })
 
   it('displays location information for in-person services', () => {
     const service = { ...testServices[0], location_type: 'In-Person', location_area: 'Beşiktaş' }
-    render(
-      <BrowserRouter>
-        <ServiceCard service={service} />
-      </BrowserRouter>
-    )
+    render(<ServiceCard service={service} />)
     
     expect(screen.getByText(/beşiktaş/i)).toBeInTheDocument()
   })
 
   it('displays duration and participants', () => {
     const service = testServices[0]
-    render(
-      <BrowserRouter>
-        <ServiceCard service={service} />
-      </BrowserRouter>
-    )
-    
-    expect(screen.getByText(new RegExp(`${service.duration}`, 'i'))).toBeInTheDocument()
-    expect(screen.getByText(new RegExp(`${service.max_participants}`, 'i'))).toBeInTheDocument()
+    render(<ServiceCard service={service} />)
+
+    const spans = screen.getAllByText((_, element) => element?.tagName.toLowerCase() === 'span')
+    const spanTexts = spans
+      .map((element) => (element.textContent ?? '').replace(/\s+/g, ''))
+      .filter(Boolean)
+
+    expect(spanTexts).toContain(`${service.duration}h`)
+    expect(spanTexts).toContain(`${service.max_participants}max`)
   })
 
-  it('links to service detail page', () => {
+  it('calls onClick when clicked', () => {
     const service = testServices[0]
-    render(
-      <BrowserRouter>
-        <ServiceCard service={service} />
-      </BrowserRouter>
-    )
-    
-    const link = screen.getByRole('link')
-    expect(link).toHaveAttribute('href', `/services/${service.id}`)
+    const onClick = vi.fn()
+    render(<ServiceCard service={service} onClick={onClick} />)
+
+    fireEvent.click(screen.getByText(service.title))
+    expect(onClick).toHaveBeenCalledWith(service)
   })
 })

@@ -2,8 +2,13 @@ from rest_framework.views import exception_handler
 from rest_framework.exceptions import ValidationError, PermissionDenied, NotFound, AuthenticationFailed
 from rest_framework.response import Response
 from rest_framework import status
+from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import Http404
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class ErrorCodes:
@@ -34,6 +39,9 @@ def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
     
     if response is None:
+        logger.exception('Unhandled exception in API request', exc_info=exc)
+        if getattr(settings, 'DEBUG_PROPAGATE_EXCEPTIONS', False) or getattr(settings, 'DEBUG', False):
+            raise exc
         return Response(
             {
                 'detail': 'An unexpected error occurred.',

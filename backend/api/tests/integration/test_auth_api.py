@@ -29,8 +29,9 @@ class TestUserRegistration:
             'last_name': 'User'
         })
         assert response.status_code == status.HTTP_201_CREATED
-        assert 'id' in response.data
-        assert response.data['email'] == 'newuser@test.com'
+        assert 'user_id' in response.data
+        assert 'user' in response.data
+        assert response.data['user']['email'] == 'newuser@test.com'
         assert User.objects.filter(email='newuser@test.com').exists()
     
     def test_registration_duplicate_email(self):
@@ -97,7 +98,7 @@ class TestUserLogin:
             'email': 'locked@test.com',
             'password': 'testpass123'
         })
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_423_LOCKED
     
     def test_login_account_lockout_after_failed_attempts(self):
         """Test account lockout after multiple failed attempts"""

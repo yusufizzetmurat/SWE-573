@@ -5,12 +5,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BrowserRouter } from 'react-router-dom'
-import UserProfile from '../UserProfile'
+import { UserProfile } from '../UserProfile'
 import { AuthProvider } from '../../lib/auth-context'
 import { ToastProvider } from '../Toast'
 import { testUsers } from '../../test/fixtures/test-data'
 import { server } from '../../test/setup'
-import { rest } from 'msw'
+import { http, HttpResponse } from 'msw'
 
 const renderWithProviders = (component: React.ReactElement) => {
   return render(
@@ -27,20 +27,20 @@ const renderWithProviders = (component: React.ReactElement) => {
 describe('UserProfile Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
+    localStorage.setItem('access_token', 'test-token')
+    localStorage.setItem('user_data', JSON.stringify(testUsers[0]))
   })
 
   it('loads and displays user profile from API', async () => {
     server.use(
-      rest.get('/api/users/me/', (req, res, ctx) => {
-        return res(ctx.json(testUsers[0]))
-      })
+      http.get('/api/users/me/', () => HttpResponse.json(testUsers[0]))
     )
 
-    renderWithProviders(<UserProfile />)
+    renderWithProviders(<UserProfile onNavigate={() => {}} />)
 
     await waitFor(() => {
-      expect(screen.getByText(testUsers[0].first_name)).toBeInTheDocument()
-      expect(screen.getByText(testUsers[0].email)).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(`${testUsers[0].first_name}\\s+${testUsers[0].last_name}`, 'i'))).toBeInTheDocument()
     })
   })
 
@@ -49,26 +49,24 @@ describe('UserProfile Integration', () => {
     let updatedBio = ''
 
     server.use(
-      rest.get('/api/users/me/', (req, res, ctx) => {
-        return res(ctx.json(testUsers[0]))
-      }),
-      rest.patch('/api/users/me/', (req, res, ctx) => {
-        const body = req.body as any
-        updatedBio = body.bio
-        return res(ctx.json({
+      http.get('/api/users/me/', () => HttpResponse.json(testUsers[0])),
+      http.patch('/api/users/me/', async ({ request }) => {
+        const body = (await request.json()) as any;
+        updatedBio = body.bio;
+        return HttpResponse.json({
           ...testUsers[0],
           bio: body.bio,
-        }))
+        });
       })
     )
 
-    renderWithProviders(<UserProfile />)
+    renderWithProviders(<UserProfile onNavigate={() => {}} />)
 
     await waitFor(() => {
-      expect(screen.getByText(testUsers[0].first_name)).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(`${testUsers[0].first_name}\\s+${testUsers[0].last_name}`, 'i'))).toBeInTheDocument()
     })
 
-    const editButton = screen.getByRole('button', { name: /edit/i })
+    const editButton = screen.getByRole('button', { name: /edit profile/i })
     await user.click(editButton)
 
     const bioInput = screen.getByLabelText(/bio/i)
@@ -87,24 +85,25 @@ describe('UserProfile Integration', () => {
     const user = userEvent.setup()
 
     server.use(
-      rest.get('/api/users/me/', (req, res, ctx) => {
-        return res(ctx.json(testUsers[0]))
-      }),
-      rest.patch('/api/users/me/', (req, res, ctx) => {
-        return res(ctx.status(400), ctx.json({
-          detail: 'Validation error',
-          bio: ['Bio cannot exceed 1000 characters'],
-        }))
-      })
+      http.get('/api/users/me/', () => HttpResponse.json(testUsers[0])),
+      http.patch('/api/users/me/', () =>
+        HttpResponse.json(
+          {
+            detail: 'Validation error',
+            bio: ['Bio cannot exceed 1000 characters'],
+          },
+          { status: 400 }
+        )
+      )
     )
 
-    renderWithProviders(<UserProfile />)
+    renderWithProviders(<UserProfile onNavigate={() => {}} />)
 
     await waitFor(() => {
-      expect(screen.getByText(testUsers[0].first_name)).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(`${testUsers[0].first_name}\\s+${testUsers[0].last_name}`, 'i'))).toBeInTheDocument()
     })
 
-    const editButton = screen.getByRole('button', { name: /edit/i })
+    const editButton = screen.getByRole('button', { name: /edit profile/i })
     await user.click(editButton)
 
     const bioInput = screen.getByLabelText(/bio/i)

@@ -496,6 +496,8 @@ export function Dashboard({ onNavigate, userBalance = 1, unreadNotifications = 2
                   key={service.id}
                   onClick={() => onNavigate('service-detail', { ...service, full: true })}
                   className="bg-white rounded-xl border border-gray-200 p-6 hover:border-amber-300 hover:shadow-md transition-all text-left"
+                  data-testid="service-card"
+                  data-service-id={service.id}
                 >
                   <div className="mb-3">
                     <div className="flex items-start gap-3 mb-3">

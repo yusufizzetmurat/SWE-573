@@ -20,7 +20,6 @@ class UserFactory(factory.django.DjangoModelFactory):
     """Factory for creating User instances"""
     class Meta:
         model = User
-        django_get_or_create = ('email',)
     
     email = factory.Sequence(lambda n: f'user{n}@test.com')
     first_name = factory.Faker('first_name')
@@ -30,7 +29,17 @@ class UserFactory(factory.django.DjangoModelFactory):
     karma_score = 0
     role = 'member'
     is_active = True
-    date_joined = factory.LazyFunction(timezone.now)
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        # User.date_joined uses auto_now_add=True, which overwrites provided values
+        # on initial creation. Allow tests to override by updating after creation.
+        date_joined = kwargs.pop('date_joined', None)
+        user = super()._create(model_class, *args, **kwargs)
+        if date_joined is not None:
+            model_class.objects.filter(pk=user.pk).update(date_joined=date_joined)
+            user.refresh_from_db(fields=['date_joined'])
+        return user
 
 
 class AdminUserFactory(UserFactory):
@@ -80,7 +89,7 @@ class HandshakeFactory(factory.django.DjangoModelFactory):
     service = factory.SubFactory(ServiceFactory)
     requester = factory.SubFactory(UserFactory)
     status = 'pending'
-    provisioned_hours = Decimal('0.00')
+    provisioned_hours = factory.LazyAttribute(lambda obj: obj.service.duration)
     provider_initiated = False
     requester_initiated = False
     provider_confirmed_complete = False

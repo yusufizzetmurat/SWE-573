@@ -5,6 +5,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { useAuth } from '../lib/auth-context';
 import { getErrorMessage } from '../lib/types';
+import { logger } from '../lib/logger';
 
 interface LoginPageProps {
   onNavigate: (page: string) => void;
@@ -96,6 +97,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                 <Label htmlFor="email">Email Address *</Label>
                 <Input
                   id="email"
+                  name="email"
                   type="email"
                   placeholder="your.email@example.com"
                   className="mt-2"
@@ -111,6 +113,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                 <Label htmlFor="password">Password *</Label>
                 <Input
                   id="password"
+                  name="password"
                   type="password"
                   placeholder="Enter your password"
                   className="mt-2"

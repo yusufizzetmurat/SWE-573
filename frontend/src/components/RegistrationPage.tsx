@@ -28,6 +28,32 @@ export function RegistrationPage({ onNavigate, onRegister }: RegistrationPagePro
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (!formData.first_name.trim()) {
+      setError('First name is required');
+      showToast('First name is required', 'warning');
+      return;
+    }
+    if (!formData.last_name.trim()) {
+      setError('Last name is required');
+      showToast('Last name is required', 'warning');
+      return;
+    }
+    if (!formData.email.trim()) {
+      setError('Email is required');
+      showToast('Email is required', 'warning');
+      return;
+    }
+    if (!formData.password) {
+      setError('Password is required');
+      showToast('Password is required', 'warning');
+      return;
+    }
+    if (!formData.confirmPassword) {
+      setError('Confirm password is required');
+      showToast('Confirm password is required', 'warning');
+      return;
+    }
     
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match!');
@@ -42,7 +68,12 @@ export function RegistrationPage({ onNavigate, onRegister }: RegistrationPagePro
     
     setIsSubmitting(true);
     try {
-      await onRegister(formData);
+      await onRegister({
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        email: formData.email,
+        password: formData.password,
+      });
     } catch (err) {
       // Extract error message from API response
       let errorMessage = 'Registration failed. Please check your information and try again.';
@@ -120,12 +151,13 @@ export function RegistrationPage({ onNavigate, onRegister }: RegistrationPagePro
               <p className="text-sm text-red-800 font-medium">{error}</p>
             </div>
           )}
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} noValidate className="space-y-6">
             {/* First Name */}
             <div>
               <Label htmlFor="first_name">First Name</Label>
               <Input
                 id="first_name"
+                name="first_name"
                 type="text"
                 placeholder="Enter your first name"
                 value={formData.first_name}
@@ -141,6 +173,7 @@ export function RegistrationPage({ onNavigate, onRegister }: RegistrationPagePro
               <Label htmlFor="last_name">Last Name</Label>
               <Input
                 id="last_name"
+                name="last_name"
                 type="text"
                 placeholder="Enter your last name"
                 value={formData.last_name}
@@ -156,6 +189,7 @@ export function RegistrationPage({ onNavigate, onRegister }: RegistrationPagePro
               <Label htmlFor="email">Email Address</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 placeholder="your.email@example.com"
                 value={formData.email}
@@ -171,6 +205,7 @@ export function RegistrationPage({ onNavigate, onRegister }: RegistrationPagePro
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
                 placeholder="Create a strong password"
                 value={formData.password}
@@ -186,6 +221,7 @@ export function RegistrationPage({ onNavigate, onRegister }: RegistrationPagePro
               <Label htmlFor="confirmPassword">Confirm Password</Label>
               <Input
                 id="confirmPassword"
+                name="confirmPassword"
                 type="password"
                 placeholder="Re-enter your password"
                 value={formData.confirmPassword}

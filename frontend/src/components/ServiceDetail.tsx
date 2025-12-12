@@ -380,6 +380,7 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
             {/* Provider Card */}
             <div 
               className="bg-white rounded-xl border border-gray-200 p-6 cursor-pointer hover:border-amber-300 hover:shadow-md transition-all"
+              data-testid="provider-card"
               onClick={() => {
                 const providerId = typeof service.user === 'object' ? service.user?.id : service.user;
                 if (providerId) {
@@ -412,11 +413,11 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                 </div>
               </div>
 
-              {primaryProviderBadge && (
+              {primaryProviderAchievement && (
                 <div className="flex items-center gap-2 mb-3">
                   <Badge className="bg-amber-100 text-amber-700 flex items-center gap-1">
-                    <primaryProviderBadge.icon className="w-3 h-3" />
-                    {primaryProviderBadge.label}
+                    <primaryProviderAchievement.icon className="w-3 h-3" />
+                    {primaryProviderAchievement.label}
                   </Badge>
                 </div>
               )}
@@ -538,6 +539,7 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                   <Button 
                     className="w-full bg-green-500 hover:bg-green-600 text-white mb-3"
                     size="lg"
+                    data-testid="open-chat"
                     onClick={() => onNavigate('messages')}
                   >
                     {handshakeStatus === 'accepted' ? 'Open Chat' : 'Interest Pending - View Chat'}
@@ -553,6 +555,7 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                   className="w-full bg-orange-500 hover:bg-orange-600 text-white mb-3"
                   size="lg"
                   disabled={isSubmitting}
+                  data-testid="express-interest"
                   onClick={async () => {
                     if (!isAuthenticated) {
                       showToast('Please log in to express interest', 'warning');
@@ -599,6 +602,10 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                           setHasInterest(true);
                           setHandshakeStatus('pending');
                           showToast('You have already expressed interest', 'info');
+                          // Ensure user can continue to chat even if interest already exists.
+                          setTimeout(() => {
+                            onNavigate('messages');
+                          }, 300);
                         } else if (errorCode === 'INVALID_STATE' && errorDetail && errorDetail.toLowerCase().includes('own service')) {
                           showToast('Cannot express interest in your own service', 'warning');
                         } else if (errorCode === 'INSUFFICIENT_BALANCE' || (errorDetail && errorDetail.toLowerCase().includes('insufficient'))) {

@@ -72,6 +72,7 @@ coverage/
 test-results/
 playwright-report/
 *.plan.md
+frontend/tests/e2e/.auth/
 
 # Docker
 docker-compose.override.yml
@@ -84,3 +85,6 @@ logs/
 *.bak
 *.backup
 *.sql
+
+# Misc
+.github/

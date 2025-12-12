@@ -561,7 +561,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-[100dvh] bg-gray-50 flex flex-col" data-testid="messages-page">
       <Navbar 
         activeLink="messages" 
         userBalance={userBalance}
@@ -571,7 +571,8 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
         isAuthenticated={true}
       />
 
-      <div className="max-w-[1440px] mx-auto px-8 py-8 relative" style={{ zIndex: 1 }}>
+      <div className="flex-1 min-h-0">
+      <div className="max-w-[1440px] mx-auto px-8 py-8 relative h-full min-h-0 flex flex-col" style={{ zIndex: 1 }}>
         {/* Back Button - Ensure it's always accessible */}
         <Button 
           variant="ghost" 
@@ -583,15 +584,17 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
           Back to Dashboard
         </Button>
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden" style={{ height: 'calc(100vh - 240px)', maxHeight: 'calc(100vh - 240px)' }}>
-          <div className="grid grid-cols-[380px_1fr] h-full overflow-hidden relative">
+        <div
+          className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 min-h-0"
+        >
+          <div className="grid grid-cols-[380px_1fr] h-full min-h-0 overflow-hidden relative">
             {/* Left Panel - Conversations List */}
-            <div className="border-r border-gray-200">
-              <div className="p-6 border-b border-gray-200">
+            <div className="border-r border-gray-200 flex flex-col h-full min-h-0">
+              <div className="p-6 border-b border-gray-200 flex-shrink-0">
                 <h2 className="text-gray-900">Messages</h2>
               </div>
               
-              <ScrollArea className="h-[calc(100%-88px)]">
+              <ScrollArea className="flex-1 min-h-0">
                 {isLoading ? (
                   <div className="p-4 text-center text-gray-600">Loading conversations...</div>
                 ) : conversations.length === 0 ? (
@@ -609,6 +612,8 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
                         className={`w-full p-4 text-left hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 ${
                           selectedChat?.handshake_id === conversation.handshake_id ? 'bg-amber-50' : ''
                         }`}
+                        data-testid="conversation-item"
+                        data-handshake-id={conversation.handshake_id}
                         aria-label={`Open conversation with ${conversation.other_user.name} about ${conversation.service_title}`}
                         aria-pressed={selectedChat?.handshake_id === conversation.handshake_id}
                       >
@@ -652,11 +657,14 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
             </div>
 
             {/* Right Panel - Active Chat */}
-            <div className="flex flex-col h-full overflow-hidden">
+            <div className="flex flex-col h-full min-h-0">
               {/* Chat Header - Fixed position to always be accessible */}
               {selectedChat && (
                 <>
-                  <div className="flex-shrink-0 p-6 border-b border-gray-200 bg-white relative" style={{ zIndex: 30, pointerEvents: 'auto' }}>
+                  <div
+                    className="flex-shrink-0 p-6 border-b border-gray-200 bg-white relative"
+                    style={{ zIndex: 30, pointerEvents: 'auto' }}
+                  >
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <h3 className="text-gray-900 mb-1 truncate">{selectedChat.other_user.name}</h3>
@@ -734,50 +742,35 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
                               const bothConfirmed = selectedChat.provider_confirmed_complete && selectedChat.receiver_confirmed_complete;
                               
                               if (bothConfirmed) {
-                                // Only SERVICE RECEIVER can leave reputation for SERVICE PROVIDER
-                                if (!isProvider) {
-                                  // User is the receiver, they can leave reputation
-                                  if (!selectedChat.user_has_reviewed) {
-                                    return (
-                                      <div className="flex flex-col gap-2">
-                                        <div className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-md text-sm font-medium text-center">
-                                          Service Completed
-                                        </div>
-                                        <Button 
-                                          onClick={() => {
-                                            if (onOpenReputationModal) {
-                                              onOpenReputationModal(
-                                                selectedChat.handshake_id, 
-                                                selectedChat.other_user.name
-                                              );
-                                            }
-                                          }}
-                                          className="bg-amber-500 hover:bg-amber-600 text-white text-sm py-2"
-                                        >
-                                          <Star className="w-4 h-4 mr-2" />
-                                          Leave Reputation
-                                        </Button>
-                                      </div>
-                                    );
-                                  }
-                                  return (
-                                    <div className="px-3 py-1.5 bg-green-100 text-green-700 rounded-md text-sm font-medium text-center">
-                                      ✓ Service Completed & Reviewed
-                                    </div>
-                                  );
-                                } else {
-                                  // User is the provider, they cannot leave reputation (receiver-only feature)
+                                if (!selectedChat.user_has_reviewed) {
                                   return (
                                     <div className="flex flex-col gap-2">
                                       <div className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-md text-sm font-medium text-center">
                                         Service Completed
                                       </div>
-                                      <div className="text-xs text-gray-600 text-center px-2">
-                                        The service receiver will leave reputation for you
-                                      </div>
+                                      <Button
+                                        onClick={() => {
+                                          if (onOpenReputationModal) {
+                                            onOpenReputationModal(
+                                              selectedChat.handshake_id,
+                                              selectedChat.other_user.name
+                                            );
+                                          }
+                                        }}
+                                        className="bg-amber-500 hover:bg-amber-600 text-white text-sm py-2"
+                                      >
+                                        <Star className="w-4 h-4 mr-2" />
+                                        Leave Reputation
+                                      </Button>
                                     </div>
                                   );
                                 }
+
+                                return (
+                                  <div className="px-3 py-1.5 bg-green-100 text-green-700 rounded-md text-sm font-medium text-center">
+                                    ✓ Service Completed & Reviewed
+                                  </div>
+                                );
                               }
                               
                               if (!userHasConfirmed && onConfirmService) {
@@ -817,8 +810,8 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
 
                   {/* Messages - Scrollable area that doesn't overlap header */}
                   <div className="flex-1 min-h-0 overflow-hidden relative" style={{ zIndex: 1 }}>
-                    <ScrollArea className="h-full p-6 bg-gradient-to-b from-gray-50 to-white">
-                    <div className="space-y-4">
+                    <ScrollArea className="h-full bg-gradient-to-b from-gray-50 to-white">
+                    <div className="p-6 space-y-4">
                       {/* Load More Button */}
                       {hasMoreMessages && (
                         <div className="flex justify-center pb-4">
@@ -958,6 +951,7 @@ export function ChatPage({ onNavigate, userBalance = 1, unreadNotifications = 0,
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       {/* Handshake Details Modal - Rendered outside header to prevent z-index issues */}
