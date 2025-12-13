@@ -13,10 +13,11 @@ interface WelcomeModalProps {
   open: boolean;
   onClose: () => void;
   userName: string;
+  startingBalanceHours?: number;
   onNavigate?: (page: string) => void;
 }
 
-export function WelcomeModal({ open, onClose, userName, onNavigate }: WelcomeModalProps) {
+export function WelcomeModal({ open, onClose, userName, startingBalanceHours = 3, onNavigate }: WelcomeModalProps) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
@@ -38,7 +39,9 @@ export function WelcomeModal({ open, onClose, userName, onNavigate }: WelcomeMod
             <div className="bg-amber-50 rounded-lg p-6 border border-amber-100">
               <div className="flex items-center justify-center gap-3 mb-2">
                 <Clock className="w-6 h-6 text-amber-600" />
-                <span className="text-2xl text-amber-900">1 TimeBank Hour</span>
+                <span className="text-2xl text-amber-900">
+                  {startingBalanceHours} TimeBank {startingBalanceHours === 1 ? 'Hour' : 'Hours'}
+                </span>
               </div>
               <div className="text-sm text-amber-700">
                 Your starting balance has been credited

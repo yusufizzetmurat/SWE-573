@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { type RegisterFormData } from '../lib/types';
+import { getErrorMessage, type RegisterFormData } from '../lib/types';
 import { Hexagon, ArrowLeft } from 'lucide-react';
 import { Button } from './ui/button';
 import { useToast } from './Toast';
@@ -75,39 +75,10 @@ export function RegistrationPage({ onNavigate, onRegister }: RegistrationPagePro
         password: formData.password,
       });
     } catch (err) {
-      // Extract error message from API response
-      let errorMessage = 'Registration failed. Please check your information and try again.';
-      
-      if (err && typeof err === 'object' && 'response' in err) {
-        const apiError = err as { response?: { data?: { detail?: string; error?: string; message?: string; [key: string]: unknown } } };
-        const data = apiError.response?.data;
-        if (data) {
-          // Check for top-level error fields first
-          if (data.detail) {
-            errorMessage = typeof data.detail === 'string' ? data.detail : String(data.detail);
-          } else if (data.error) {
-            errorMessage = typeof data.error === 'string' ? data.error : String(data.error);
-          } else if (data.message) {
-            errorMessage = typeof data.message === 'string' ? data.message : String(data.message);
-          } else {
-            // Handle field-level errors (e.g., {"email": ["user with this email already exists."]})
-            const fieldErrors: string[] = [];
-            for (const key in data) {
-              if (Array.isArray(data[key])) {
-                const messages = (data[key] as string[]).map(msg => `${key}: ${msg}`);
-                fieldErrors.push(...messages);
-              } else if (typeof data[key] === 'string') {
-                fieldErrors.push(`${key}: ${data[key]}`);
-              }
-            }
-            if (fieldErrors.length > 0) {
-              errorMessage = fieldErrors.join('. ');
-            }
-          }
-        }
-      } else if (err instanceof Error) {
-        errorMessage = err.message;
-      }
+      const errorMessage = getErrorMessage(
+        err,
+        'Registration failed. Please check your information and try again.'
+      );
       
       setError(errorMessage);
       showToast(errorMessage, 'error');

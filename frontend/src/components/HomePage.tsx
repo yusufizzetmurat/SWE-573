@@ -128,7 +128,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
               </div>
               <h3 className="text-gray-900 mb-3">Join the Community</h3>
               <p className="text-gray-600">
-                Sign up and receive your first TimeBank hour. Browse services or post 
+                Sign up and receive 3 TimeBank hours to get started. Browse services or post 
                 what you can offer to the community.
               </p>
             </div>

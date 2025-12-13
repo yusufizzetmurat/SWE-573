@@ -54,8 +54,23 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    const requestUrl: string = originalRequest?.url ?? '';
+    const isAuthEndpoint = (url: string) =>
+      url.includes('/auth/login/') || url.includes('/auth/register/') || url.includes('/auth/refresh/');
+
     // If 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // Never attempt refresh for auth endpoints; surface the real 401 error.
+      if (isAuthEndpoint(requestUrl)) {
+        return Promise.reject(error);
+      }
+
+      // If we don't have a refresh token, don't attempt refresh.
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (!refreshToken) {
+        return Promise.reject(error);
+      }
+
       originalRequest._retry = true;
 
       // If already refreshing, queue this request
@@ -80,11 +95,6 @@ apiClient.interceptors.response.use(
       if (!refreshPromise) {
         refreshPromise = (async () => {
           try {
-            const refreshToken = localStorage.getItem('refresh_token');
-            if (!refreshToken) {
-              throw new Error('No refresh token available');
-            }
-
             const response = await axios.post(`${API_BASE_URL}/auth/refresh/`, {
               refresh: refreshToken,
             });

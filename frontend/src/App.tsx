@@ -771,6 +771,7 @@ function AppContent() {
           open={showWelcomeModal}
           onClose={() => setShowWelcomeModal(false)}
           userName={userName}
+          startingBalanceHours={userBalance || 3}
           onNavigate={handleNavigate}
         />
       </Suspense>
