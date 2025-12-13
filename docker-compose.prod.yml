@@ -26,7 +26,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - THROTTLE_RELAXED=${THROTTLE_RELAXED:-1}
-      - DISABLE_THROTTLING=${DISABLE_THROTTLING:-0}
+      - DISABLE_THROTTLING=${DISABLE_THROTTLING:-1}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]

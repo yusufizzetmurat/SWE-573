@@ -16,6 +16,7 @@ import { format } from 'date-fns';
 import { serviceAPI, tagAPI, Tag } from '../lib/api';
 import { useToast } from './Toast';
 import { logger } from '../lib/logger';
+import { isYouTubeOrVimeoUrl } from '../lib/videoEmbed';
 import { LocationPickerMap } from './LocationPickerMap';
 
 interface PostNeedFormProps {
@@ -52,9 +53,12 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
   });
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number; area?: string } | null>(null);
   const [serviceImages, setServiceImages] = useState<string[]>([]);
+  const [serviceVideoUrls, setServiceVideoUrls] = useState<string[]>([]);
+  const [videoUrlDraft, setVideoUrlDraft] = useState<string>('');
   
   const handleImageAdd = (file: File | null) => {
-    if (file && serviceImages.length < 5) {
+    const totalMediaCount = serviceImages.length + serviceVideoUrls.length;
+    if (file && totalMediaCount < 5) {
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUrl = reader.result as string;
@@ -66,6 +70,30 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
 
   const handleImageRemove = (index: number) => {
     setServiceImages(serviceImages.filter((_, i) => i !== index));
+  };
+
+  const handleAddVideoUrl = () => {
+    const url = videoUrlDraft.trim();
+    if (!url) return;
+    const totalMediaCount = serviceImages.length + serviceVideoUrls.length;
+    if (totalMediaCount >= 5) {
+      showToast('You can add up to 5 media items total (photos + videos).', 'warning');
+      return;
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      showToast('Video URL must start with http:// or https://', 'warning');
+      return;
+    }
+    if (!isYouTubeOrVimeoUrl(url)) {
+      showToast('Only YouTube or Vimeo links are supported for service videos.', 'warning');
+      return;
+    }
+    setServiceVideoUrls((prev) => [...prev, url]);
+    setVideoUrlDraft('');
+  };
+
+  const handleRemoveVideoUrl = (index: number) => {
+    setServiceVideoUrls((prev) => prev.filter((_, i) => i !== index));
   };
 
   // Memoize location select callback to prevent re-renders
@@ -116,7 +144,6 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
             { id: 'art', name: 'Art' },
             { id: 'language', name: 'Language' },
             { id: 'gardening', name: 'Gardening' },
-            { id: 'technology', name: 'Technology' },
             { id: 'education', name: 'Education' },
             { id: 'fitness', name: 'Fitness' },
             { id: 'crafts', name: 'Crafts' },
@@ -223,7 +250,13 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
         schedule_details: scheduleDetails,
         tags: existingTagIds.length > 0 ? existingTagIds : undefined,
         tag_names: newTagNames.length > 0 ? newTagNames : undefined,
-        media: serviceImages.length > 0 ? serviceImages : undefined,
+        media:
+          serviceImages.length > 0 || serviceVideoUrls.length > 0
+            ? ([
+                ...serviceImages,
+                ...serviceVideoUrls.map((url) => ({ media_type: 'video' as const, file_url: url })),
+              ] as const)
+            : undefined,
       });
 
       showToast('Service want published successfully!', 'success');
@@ -306,7 +339,7 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
             <div>
               <Label>Service Photos (Optional)</Label>
               <p className="text-xs text-gray-500 mt-1 mb-2">
-                Upload up to 5 photos to showcase your need ({serviceImages.length}/5)
+                Upload up to 5 media items total (photos + videos) ({serviceImages.length + serviceVideoUrls.length}/5)
               </p>
               <div className="grid grid-cols-3 gap-3 mt-2">
                 {serviceImages.map((img, idx) => (
@@ -322,7 +355,7 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
                   </div>
                 ))}
                 
-                {serviceImages.length < 5 && (
+                {serviceImages.length + serviceVideoUrls.length < 5 && (
                   <label className="aspect-square rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
                     <ImageIcon className="w-6 h-6 text-gray-400" />
                     <span className="text-xs text-gray-500 mt-1">Add Photo</span>
@@ -337,27 +370,71 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
               </div>
             </div>
 
+            {/* Service Videos */}
+            <div>
+              <Label>Service Video URLs (Optional)</Label>
+              <p className="text-xs text-gray-500 mt-1">
+                Paste a YouTube or Vimeo link. Videos count toward the 5-item media limit.
+              </p>
+
+              <div className="flex gap-2 mt-2">
+                <Input
+                  value={videoUrlDraft}
+                  onChange={(e) => setVideoUrlDraft(e.target.value)}
+                  placeholder="https://www.youtube.com/watch?v=... or https://vimeo.com/..."
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleAddVideoUrl}
+                  disabled={serviceImages.length + serviceVideoUrls.length >= 5}
+                >
+                  Add
+                </Button>
+              </div>
+
+              {serviceVideoUrls.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {serviceVideoUrls.map((url, idx) => (
+                    <div
+                      key={`${url}-${idx}`}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2"
+                    >
+                      <div className="min-w-0 text-sm text-gray-700 truncate">{url}</div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => handleRemoveVideoUrl(idx)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Duration */}
             <div className="grid grid-cols-2 gap-6">
               <div>
                 <Label htmlFor="duration">Estimated Duration (Hours) *</Label>
-                <Select 
-                  required
+                <Input
+                  id="duration"
+                  data-testid="post-need-duration"
+                  type="number"
+                  min="0.5"
+                  max="24"
+                  step="0.5"
+                  placeholder="e.g., 1.5"
+                  className="mt-2"
                   value={formData.duration}
-                  onValueChange={(value) => setFormData({ ...formData, duration: value })}
-                >
-                  <SelectTrigger id="duration" className="mt-2">
-                    <SelectValue placeholder="Select duration" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1 hour</SelectItem>
-                    <SelectItem value="2">2 hours</SelectItem>
-                    <SelectItem value="3">3 hours</SelectItem>
-                    <SelectItem value="4">4 hours</SelectItem>
-                    <SelectItem value="6">6 hours</SelectItem>
-                    <SelectItem value="8">8 hours</SelectItem>
-                  </SelectContent>
-                </Select>
+                  onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1.5">
+                  You can use half-hours (e.g., 2.5)
+                </p>
               </div>
 
               <div>
@@ -552,7 +629,10 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
                 <div className="mt-3 space-y-4">
                   <div>
                     <Label htmlFor="recurring-frequency" className="text-sm text-gray-700 mb-2 block">Frequency</Label>
-                    <Select value={recurringFrequency} onValueChange={(v: string) => setRecurringFrequency(v)}>
+                    <Select
+                      value={recurringFrequency}
+                      onValueChange={(v) => setRecurringFrequency(v as typeof recurringFrequency)}
+                    >
                       <SelectTrigger id="recurring-frequency" className="bg-white">
                         <SelectValue />
                       </SelectTrigger>
@@ -704,7 +784,7 @@ export function PostNeedForm({ onNavigate, userBalance = 1, unreadNotifications 
                 
                 {availableTags.length > 0 && (
                   <div className="mt-3">
-                    <p className="text-xs text-gray-500 mb-2">Previously used tags:</p>
+                    <p className="text-xs text-gray-500 mb-2">Common tags:</p>
                     <div className="flex flex-wrap gap-2">
                       {availableTags.slice(0, 10).map(tag => (
                         <button

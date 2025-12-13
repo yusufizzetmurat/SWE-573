@@ -5,6 +5,14 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from './ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
+import { Send } from 'lucide-react';
 import { serviceAPI, handshakeAPI, Service } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { ServiceMap } from './ServiceMap';
@@ -15,9 +23,10 @@ import { getErrorMessage, type NavigateData } from '../lib/types';
 import { PublicChat } from './PublicChat';
 import { CommentSection } from './CommentSection';
 import { logger } from '../lib/logger';
+import { getVideoEmbedInfo } from '../lib/videoEmbed';
 
 interface ServiceDetailProps {
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, data?: NavigateData) => void;
   serviceData?: NavigateData & { id?: string; full?: boolean };
   userBalance?: number;
   unreadNotifications?: number;
@@ -26,12 +35,24 @@ interface ServiceDetailProps {
 export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unreadNotifications = 2 }: ServiceDetailProps) {
   const { isAuthenticated, user, refreshUser } = useAuth();
   const { showToast } = useToast();
-  const [service, setService] = useState<Service | null>(serviceData || null);
+  const [service, setService] = useState<Service | null>(() => {
+    if (serviceData?.full) {
+      return serviceData as unknown as Service;
+    }
+    return null;
+  });
   const [isLoading, setIsLoading] = useState(!serviceData || !serviceData.full);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isReporting, setIsReporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasInterest, setHasInterest] = useState(false);
   const [handshakeStatus, setHandshakeStatus] = useState<string | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportType, setReportType] = useState<'inappropriate_content' | 'spam' | 'service_issue' | 'scam' | 'harassment' | 'other'>('inappropriate_content');
+  const [hasReportedService, setHasReportedService] = useState(false);
+
+  const getReportedServiceStorageKey = (currentUserId: string, serviceId: string) =>
+    `reportedService:${currentUserId}:${serviceId}`;
 
   useEffect(() => {
     const fetchService = async () => {
@@ -68,6 +89,73 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
 
     fetchService();
   }, [serviceData]);
+
+  // Persisted "already reported" state (prevents re-report after refresh)
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id || !service?.id) {
+      setHasReportedService(false);
+      return;
+    }
+    try {
+      const key = getReportedServiceStorageKey(user.id, service.id);
+      setHasReportedService(window.localStorage.getItem(key) === '1');
+    } catch {
+      // Ignore storage errors (private mode, etc.)
+      setHasReportedService(false);
+    }
+  }, [isAuthenticated, user?.id, service?.id]);
+
+  const handleSubmitReport = async () => {
+    if (!service?.id) return;
+
+    if (hasReportedService) {
+      showToast('You have already reported this listing. Moderators are reviewing your report.', 'info');
+      setShowReportModal(false);
+      return;
+    }
+
+    setIsReporting(true);
+    try {
+      await serviceAPI.report(service.id, reportType, '');
+      showToast('Report submitted. Thanks for helping keep the community safe.', 'success');
+      setHasReportedService(true);
+      try {
+        if (user?.id) {
+          window.localStorage.setItem(getReportedServiceStorageKey(user.id, service.id), '1');
+        }
+      } catch {
+        // Ignore storage errors
+      }
+      setShowReportModal(false);
+      setReportType('inappropriate_content');
+    } catch (err: unknown) {
+      logger.error('Failed to report service', err instanceof Error ? err : new Error(String(err)), { serviceId: service?.id });
+
+      // If backend says it's already reported, lock UI and show a friendly toast
+      const maybeResponse = (err as { response?: { status?: number; data?: { detail?: unknown } } }).response;
+      const statusCode = maybeResponse?.status;
+      const detail = typeof maybeResponse?.data?.detail === 'string' ? maybeResponse.data.detail : undefined;
+
+      if (statusCode === 400 && detail?.toLowerCase().includes('already reported')) {
+        showToast('You have already reported this listing. Moderators are reviewing your report.', 'warning');
+        setHasReportedService(true);
+        try {
+          if (user?.id && service?.id) {
+            window.localStorage.setItem(getReportedServiceStorageKey(user.id, service.id), '1');
+          }
+        } catch {
+          // Ignore storage errors
+        }
+        setShowReportModal(false);
+        return;
+      }
+
+      const errorMessage = getErrorMessage(err, 'Failed to submit report');
+      showToast(errorMessage, 'error');
+    } finally {
+      setIsReporting(false);
+    }
+  };
 
   // Check if user has already expressed interest
   useEffect(() => {
@@ -184,6 +272,7 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
   };
 
   return (
+    <>
     <div className="min-h-screen bg-gray-50">
       <Navbar 
         activeLink="browse" 
@@ -299,39 +388,83 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                   {/* Service Media */}
                   {service.media && service.media.length > 0 && (
                     <div className="mb-6">
-                      <h3 className="text-gray-900 mb-3">Photos</h3>
-                      <div className="grid grid-cols-3 gap-3">
-                        {service.media.map((mediaItem: any) => {
-                          // Handle both file URLs and file objects
-                          let imageUrl = '';
-                          if (mediaItem.image) {
-                            // If it's a file URL from backend (preferred)
-                            imageUrl = mediaItem.image;
-                          } else if (mediaItem.file_url) {
-                            // If it's a data URL or external URL
-                            imageUrl = mediaItem.file_url;
-                          } else if (mediaItem.file) {
-                            // Fallback to file field
-                            imageUrl = mediaItem.file;
-                          }
-                          
-                          if (!imageUrl) return null;
-                          
-                          return (
-                            <div key={mediaItem.id} className="aspect-square rounded-lg overflow-hidden border border-gray-200">
-                              <img 
-                                src={imageUrl} 
-                                alt="Service photo"
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  // Hide broken images
-                                  (e.target as HTMLImageElement).style.display = 'none';
-                                }}
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
+                      {service.media.some((m: any) => (m.media_type || 'image') === 'image') && (
+                        <>
+                          <h3 className="text-gray-900 mb-3">Photos</h3>
+                          <div className="grid grid-cols-3 gap-3">
+                            {service.media
+                              .filter((m: any) => (m.media_type || 'image') === 'image')
+                              .map((mediaItem: any) => {
+                                let imageUrl = '';
+                                if (mediaItem.image) {
+                                  imageUrl = mediaItem.image;
+                                } else if (mediaItem.file_url) {
+                                  imageUrl = mediaItem.file_url;
+                                } else if (mediaItem.file) {
+                                  imageUrl = mediaItem.file;
+                                }
+                                if (!imageUrl) return null;
+                                return (
+                                  <div key={mediaItem.id} className="aspect-square rounded-lg overflow-hidden border border-gray-200">
+                                    <img
+                                      src={imageUrl}
+                                      alt="Service photo"
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </>
+                      )}
+
+                      {service.media.some((m: any) => m.media_type === 'video') && (
+                        <div className={service.media.some((m: any) => (m.media_type || 'image') === 'image') ? 'mt-6' : ''}>
+                          <h3 className="text-gray-900 mb-3">Videos</h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {service.media
+                              .filter((m: any) => m.media_type === 'video')
+                              .map((mediaItem: any) => {
+                                const videoUrl = (mediaItem.file_url || mediaItem.file || '').toString();
+                                if (!videoUrl) return null;
+                                const looksDirect = /\.(mp4|webm|ogg)(\?.*)?$/i.test(videoUrl);
+                                const embedInfo = getVideoEmbedInfo(videoUrl);
+                                return (
+                                  <div key={mediaItem.id} className="rounded-lg overflow-hidden border border-gray-200 bg-black/90">
+                                    {embedInfo ? (
+                                      <div className="aspect-video bg-black">
+                                        <iframe
+                                          src={embedInfo.embedUrl}
+                                          title="Service video"
+                                          className="w-full h-full"
+                                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                          allowFullScreen
+                                        />
+                                      </div>
+                                    ) : looksDirect ? (
+                                      <video controls src={videoUrl} className="w-full h-full" />
+                                    ) : (
+                                      <div className="p-4 bg-white">
+                                        <div className="text-sm text-gray-700 mb-2">Video link:</div>
+                                        <a
+                                          href={videoUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-amber-700 hover:underline break-all"
+                                        >
+                                          {videoUrl}
+                                        </a>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -395,9 +528,9 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
               
               <div className="flex items-start gap-4 mb-4">
                 <Avatar className="w-16 h-16">
-                  {serviceData && typeof serviceData.user === 'object' && serviceData.user !== null && 'avatar_url' in serviceData.user && serviceData.user.avatar_url && (
+                  {typeof service.user === 'object' && service.user !== null && service.user.avatar_url && (
                     <AvatarImage 
-                      src={serviceData.user.avatar_url} 
+                      src={service.user.avatar_url} 
                       alt={providerName} 
                     />
                   )}
@@ -470,34 +603,23 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                     let videoElement = null;
                     
                     if (videoUrl) {
-                      const youtubeMatch = videoUrl.match(/(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/);
-                      if (youtubeMatch) {
+                      const embedInfo = getVideoEmbedInfo(videoUrl);
+                      if (embedInfo) {
                         videoElement = (
                           <div className="aspect-square rounded-lg overflow-hidden bg-black">
                             <iframe
-                              src={`https://www.youtube.com/embed/${youtubeMatch[1]}`}
+                              src={embedInfo.embedUrl}
                               title="Video Introduction"
                               className="w-full h-full"
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allow={
+                                embedInfo.provider === 'youtube'
+                                  ? 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'
+                                  : 'autoplay; fullscreen; picture-in-picture'
+                              }
                               allowFullScreen
                             />
                           </div>
                         );
-                      } else {
-                        const vimeoMatch = videoUrl.match(/vimeo\.com\/(?:.*\/)?(\d+)/);
-                        if (vimeoMatch) {
-                          videoElement = (
-                            <div className="aspect-square rounded-lg overflow-hidden bg-black">
-                              <iframe
-                                src={`https://player.vimeo.com/video/${vimeoMatch[1]}`}
-                                title="Video Introduction"
-                                className="w-full h-full"
-                                allow="autoplay; fullscreen; picture-in-picture"
-                                allowFullScreen
-                              />
-                            </div>
-                          );
-                        }
                       }
                     } else if (videoFileUrl) {
                       videoElement = (
@@ -636,15 +758,176 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
               )}
               
               <button 
-                className="text-sm text-gray-500 hover:text-red-600 flex items-center gap-2 mx-auto"
+                className={`text-sm flex items-center gap-2 mx-auto transition-colors ${
+                  hasReportedService
+                    ? 'text-gray-400 cursor-not-allowed'
+                    : 'text-gray-500 hover:text-red-600'
+                }`}
+                type="button"
+                disabled={hasReportedService}
+                onClick={() => {
+                  if (!isAuthenticated) {
+                    showToast('Please log in to report a listing', 'warning');
+                    onNavigate('login');
+                    return;
+                  }
+                  if (hasReportedService) {
+                    showToast('You have already reported this listing. Moderators are reviewing your report.', 'info');
+                    return;
+                  }
+                  setShowReportModal(true);
+                }}
               >
                 <Flag className="w-4 h-4" />
-                Report this listing
+                {hasReportedService ? 'Already Reported' : 'Report this listing'}
               </button>
             </div>
           </div>
         </div>
       </div>
     </div>
+
+
+    {/* Report Listing Modal */}
+    <Dialog
+      open={showReportModal}
+      onOpenChange={(open) => {
+        if (!open) {
+          setShowReportModal(false);
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <div className="p-6 pb-2">
+          <DialogHeader>
+            <DialogTitle>Report this listing</DialogTitle>
+            <DialogDescription>
+              Select a reason. Moderators will review your report.
+            </DialogDescription>
+          </DialogHeader>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-2">
+          <div className="space-y-2">
+            <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors">
+              <input
+                type="radio"
+                name="reportType"
+                value="inappropriate_content"
+                checked={reportType === 'inappropriate_content'}
+                onChange={(e) => setReportType(e.target.value as typeof reportType)}
+                className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+              />
+              <div>
+                <p className="font-medium text-gray-900">Inappropriate content</p>
+                <p className="text-sm text-gray-500">Offensive, harmful, or violates guidelines</p>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors">
+              <input
+                type="radio"
+                name="reportType"
+                value="spam"
+                checked={reportType === 'spam'}
+                onChange={(e) => setReportType(e.target.value as typeof reportType)}
+                className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+              />
+              <div>
+                <p className="font-medium text-gray-900">Spam</p>
+                <p className="text-sm text-gray-500">Misleading, fake, or promotional content</p>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors">
+              <input
+                type="radio"
+                name="reportType"
+                value="scam"
+                checked={reportType === 'scam'}
+                onChange={(e) => setReportType(e.target.value as typeof reportType)}
+                className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+              />
+              <div>
+                <p className="font-medium text-gray-900">Scam or fraud</p>
+                <p className="text-sm text-gray-500">Attempting to deceive or defraud users</p>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors">
+              <input
+                type="radio"
+                name="reportType"
+                value="harassment"
+                checked={reportType === 'harassment'}
+                onChange={(e) => setReportType(e.target.value as typeof reportType)}
+                className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+              />
+              <div>
+                <p className="font-medium text-gray-900">Harassment</p>
+                <p className="text-sm text-gray-500">Abusive, threatening, or bullying behavior</p>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors">
+              <input
+                type="radio"
+                name="reportType"
+                value="service_issue"
+                checked={reportType === 'service_issue'}
+                onChange={(e) => setReportType(e.target.value as typeof reportType)}
+                className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+              />
+              <div>
+                <p className="font-medium text-gray-900">Service issue</p>
+                <p className="text-sm text-gray-500">Problem with service quality or description</p>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors">
+              <input
+                type="radio"
+                name="reportType"
+                value="other"
+                checked={reportType === 'other'}
+                onChange={(e) => setReportType(e.target.value as typeof reportType)}
+                className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+              />
+              <div>
+                <p className="font-medium text-gray-900">Other</p>
+                <p className="text-sm text-gray-500">Something else not listed above</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div className="shrink-0 p-6 pt-4 border-t bg-white mt-auto">
+          <div className="flex flex-col gap-3">
+            <Button
+              className="w-full h-11"
+              variant="destructive"
+              onClick={handleSubmitReport}
+              disabled={isReporting || hasReportedService}
+            >
+              {isReporting ? 'Sending…' : (
+                <span className="inline-flex items-center gap-2">
+                  <Send className="h-4 w-4" aria-hidden="true" />
+                  Submit Report
+                </span>
+              )}
+            </Button>
+            <Button
+              className="w-full h-11"
+              variant="outline"
+              onClick={() => setShowReportModal(false)}
+              disabled={isReporting}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

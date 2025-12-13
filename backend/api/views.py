@@ -888,6 +888,76 @@ class ServiceViewSet(viewsets.ModelViewSet):
             'message': f'Service has been {action_text}'
         })
 
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='report',
+        permission_classes=[permissions.IsAuthenticated],
+        throttle_classes=[SensitiveOperationThrottle],
+    )
+    def report_service(self, request, pk=None):
+        """Report a service listing for moderation.
+
+        Endpoint: POST /api/services/{id}/report/
+        Body: { "issue_type": "inappropriate_content"|"spam"|"service_issue", "description": "..." }
+        """
+        service = self.get_object()
+        issue_type = request.data.get('issue_type', 'inappropriate_content')
+        description = (request.data.get('description') or '').strip()
+
+        allowed_types = {'inappropriate_content', 'spam', 'service_issue', 'scam', 'harassment', 'other'}
+        if issue_type not in allowed_types:
+            return create_error_response(
+                'Invalid issue_type.',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Prevent duplicate listing reports (do not block handshake-related reports)
+        already_reported = Report.objects.filter(
+            reporter=request.user,
+            reported_service=service,
+            related_handshake__isnull=True,
+        ).exists()
+        if already_reported:
+            return create_error_response(
+                'You have already reported this listing. Moderators are reviewing your report.',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Auto-generate description from type if not provided
+        if not description:
+            type_labels = {
+                'inappropriate_content': 'Inappropriate content',
+                'spam': 'Spam or misleading listing',
+                'service_issue': 'Service quality issue',
+                'scam': 'Suspected scam or fraud',
+                'harassment': 'Harassment or abusive behavior',
+                'other': 'Other issue reported by user',
+            }
+            description = type_labels.get(issue_type, 'Reported by user')
+
+        report = Report.objects.create(
+            reporter=request.user,
+            reported_user=service.user,
+            reported_service=service,
+            type=issue_type,
+            description=description,
+        )
+
+        admins = User.objects.filter(role='admin')
+        for admin in admins:
+            create_notification(
+                user=admin,
+                notification_type='admin_warning',
+                title='New Listing Report',
+                message=f"New {report.get_type_display()} report for service '{service.title}'",
+                service=service,
+            )
+
+        return Response({'status': 'success', 'report_id': str(report.id)}, status=201)
+
 class TagViewSet(viewsets.ModelViewSet):
     """
     Tag Management

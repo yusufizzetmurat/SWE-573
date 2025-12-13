@@ -14,6 +14,10 @@ python manage.py wait_for_db --max-retries 30 --initial-delay 1 --max-delay 30 -
 echo "Running database migrations..."
 python manage.py migrate --noinput
 
+# Ensure default forum categories exist (non-destructive unless --force is used)
+echo "Seeding default forum categories..."
+python manage.py seed_forum_categories
+
 # Start the application
 echo "Starting Daphne server..."
 exec "$@"

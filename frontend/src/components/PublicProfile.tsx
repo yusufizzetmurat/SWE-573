@@ -9,6 +9,7 @@ import { useAuth } from '../lib/auth-context';
 import { formatTimebank } from '../lib/utils';
 import { ACHIEVEMENT_CONFIG, getAchievementMeta, NEWCOMER_TAG } from '../lib/achievements';
 import { logger } from '../lib/logger';
+import { getVideoEmbedInfo } from '../lib/videoEmbed';
 
 interface PublicProfileProps {
   onNavigate: (page: string, data?: unknown) => void;
@@ -16,20 +17,6 @@ interface PublicProfileProps {
   userBalance?: number;
   unreadNotifications?: number;
   onLogout?: () => void;
-}
-
-// Helper to extract YouTube video ID
-function getYouTubeVideoId(url: string): string | null {
-  const regex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/;
-  const match = url.match(regex);
-  return match ? match[1] : null;
-}
-
-// Helper to extract Vimeo video ID
-function getVimeoVideoId(url: string): string | null {
-  const regex = /vimeo\.com\/(?:.*\/)?(\d+)/;
-  const match = url.match(regex);
-  return match ? match[1] : null;
 }
 
 export function PublicProfile({ 
@@ -143,33 +130,20 @@ export function PublicProfile({
 
     if (!videoUrl && !videoFileUrl) return null;
 
-    // Check for YouTube
     if (videoUrl) {
-      const youtubeId = getYouTubeVideoId(videoUrl);
-      if (youtubeId) {
+      const embedInfo = getVideoEmbedInfo(videoUrl);
+      if (embedInfo) {
         return (
           <div className="aspect-video rounded-lg overflow-hidden bg-black">
             <iframe
-              src={`https://www.youtube.com/embed/${youtubeId}`}
+              src={embedInfo.embedUrl}
               title="Video Introduction"
               className="w-full h-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
-        );
-      }
-
-      // Check for Vimeo
-      const vimeoId = getVimeoVideoId(videoUrl);
-      if (vimeoId) {
-        return (
-          <div className="aspect-video rounded-lg overflow-hidden bg-black">
-            <iframe
-              src={`https://player.vimeo.com/video/${vimeoId}`}
-              title="Video Introduction"
-              className="w-full h-full"
-              allow="autoplay; fullscreen; picture-in-picture"
+              allow={
+                embedInfo.provider === 'youtube'
+                  ? 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'
+                  : 'autoplay; fullscreen; picture-in-picture'
+              }
               allowFullScreen
             />
           </div>

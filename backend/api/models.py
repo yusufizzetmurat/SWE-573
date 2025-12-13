@@ -403,6 +403,9 @@ class Report(models.Model):
         ('inappropriate_content', 'Inappropriate Content'),
         ('service_issue', 'Service Issue'),
         ('spam', 'Spam'),
+        ('scam', 'Scam or Fraud'),
+        ('harassment', 'Harassment'),
+        ('other', 'Other'),
     )
     STATUS_CHOICES = (
         ('pending', 'Pending'),

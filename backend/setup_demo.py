@@ -272,7 +272,7 @@ cem_genealogy = Service.objects.create(
     title='Genealogy Research Assistance',
     description='I can help you get started with tracing your family tree! I\'ll show you how to use online databases, read old records, and organize your findings. Great for anyone curious about their family history, especially Turkish ancestry.',
     type='Offer',
-    duration=Decimal('1.50'),
+    duration=Decimal('1.00'),
     location_type='Online',
     max_participants=1,
     schedule_type='One-Time',
@@ -734,27 +734,69 @@ print("\n[7/8] Creating comments and forum content...")
 
 print("  Service comments are not seeded (verified reviews come from completed exchanges only)")
 
-forum_category, _ = ForumCategory.objects.get_or_create(
-    slug='general',
-    defaults={
+default_forum_categories = [
+    {
         'name': 'General Discussion',
-        'description': 'General community discussions and questions',
+        'slug': 'general',
+        'description': 'General community chat, introductions, and announcements',
         'icon': 'message-square',
         'color': 'blue',
         'display_order': 0,
-    }
-)
-
-forum_category2, _ = ForumCategory.objects.get_or_create(
-    slug='tips',
-    defaults={
+    },
+    {
         'name': 'Tips & Advice',
-        'description': 'Share tips, advice, and best practices',
+        'slug': 'tips',
+        'description': 'Share tips, advice, and best practices for great exchanges',
         'icon': 'lightbulb',
         'color': 'amber',
         'display_order': 1,
-    }
-)
+    },
+    {
+        'name': 'Skills & Learning',
+        'slug': 'skills-learning',
+        'description': 'Ask questions, share knowledge, and discuss learning opportunities',
+        'icon': 'book-open',
+        'color': 'purple',
+        'display_order': 2,
+    },
+    {
+        'name': 'Community Events',
+        'slug': 'community-events',
+        'description': 'Organize meetups, workshops, and community gatherings',
+        'icon': 'calendar',
+        'color': 'orange',
+        'display_order': 3,
+    },
+    {
+        'name': 'Success Stories',
+        'slug': 'success-stories',
+        'description': 'Share experiences, success stories, and lessons learned from timebank exchanges',
+        'icon': 'users',
+        'color': 'teal',
+        'display_order': 4,
+    },
+    {
+        'name': 'Feedback & Suggestions',
+        'slug': 'feedback-suggestions',
+        'description': 'Help improve The Hive with your ideas and feedback',
+        'icon': 'message-circle',
+        'color': 'pink',
+        'display_order': 5,
+    },
+]
+
+forum_categories_by_slug = {}
+for category_data in default_forum_categories:
+    category = (
+        ForumCategory.objects.filter(slug=category_data['slug']).first()
+        or ForumCategory.objects.filter(name=category_data['name']).first()
+    )
+    if category is None:
+        category = ForumCategory.objects.create(**category_data)
+    forum_categories_by_slug[category_data['slug']] = category
+
+forum_category = forum_categories_by_slug['general']
+forum_category2 = forum_categories_by_slug['tips']
 
 topics = [
     (forum_category, elif_user, 'Welcome to The Hive!', 'Hi everyone! Excited to be part of this community. Looking forward to sharing skills and learning from all of you!', timezone.now() - timedelta(days=30)),
@@ -825,7 +867,7 @@ admin_user = User.objects.create_superuser(
 print(f"  Created: {admin_email} (Admin account)")
 
 print("\n" + "=" * 60)
-print("Enhanced demo setup complete!")
+print("Demo setup complete!")
 print("=" * 60)
 print(f"\nSummary:")
 print(f"  Users: {len(all_users)}")

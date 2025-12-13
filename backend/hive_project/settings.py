@@ -39,7 +39,15 @@ THROTTLE_RELAXED = (
     or _is_truthy_env('RELAX_THROTTLING')
     or (not _throttle_relaxed_explicit and not DEBUG)
 )
-DISABLE_THROTTLING = _is_truthy_env('DISABLE_THROTTLING') or _is_truthy_env('NO_THROTTLE')
+
+# In local dev, throttling tends to get in the way of UX/testing.
+# Default to disabled in DEBUG unless explicitly set.
+_disable_throttling_explicit = os.environ.get('DISABLE_THROTTLING') is not None or os.environ.get('NO_THROTTLE') is not None
+DISABLE_THROTTLING = (
+    _is_truthy_env('DISABLE_THROTTLING')
+    or _is_truthy_env('NO_THROTTLE')
+    or (DEBUG and not _disable_throttling_explicit)
+)
 
 SECRET_KEY = os.environ.get('SECRET_KEY')
 if not SECRET_KEY:

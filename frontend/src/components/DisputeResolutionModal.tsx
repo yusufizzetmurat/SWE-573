@@ -35,8 +35,9 @@ export function DisputeResolutionModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-black/50 overflow-y-auto">
+      <div className="min-h-full w-full flex items-start justify-center p-4 sm:p-6">
+      <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full flex flex-col max-h-[calc(100dvh-3rem)] overflow-hidden my-6">
         {/* Header */}
         <div className="bg-amber-50 border-b border-amber-100 p-6 rounded-t-xl">
           <div className="flex items-center gap-3">
@@ -51,7 +52,7 @@ export function DisputeResolutionModal({
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
           {/* Transaction Summary */}
           <div className="bg-gray-50 rounded-lg p-4">
             <h3 className="text-sm font-medium text-gray-700 mb-3">Transaction Details</h3>
@@ -196,7 +197,7 @@ export function DisputeResolutionModal({
         </div>
 
         {/* Footer */}
-        <div className="border-t border-gray-200 p-4 flex justify-end gap-3">
+        <div className="shrink-0 border-t border-gray-200 p-4 flex justify-end gap-3 bg-white">
           <Button
             variant="outline"
             onClick={onCancel}
@@ -225,6 +226,7 @@ export function DisputeResolutionModal({
             )}
           </Button>
         </div>
+      </div>
       </div>
     </div>
   );

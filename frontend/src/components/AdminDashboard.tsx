@@ -106,17 +106,20 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     }
   };
 
-  const fetchReports = async () => {
+  const fetchReports = async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
     try {
       const [pendingData, resolvedData] = await Promise.all([
-        adminAPI.getReports('pending'),
-        adminAPI.getReports('resolved')
+        adminAPI.getReports('pending', signal),
+        adminAPI.getReports('resolved', signal)
       ]);
       setReports(pendingData);
       setResolvedReports(resolvedData);
     } catch (err) {
+      if (signal?.aborted) {
+        return;
+      }
       setError('Failed to load reports. Please try again.');
       logger.error('Error fetching reports', err instanceof Error ? err : new Error(String(err)));
       showToast('Failed to load reports. Please try again.', 'error');
@@ -124,6 +127,31 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       setLoading(false);
     }
   };
+
+  // Keep reports fresh while moderator dashboard is open.
+  useEffect(() => {
+    let activeController: AbortController | null = new AbortController();
+    // Initial fetch already happens on mount; this ensures ongoing updates.
+    const intervalId = window.setInterval(() => {
+      try {
+        activeController?.abort();
+      } catch {
+        // ignore
+      }
+      activeController = new AbortController();
+      fetchReports(activeController.signal);
+    }, 15000);
+
+    return () => {
+      window.clearInterval(intervalId);
+      try {
+        activeController?.abort();
+      } catch {
+        // ignore
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Filter reports by tab
   // No-show reports without a handshake can't be processed as TimeBank disputes,
@@ -496,7 +524,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
               ) : error ? (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
                   {error}
-                  <Button onClick={fetchReports} variant="outline" size="sm" className="ml-4">
+                  <Button onClick={() => fetchReports()} variant="outline" size="sm" className="ml-4">
                     Retry
                   </Button>
                 </div>

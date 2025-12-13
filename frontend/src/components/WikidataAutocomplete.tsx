@@ -13,7 +13,7 @@ interface WikidataAutocompleteProps {
 
 export function WikidataAutocomplete({
   onSelect,
-  placeholder = 'Search for tags (e.g., cooking, music, programming)',
+  placeholder = 'Search for tags (e.g., cooking, music, tutoring)',
   disabled = false,
   existingTags = [],
 }: WikidataAutocompleteProps) {

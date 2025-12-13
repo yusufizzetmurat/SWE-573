@@ -25,16 +25,16 @@ describe('cn', () => {
 })
 
 describe('formatTimebank', () => {
-  it('formats number to integer string', () => {
+  it('formats numbers for display', () => {
     expect(formatTimebank(1.0)).toBe('1')
-    expect(formatTimebank(2.5)).toBe('3')
-    expect(formatTimebank(10.99)).toBe('11')
+    expect(formatTimebank(2.5)).toBe('2.5')
+    expect(formatTimebank(10.99)).toBe('10.99')
   })
 
-  it('formats string to integer string', () => {
+  it('formats strings for display', () => {
     expect(formatTimebank('1.0')).toBe('1')
-    expect(formatTimebank('2.5')).toBe('3')
-    expect(formatTimebank('10.99')).toBe('11')
+    expect(formatTimebank('2.5')).toBe('2.5')
+    expect(formatTimebank('10.99')).toBe('10.99')
   })
 
   it('handles undefined and null', () => {

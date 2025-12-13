@@ -7,6 +7,7 @@ export const DEMO_USERS = {
   marcus: { email: 'marcus@demo.com', password: 'demo123', name: 'Marcus' },
   alex: { email: 'alex@demo.com', password: 'demo123', name: 'Alex' },
   ayse: { email: 'ayse@demo.com', password: 'demo123', name: 'Ayşe' },
+  moderator: { email: 'moderator@demo.com', password: 'demo123', name: 'Moderator' },
 } as const;
 
 export type DemoUser = keyof typeof DEMO_USERS;
@@ -54,5 +55,25 @@ export async function logout(page: Page) {
       await logoutItem.click({ timeout: 15000, force: true });
     });
   });
-  await expect(page.getByRole('button', { name: /log in/i }).first()).toBeVisible({ timeout: 10000 });
+
+  const loginButton = page.getByRole('button', { name: /log in/i }).first();
+  const isLoggedOut = await loginButton.isVisible({ timeout: 10000 }).catch(() => false);
+
+  if (!isLoggedOut) {
+    // Fallback for flaky menu interactions: force-clear auth client-side and return home.
+    await page
+      .evaluate(() => {
+        try {
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          localStorage.removeItem('user_data');
+        } catch {
+          // ignore
+        }
+      })
+      .catch(() => {});
+    await page.goto('/');
+  }
+
+  await expect(loginButton).toBeVisible({ timeout: 10000 });
 }

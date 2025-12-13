@@ -34,6 +34,7 @@ export function Navbar({
 }: NavbarProps) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const displayName = [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim() || 'My Account';
 
   return (
     <nav className="sticky top-0 z-50 bg-white border-b border-gray-200">
@@ -182,7 +183,7 @@ export function Navbar({
                   <DropdownMenuContent align="end" className="w-56">
                     <DropdownMenuLabel>
                       <div className="flex flex-col">
-                        <span>My Account</span>
+                        <span>{displayName}</span>
                         <span className="text-xs text-gray-500 mt-1">
                           Balance: {formatTimebank(userBalance)} TimeBank {formatTimebank(userBalance) === '1' ? 'Hour' : 'Hours'}
                         </span>

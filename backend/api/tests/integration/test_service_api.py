@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 from decimal import Decimal
 
 from api.tests.helpers.factories import UserFactory, ServiceFactory, TagFactory
+from api.tests.helpers.factories import AdminUserFactory
 from api.tests.helpers.test_client import AuthenticatedAPIClient
 from api.models import Service
 
@@ -71,6 +72,34 @@ class TestServiceViewSet:
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data['title'] == 'New Service'
         assert Service.objects.filter(id=response.data['id']).exists()
+
+    def test_create_service_with_video_media(self):
+        """Test creating a service with a video URL media item"""
+        user = UserFactory()
+        client = AuthenticatedAPIClient()
+        client.authenticate_user(user)
+
+        response = client.post('/api/services/', {
+            'title': 'Service With Video',
+            'description': 'This service includes an optional video.',
+            'type': 'Offer',
+            'duration': 1.0,
+            'location_type': 'Online',
+            'max_participants': 1,
+            'schedule_type': 'One-Time',
+            'status': 'Active',
+            'media': [
+                {
+                    'media_type': 'video',
+                    'file_url': 'https://www.youtube.com/watch?v=a1b2c3d4e5F'
+                }
+            ]
+        }, format='json')
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['title'] == 'Service With Video'
+        assert 'media' in response.data
+        assert any(m.get('media_type') == 'video' for m in response.data.get('media', []))
     
     def test_create_service_validation(self):
         """Test service creation validation"""
@@ -144,3 +173,37 @@ class TestServiceViewSet:
         response = client.get('/api/services/?search=cooking')
         assert response.status_code == status.HTTP_200_OK
         assert any('cooking' in s['title'].lower() for s in response.data['results'])
+
+    def test_report_service_visible_in_admin_reports_queue(self):
+        """Reporting a service should create a pending report visible to admin/moderator dashboard."""
+        reporter = UserFactory()
+        service = ServiceFactory()
+
+        reporter_client = AuthenticatedAPIClient()
+        reporter_client.authenticate_user(reporter)
+
+        report_resp = reporter_client.post(
+            f'/api/services/{service.id}/report/',
+            {
+                'issue_type': 'spam',
+                'description': 'This listing looks like spam.'
+            },
+            format='json'
+        )
+        assert report_resp.status_code == status.HTTP_201_CREATED
+        assert 'report_id' in report_resp.data
+
+        admin_user = AdminUserFactory()
+        admin_client = AuthenticatedAPIClient()
+        admin_client.authenticate_admin(admin_user)
+
+        queue_resp = admin_client.get('/api/admin/reports/?status=pending')
+        assert queue_resp.status_code == status.HTTP_200_OK
+        # Not paginated: should be a list of reports.
+        report_ids = {r['id'] for r in queue_resp.data}
+        assert report_resp.data['report_id'] in report_ids
+
+        created_report = next(r for r in queue_resp.data if r['id'] == report_resp.data['report_id'])
+        assert created_report['status'] == 'pending'
+        # DRF may surface UUIDs as UUID objects in `.data` for tests.
+        assert str(created_report['reported_service']) == str(service.id)

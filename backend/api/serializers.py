@@ -339,13 +339,16 @@ class ServiceSerializer(serializers.ModelSerializer):
         tag_ids = validated_data.pop('tag_ids', [])
         tag_names = validated_data.pop('tag_names', [])
         
-        # Extract media data URLs if provided
+        # Extract media payload if provided.
+        # Backward-compatible:
+        # - legacy: media: ["data:image/...", ...]
+        # - new: media: [{"media_type":"video","file_url":"https://..."}, ...]
         request = self.context.get('request')
-        media_data_urls = []
+        media_payload = []
         if request is not None and hasattr(request, 'data'):
-            media_data_urls = request.data.get('media', [])
-        if not isinstance(media_data_urls, list):
-            media_data_urls = []
+            media_payload = request.data.get('media', [])
+        if not isinstance(media_payload, list):
+            media_payload = []
         
         # Handle location coordinates if provided (convert from string/float to Decimal, round to 6 decimal places)
         if 'location_lat' in validated_data and validated_data['location_lat']:
@@ -462,48 +465,98 @@ class ServiceSerializer(serializers.ModelSerializer):
         if tags_to_add:
             service.tags.set(tags_to_add)
         
-        # Create ServiceMedia objects from data URLs
-        if media_data_urls:
+        # Create ServiceMedia objects
+        if media_payload:
             from .models import ServiceMedia
             import base64
             from django.core.files.base import ContentFile
-            
-            for idx, data_url in enumerate(media_data_urls[:5]):  # Limit to 5 images
-                if not data_url or not isinstance(data_url, str):
+
+            allowed_media_types = {'image', 'video'}
+            max_media_items = 5
+
+            def _create_image_from_data_url(data_url: str, display_order: int) -> None:
+                # Parse data URL (format: data:image/png;base64,...)
+                if not data_url.startswith('data:'):
+                    return
+                header, encoded = data_url.split(',', 1)
+                mime_type = header.split(';')[0].split(':')[1]
+                if not mime_type.startswith('image/'):
+                    return
+
+                image_data = base64.b64decode(encoded)
+                ext_map = {
+                    'image/jpeg': 'jpg',
+                    'image/jpg': 'jpg',
+                    'image/png': 'png',
+                    'image/gif': 'gif',
+                    'image/webp': 'webp'
+                }
+                ext = ext_map.get(mime_type, 'jpg')
+                file_name = f"service_{service.id}_{display_order}.{ext}"
+                ServiceMedia.objects.create(
+                    service=service,
+                    media_type='image',
+                    file=ContentFile(image_data, name=file_name),
+                    display_order=display_order
+                )
+
+            for idx, item in enumerate(media_payload[:max_media_items]):
+                if not item:
                     continue
-                
-                try:
-                    # Parse data URL (format: data:image/png;base64,...)
-                    if data_url.startswith('data:'):
-                        header, encoded = data_url.split(',', 1)
-                        mime_type = header.split(';')[0].split(':')[1]
-                        
-                        # Decode base64
-                        image_data = base64.b64decode(encoded)
-                        
-                        # Determine file extension from MIME type
-                        ext_map = {
-                            'image/jpeg': 'jpg',
-                            'image/jpg': 'jpg',
-                            'image/png': 'png',
-                            'image/gif': 'gif',
-                            'image/webp': 'webp'
-                        }
-                        ext = ext_map.get(mime_type, 'jpg')
-                        
-                        # Create file name
-                        file_name = f"service_{service.id}_{idx}.{ext}"
-                        
-                        # Create ServiceMedia object
+
+                # Legacy: list of image data URLs
+                if isinstance(item, str):
+                    try:
+                        _create_image_from_data_url(item, idx)
+                    except Exception as e:
+                        # Log error but don't fail service creation
+                        logger.warning(f"Failed to create service image from data URL: {e}")
+                    continue
+
+                # New format: dict objects
+                if isinstance(item, dict):
+                    media_type = (item.get('media_type') or 'image').strip().lower()
+                    if media_type not in allowed_media_types:
+                        raise serializers.ValidationError({'media': f"Invalid media_type '{media_type}'"})
+
+                    file_url = item.get('file_url')
+                    if not isinstance(file_url, str) or not file_url.strip():
+                        raise serializers.ValidationError({'media': 'Each media item must include a non-empty file_url'})
+                    file_url = file_url.strip()
+
+                    if media_type == 'video':
+                        if not file_url.startswith(('http://', 'https://')):
+                            raise serializers.ValidationError({'media': 'Video file_url must be an HTTP/HTTPS URL'})
+
+                        # Limit service videos to YouTube/Vimeo for consistent embedding support.
+                        youtube_pattern = r'(youtube\.com|youtu\.be)'
+                        vimeo_pattern = r'vimeo\.com'
+                        if not (re.search(youtube_pattern, file_url, re.IGNORECASE) or re.search(vimeo_pattern, file_url, re.IGNORECASE)):
+                            raise serializers.ValidationError({'media': 'Only YouTube or Vimeo URLs are supported for service videos'})
                         ServiceMedia.objects.create(
                             service=service,
-                            media_type='image',
-                            file=ContentFile(image_data, name=file_name),
+                            media_type='video',
+                            file_url=file_url,
                             display_order=idx
                         )
-                except Exception as e:
-                    # Log error but don't fail service creation
-                    logger.warning(f"Failed to create service media from data URL: {e}")
+                    else:
+                        # For images, accept either a data URL (decode) or an external URL.
+                        try:
+                            if file_url.startswith('data:'):
+                                _create_image_from_data_url(file_url, idx)
+                            else:
+                                ServiceMedia.objects.create(
+                                    service=service,
+                                    media_type='image',
+                                    file_url=file_url,
+                                    display_order=idx
+                                )
+                        except Exception as e:
+                            logger.warning(f"Failed to create service image media: {e}")
+                    continue
+
+                # Unknown item shape
+                raise serializers.ValidationError({'media': 'Media must be a list of strings (data URLs) or objects'})
         
         return service
     

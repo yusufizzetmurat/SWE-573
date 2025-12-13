@@ -58,6 +58,17 @@ export interface Service {
   created_at: string;
   tags?: Tag[];
   is_visible?: boolean;
+  media?: ServiceMedia[];
+}
+
+export interface ServiceMedia {
+  id: string;
+  media_type: 'image' | 'video';
+  file_url?: string | null;
+  file?: string | null;
+  image?: string | null;
+  display_order?: number;
+  created_at?: string;
 }
 
 export interface Tag {
@@ -130,6 +141,9 @@ export interface CreateServiceData {
   schedule_details?: string;
   tags?: string[]; // Array of tag IDs
   tag_names?: string[]; // Array of tag names to create
+  // Backward-compatible: legacy image data URLs (strings)
+  // New format: media objects (e.g., video URLs)
+  media?: Array<string | { media_type: 'image' | 'video'; file_url: string; display_order?: number }>;
 }
 
 // Auth API
@@ -254,6 +268,19 @@ export const serviceAPI = {
 
   delete: async (id: string, signal?: AbortSignal): Promise<void> => {
     await apiClient.delete(`/services/${id}/`, { signal });
+  },
+
+  report: async (
+    id: string,
+    issueType: 'inappropriate_content' | 'spam' | 'service_issue' | 'scam' | 'harassment' | 'other',
+    description: string,
+    signal?: AbortSignal
+  ): Promise<{ status: string; report_id: string }> => {
+    const response = await apiClient.post(`/services/${id}/report/`, {
+      issue_type: issueType,
+      description,
+    }, { signal });
+    return response.data;
   },
 };
 
@@ -510,7 +537,7 @@ export interface Report {
   handshake_scheduled_time?: string;
   handshake_status?: string;
   reported_user_is_receiver?: boolean;
-  type: 'no_show' | 'inappropriate_content' | 'service_issue' | 'spam';
+  type: 'no_show' | 'inappropriate_content' | 'service_issue' | 'spam' | 'scam' | 'harassment' | 'other';
   status: 'pending' | 'resolved' | 'dismissed';
   description: string;
   admin_notes?: string;

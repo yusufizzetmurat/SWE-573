@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle, Clock, User, AlertTriangle, X, Edit2 } from 'lucide-react';
 import { formatTimebank } from '../lib/utils';
 import { POLLING_INTERVALS } from '../lib/constants';
@@ -44,18 +44,34 @@ export function ServiceConfirmationModal({
   const [isLoading, setIsLoading] = useState(false);
   const [hours, setHours] = useState<string>('');
   const [isEditingHours, setIsEditingHours] = useState(false);
+  const isEditingHoursRef = useRef(isEditingHours);
+  const hasLoadedHandshakeRef = useRef(false);
+
+  useEffect(() => {
+    isEditingHoursRef.current = isEditingHours;
+  }, [isEditingHours]);
 
   useEffect(() => {
     if (open && handshakeId) {
       let isActive = true;
 
+      // Reset state when opening a different handshake.
+      hasLoadedHandshakeRef.current = false;
+      setHandshake(null);
+      setIsLoading(true);
+
       const fetchHandshake = async () => {
         try {
-          setIsLoading(true);
+          // Only show the loading state for the initial load;
+          // avoid UI flicker during background polling refreshes.
+          if (!hasLoadedHandshakeRef.current) {
+            setIsLoading(true);
+          }
           const data = await handshakeAPI.get(handshakeId);
           if (!isActive) return;
           setHandshake(data);
-          if (!isEditingHours) {
+          hasLoadedHandshakeRef.current = true;
+          if (!isEditingHoursRef.current) {
             setHours(data.provisioned_hours.toString());
           }
         } catch (error) {
@@ -79,7 +95,7 @@ export function ServiceConfirmationModal({
     } else if (open && initialDuration) {
       setHours(initialDuration.toString());
     }
-  }, [open, handshakeId, initialDuration, isEditingHours]);
+  }, [open, handshakeId, initialDuration]);
 
   const handleComplete = async () => {
     setIsSubmitting(true);
@@ -114,7 +130,14 @@ export function ServiceConfirmationModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          onClose();
+        }
+      }}
+    >
       <DialogContent className="sm:max-w-md">
         {!showIssueOptions ? (
           <>

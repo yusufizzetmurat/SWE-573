@@ -21,6 +21,7 @@ services:
       - REDIS_PORT=6379
       - DJANGO_E2E=${DJANGO_E2E:-0}
       - E2E=${E2E:-0}
+      - DISABLE_THROTTLING=1
 
   frontend:
     build: ./frontend

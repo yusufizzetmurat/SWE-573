@@ -11,27 +11,27 @@ from api.models import ForumCategory
 DEFAULT_CATEGORIES = [
     {
         'name': 'General Discussion',
-        'slug': 'general-discussion',
+        'slug': 'general',
         'description': 'General community chat, introductions, and announcements',
         'icon': 'message-square',
         'color': 'blue',
+        'display_order': 0,
+    },
+    {
+        'name': 'Tips & Advice',
+        'slug': 'tips',
+        'description': 'Share tips, advice, and best practices for great exchanges',
+        'icon': 'lightbulb',
+        'color': 'amber',
         'display_order': 1,
     },
     {
         'name': 'Skills & Learning',
         'slug': 'skills-learning',
         'description': 'Ask questions, share knowledge, and discuss learning opportunities',
-        'icon': 'lightbulb',
-        'color': 'amber',
+        'icon': 'book-open',
+        'color': 'purple',
         'display_order': 2,
-    },
-    {
-        'name': 'Project Collaboration',
-        'slug': 'project-collaboration',
-        'description': 'Find partners for larger projects and collaborative initiatives',
-        'icon': 'users',
-        'color': 'green',
-        'display_order': 3,
     },
     {
         'name': 'Community Events',
@@ -39,23 +39,15 @@ DEFAULT_CATEGORIES = [
         'description': 'Organize meetups, workshops, and community gatherings',
         'icon': 'calendar',
         'color': 'orange',
-        'display_order': 4,
-    },
-    {
-        'name': 'University Students',
-        'slug': 'university-students',
-        'description': 'Connect with fellow students, share study tips, and find study groups',
-        'icon': 'book-open',
-        'color': 'purple',
-        'display_order': 5,
+        'display_order': 3,
     },
     {
         'name': 'Success Stories',
         'slug': 'success-stories',
         'description': 'Share experiences, success stories, and lessons learned from timebank exchanges',
-        'icon': 'book-open',
+        'icon': 'users',
         'color': 'teal',
-        'display_order': 6,
+        'display_order': 4,
     },
     {
         'name': 'Feedback & Suggestions',
@@ -63,7 +55,7 @@ DEFAULT_CATEGORIES = [
         'description': 'Help improve The Hive with your ideas and feedback',
         'icon': 'message-circle',
         'color': 'pink',
-        'display_order': 7,
+        'display_order': 5,
     },
 ]
 
@@ -82,31 +74,44 @@ class Command(BaseCommand):
         force = options['force']
         created_count = 0
         updated_count = 0
+        skipped_count = 0
         
         for category_data in DEFAULT_CATEGORIES:
-            category, created = ForumCategory.objects.update_or_create(
-                slug=category_data['slug'],
-                defaults=category_data
+            # Try to match either by slug (preferred) or by name (handles legacy slugs)
+            category = (
+                ForumCategory.objects.filter(slug=category_data['slug']).first()
+                or ForumCategory.objects.filter(name=category_data['name']).first()
             )
-            
-            if created:
-                created_count += 1
-                self.stdout.write(
-                    self.style.SUCCESS(f'Created category: {category.name}')
-                )
-            else:
-                if force:
-                    updated_count += 1
-                    self.stdout.write(
-                        self.style.WARNING(f'Updated category: {category.name}')
-                    )
-                else:
-                    self.stdout.write(
-                        self.style.NOTICE(f'Category exists: {category.name}')
-                    )
 
-        self.stdout.write(
-            self.style.SUCCESS(
-                f'\nDone! Created: {created_count}, Updated: {updated_count}'
-            )
-        )
+            if category is None:
+                category = ForumCategory.objects.create(**category_data)
+                created_count += 1
+                self.stdout.write(self.style.SUCCESS(f'Created category: {category.name}'))
+                continue
+
+            if not force:
+                skipped_count += 1
+                self.stdout.write(self.style.NOTICE(f'Category exists: {category.name}'))
+                continue
+
+            # Force update existing category fields, without breaking uniqueness constraints.
+            desired_slug = category_data['slug']
+            if category.slug != desired_slug:
+                slug_taken = ForumCategory.objects.exclude(pk=category.pk).filter(slug=desired_slug).exists()
+                if not slug_taken:
+                    category.slug = desired_slug
+
+            for field, value in category_data.items():
+                if field == 'slug':
+                    continue
+                setattr(category, field, value)
+
+            category.save(update_fields=[
+                'name', 'description', 'slug', 'icon', 'color', 'display_order', 'updated_at'
+            ])
+            updated_count += 1
+            self.stdout.write(self.style.WARNING(f'Updated category: {category.name}'))
+
+        self.stdout.write(self.style.SUCCESS(
+            f'\nDone! Created: {created_count}, Updated: {updated_count}, Skipped: {skipped_count}'
+        ))
