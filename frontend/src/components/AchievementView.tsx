@@ -26,7 +26,6 @@ export function AchievementView({
   const { showToast } = useToast();
   const [achievements, setAchievements] = useState<Record<string, AchievementProgress>>({});
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedAchievement, setSelectedAchievement] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchAchievements = async () => {
@@ -46,18 +45,6 @@ export function AchievementView({
 
     fetchAchievements();
   }, [isAuthenticated, user]);
-
-  const handleSelectFeatured = async (achievementId: string) => {
-    if (!user) return;
-    
-    try {
-      await userAPI.updateMe({ featured_achievement_id: achievementId });
-      setSelectedAchievement(achievementId);
-      showToast('Featured achievement updated!', 'success');
-    } catch (error) {
-      showToast('Failed to update featured achievement', 'error');
-    }
-  };
 
   const earnedAchievements = Object.entries(achievements).filter(([_, progress]) => progress.earned);
   const unearnedAchievements = Object.entries(achievements).filter(([_, progress]) => !progress.earned);
@@ -101,14 +88,11 @@ export function AchievementView({
                   }
                   const achievementMeta = getAchievementMeta(id);
                   const Icon = achievementMeta?.icon || Trophy;
-                  const isFeatured = user?.featured_achievement_id === id;
                   
                   return (
                     <div
                       key={id}
-                      className={`bg-white rounded-xl border-2 p-6 ${
-                        isFeatured ? 'border-amber-500 bg-amber-50' : 'border-gray-200'
-                      }`}
+                      className="bg-white rounded-xl border border-gray-200 p-6"
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex items-center gap-3">
@@ -122,21 +106,8 @@ export function AchievementView({
                             </p>
                           </div>
                         </div>
-                        {isFeatured && (
-                          <Badge className="bg-amber-500 text-white text-xs">Featured</Badge>
-                        )}
                       </div>
                       <p className="text-sm text-gray-600 mb-4">{progress.achievement.description}</p>
-                      {!isFeatured && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSelectFeatured(id)}
-                          className="w-full"
-                        >
-                          Set as Featured
-                        </Button>
-                      )}
                     </div>
                   );
                 })}

@@ -120,8 +120,12 @@ export function PublicProfile({
 
   // Get earned achievements
   const userAchievements = profileUser.achievements || profileUser.badges || [];
-  const earnedAchievements = ACHIEVEMENT_CONFIG.filter(achievement => userAchievements.includes(achievement.id));
-  const featuredAchievement = earnedAchievements[0];
+  const achievementById = new Map(ACHIEVEMENT_CONFIG.map((a) => [a.id, a]));
+  const earnedAchievements = (Array.isArray(userAchievements) ? userAchievements : [])
+    .map((id) => achievementById.get(id))
+    .filter(Boolean);
+
+  const latestAchievement = earnedAchievements[0];
 
   // Video intro rendering
   const renderVideoIntro = () => {
@@ -245,10 +249,13 @@ export function PublicProfile({
                   <CalendarDays className="w-4 h-4" />
                   <span>Member since {memberSince}</span>
                 </div>
-                {featuredAchievement && (
+                {latestAchievement && (
                   <Badge className="bg-white/80 text-amber-600 flex items-center gap-1">
-                    <featuredAchievement.icon className="w-3 h-3" />
-                    {featuredAchievement.label}
+                    {(() => {
+                      const Icon = latestAchievement.icon;
+                      return <Icon className="w-3 h-3" />;
+                    })()}
+                    {latestAchievement.label}
                   </Badge>
                 )}
               </div>
@@ -343,7 +350,7 @@ export function PublicProfile({
               <div className="bg-white rounded-xl border border-gray-200 p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">Badges</h3>
                 <div className="grid grid-cols-3 gap-3">
-                  {earnedAchievements.map((badge) => {
+                  {earnedAchievements.slice(0, 3).map((badge) => {
                     const Icon = badge.icon;
                     return (
                       <div 

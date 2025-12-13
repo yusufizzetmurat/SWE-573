@@ -8,6 +8,7 @@ import { Button } from './ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
+import { ScrollArea } from './ui/scroll-area';
 import { forumAPI } from '../lib/api';
 import type { ForumCategory, ForumCategoryColor, ForumRecentPost } from '../lib/types';
 import { useToast } from './Toast';
@@ -217,10 +218,10 @@ export function ForumCategories({
                 <button
                   key={post.id}
                   onClick={() => onNavigate('forum-topic', { topicId: post.topic, topicTitle: post.topic_title })}
-                  className="w-full text-left px-6 py-5 hover:bg-amber-50/50 transition-colors border-b border-gray-100 last:border-b-0"
+                  className="w-full text-left px-6 py-6 hover:bg-amber-50/50 transition-colors border-b border-gray-100 last:border-b-0"
                 >
                   <div className="flex items-start gap-4">
-                    <Avatar className="w-10 h-10">
+                    <Avatar className="w-9 h-9 flex-shrink-0">
                       <AvatarImage src={post.author_avatar_url || undefined} />
                       <AvatarFallback>
                         {(post.author_name || 'U')
@@ -233,16 +234,22 @@ export function ForumCategories({
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="min-w-0">
-                          <div className="text-gray-900 font-medium truncate">{post.topic_title}</div>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 space-y-1">
+                          <div className="text-gray-900 font-semibold leading-snug line-clamp-2">
+                            {post.topic_title}
+                          </div>
                           <div className="text-sm text-gray-600 truncate">
-                            {post.author_name} · {post.category_name}
+                            <span className="font-medium text-gray-700">{post.author_name}</span>
+                            <span className="mx-2 text-gray-300">•</span>
+                            <span className="text-gray-600">{post.category_name}</span>
                           </div>
                         </div>
-                        <div className="text-xs text-gray-500 flex-shrink-0">{formatTimeAgo(post.created_at)}</div>
+                        <div className="text-xs text-gray-500 flex-shrink-0 pt-0.5">{formatTimeAgo(post.created_at)}</div>
                       </div>
-                      <div className="mt-2 text-sm text-gray-700 line-clamp-2">{post.body}</div>
+                      <div className="mt-2 text-sm text-gray-700 leading-relaxed line-clamp-2">
+                        {post.body}
+                      </div>
                     </div>
                   </div>
                 </button>
@@ -343,7 +350,7 @@ export function ForumCategories({
 
         {/* Guidelines Modal */}
         <Dialog open={showGuidelinesModal} onOpenChange={setShowGuidelinesModal}>
-          <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogContent className="max-w-3xl h-[85vh] overflow-hidden flex flex-col">
             <DialogHeader>
               <DialogTitle className="text-2xl font-bold text-gray-900 flex items-center gap-2">
                 <BookOpen className="w-6 h-6 text-amber-500" />
@@ -353,70 +360,72 @@ export function ForumCategories({
                 Please review these guidelines to help maintain a positive and respectful community environment.
               </DialogDescription>
             </DialogHeader>
-            
-            <div className="space-y-6 mt-4">
-              <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-lg">
-                <h3 className="font-semibold text-gray-900 mb-2">1. Be Respectful</h3>
-                <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
-                  <li>Treat all members with kindness and respect</li>
-                  <li>No harassment, discrimination, or hate speech</li>
-                  <li>Disagree constructively and professionally</li>
-                </ul>
-              </div>
 
-              <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg">
-                <h3 className="font-semibold text-gray-900 mb-2">2. Stay On Topic</h3>
-                <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
-                  <li>Keep discussions relevant to the forum category</li>
-                  <li>Use appropriate categories for your posts</li>
-                  <li>Avoid spamming or off-topic content</li>
-                </ul>
-              </div>
+            <ScrollArea className="flex-1 mt-4">
+              <div className="space-y-6 pr-4">
+                <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-lg">
+                  <h3 className="font-semibold text-gray-900 mb-2">1. Be Respectful</h3>
+                  <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                    <li>Treat all members with kindness and respect</li>
+                    <li>No harassment, discrimination, or hate speech</li>
+                    <li>Disagree constructively and professionally</li>
+                  </ul>
+                </div>
 
-              <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded-r-lg">
-                <h3 className="font-semibold text-gray-900 mb-2">3. Share Knowledge</h3>
-                <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
-                  <li>Help others by sharing your expertise</li>
-                  <li>Ask questions when you need help</li>
-                  <li>Provide constructive feedback</li>
-                </ul>
-              </div>
+                <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg">
+                  <h3 className="font-semibold text-gray-900 mb-2">2. Stay On Topic</h3>
+                  <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                    <li>Keep discussions relevant to the forum category</li>
+                    <li>Use appropriate categories for your posts</li>
+                    <li>Avoid spamming or off-topic content</li>
+                  </ul>
+                </div>
 
-              <div className="bg-purple-50 border-l-4 border-purple-500 p-4 rounded-r-lg">
-                <h3 className="font-semibold text-gray-900 mb-2">4. Follow TimeBank Principles</h3>
-                <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
-                  <li>Honor your commitments</li>
-                  <li>Communicate clearly about schedules</li>
-                  <li>Report issues through proper channels</li>
-                </ul>
-              </div>
+                <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded-r-lg">
+                  <h3 className="font-semibold text-gray-900 mb-2">3. Share Knowledge</h3>
+                  <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                    <li>Help others by sharing your expertise</li>
+                    <li>Ask questions when you need help</li>
+                    <li>Provide constructive feedback</li>
+                  </ul>
+                </div>
 
-              <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
-                <h3 className="font-semibold text-gray-900 mb-2">5. Privacy & Safety</h3>
-                <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
-                  <li>Don't share personal information publicly</li>
-                  <li>Report suspicious behavior</li>
-                  <li>Respect others' privacy</li>
-                </ul>
-              </div>
+                <div className="bg-purple-50 border-l-4 border-purple-500 p-4 rounded-r-lg">
+                  <h3 className="font-semibold text-gray-900 mb-2">4. Follow TimeBank Principles</h3>
+                  <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                    <li>Honor your commitments</li>
+                    <li>Communicate clearly about schedules</li>
+                    <li>Report issues through proper channels</li>
+                  </ul>
+                </div>
 
-              <div className="bg-gray-50 border-l-4 border-gray-500 p-4 rounded-r-lg">
-                <h3 className="font-semibold text-gray-900 mb-2">6. Moderation</h3>
-                <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
-                  <li>Admins may remove inappropriate content</li>
-                  <li>Repeated violations may result in warnings or bans</li>
-                  <li>Appeals can be made through support channels</li>
-                </ul>
-              </div>
+                <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
+                  <h3 className="font-semibold text-gray-900 mb-2">5. Privacy & Safety</h3>
+                  <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                    <li>Don't share personal information publicly</li>
+                    <li>Report suspicious behavior</li>
+                    <li>Respect others' privacy</li>
+                  </ul>
+                </div>
 
-              <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-4 mt-6">
-                <p className="text-gray-800 font-medium text-center">
-                  Thank you for helping maintain a positive community! 🙏
-                </p>
-              </div>
-            </div>
+                <div className="bg-gray-50 border-l-4 border-gray-500 p-4 rounded-r-lg">
+                  <h3 className="font-semibold text-gray-900 mb-2">6. Moderation</h3>
+                  <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                    <li>Admins may remove inappropriate content</li>
+                    <li>Repeated violations may result in warnings or bans</li>
+                    <li>Appeals can be made through support channels</li>
+                  </ul>
+                </div>
 
-            <div className="flex justify-end mt-6 pt-4 border-t border-gray-200">
+                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-4 mt-6">
+                  <p className="text-gray-800 font-medium text-center">
+                    Thank you for helping maintain a positive community! 🙏
+                  </p>
+                </div>
+              </div>
+            </ScrollArea>
+
+            <div className="flex justify-end mt-4 pt-4 border-t border-gray-200">
               <Button 
                 onClick={() => setShowGuidelinesModal(false)}
                 className="bg-amber-500 hover:bg-amber-600 text-white"

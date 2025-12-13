@@ -236,8 +236,12 @@ export function UserProfile({
   const userAchievements = user?.achievements || user?.badges || achievements;
   const isNewcomer = user?.date_joined ? 
     (new Date().getTime() - new Date(user.date_joined).getTime()) < (30 * 24 * 60 * 60 * 1000) : false;
-  const earnedAchievements = ACHIEVEMENT_CONFIG.filter(achievement => userAchievements.includes(achievement.id));
-  const featuredAchievement = earnedAchievements[0];
+  const achievementById = new Map(ACHIEVEMENT_CONFIG.map((a) => [a.id, a]));
+  const earnedAchievements = (Array.isArray(userAchievements) ? userAchievements : [])
+    .map((id) => achievementById.get(id))
+    .filter(Boolean);
+
+  const latestAchievement = earnedAchievements[0];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -326,10 +330,13 @@ export function UserProfile({
                       <span>Member since {memberSince}</span>
                     </div>
                   )}
-                  {featuredAchievement && (
+                  {latestAchievement && (
                     <Badge className="bg-white/80 text-amber-600 flex items-center gap-1">
-                      <featuredAchievement.icon className="w-3 h-3" />
-                      {featuredAchievement.label}
+                      {(() => {
+                        const Icon = latestAchievement.icon;
+                        return <Icon className="w-3 h-3" />;
+                      })()}
+                      {latestAchievement.label}
                     </Badge>
                   )}
                 </div>
@@ -500,7 +507,7 @@ export function UserProfile({
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <h3 className="text-gray-900 mb-4">Achievements</h3>
               <div className="grid grid-cols-3 gap-3">
-                {earnedAchievements.map((achievement) => {
+                {earnedAchievements.slice(0, 3).map((achievement) => {
                   const Icon = achievement.icon;
                   return (
                     <div 

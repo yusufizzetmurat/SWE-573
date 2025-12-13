@@ -64,19 +64,20 @@ class UserSummarySerializer(serializers.ModelSerializer):
         """Return list of badge IDs - uses prefetched data when available"""
         try:
             if hasattr(obj, '_prefetched_objects_cache') and 'badges' in obj._prefetched_objects_cache:
-                return [user_badge.badge.id for user_badge in obj._prefetched_objects_cache['badges']]
+                user_badges = [ub for ub in obj._prefetched_objects_cache['badges'] if getattr(ub, 'badge', None)]
+                user_badges.sort(key=lambda ub: ub.earned_at.timestamp() if getattr(ub, 'earned_at', None) else 0, reverse=True)
+                return [ub.badge.id for ub in user_badges]
         except (AttributeError, KeyError):
             pass
         try:
-            return [user_badge.badge.id for user_badge in obj.badges.all()]
+            user_badges = obj.badges.select_related('badge').order_by('-earned_at')
+            return [ub.badge.id for ub in user_badges if getattr(ub, 'badge', None)]
         except (AttributeError, Exception):
             return []
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_featured_badge(self, obj):
-        """Return the featured badge ID, with a fallback to the first badge."""
-        if getattr(obj, 'featured_achievement_id', None):
-            return obj.featured_achievement_id
+        """Return the latest earned badge ID (legacy featured selection removed)."""
         badges = self.get_badges(obj)
         return badges[0] if badges else None
 
@@ -647,7 +648,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'email', 'timebank_balance', 'karma_score', 'role', 'services',
             'punctual_count', 'helpful_count', 'kind_count', 'achievements', 'badges', 'date_joined',
-            'video_intro_file_url'
+            'video_intro_file_url', 'featured_achievement_id'
         ]
         extra_kwargs = {
             'video_intro_file': {'write_only': True, 'required': False}
@@ -740,11 +741,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
         """Return list of achievement IDs - uses prefetched data when available"""
         try:
             if hasattr(obj, '_prefetched_objects_cache') and 'badges' in obj._prefetched_objects_cache:
-                return [user_badge.badge.id for user_badge in obj._prefetched_objects_cache['badges'] if user_badge.badge]
+                user_badges = [ub for ub in obj._prefetched_objects_cache['badges'] if getattr(ub, 'badge', None)]
+                user_badges.sort(key=lambda ub: ub.earned_at.timestamp() if getattr(ub, 'earned_at', None) else 0, reverse=True)
+                return [ub.badge.id for ub in user_badges]
         except (AttributeError, KeyError):
             pass
         try:
-            return [user_badge.badge.id for user_badge in obj.badges.all() if user_badge.badge]
+            user_badges = obj.badges.select_related('badge').order_by('-earned_at')
+            return [ub.badge.id for ub in user_badges if getattr(ub, 'badge', None)]
         except (AttributeError, Exception):
             return []
     
@@ -787,11 +791,14 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
         """Return list of achievement IDs - uses prefetched data when available"""
         try:
             if hasattr(obj, '_prefetched_objects_cache') and 'badges' in obj._prefetched_objects_cache:
-                return [user_badge.badge.id for user_badge in obj._prefetched_objects_cache['badges'] if user_badge.badge]
+                user_badges = [ub for ub in obj._prefetched_objects_cache['badges'] if getattr(ub, 'badge', None)]
+                user_badges.sort(key=lambda ub: ub.earned_at.timestamp() if getattr(ub, 'earned_at', None) else 0, reverse=True)
+                return [ub.badge.id for ub in user_badges]
         except (AttributeError, KeyError):
             pass
         try:
-            return [user_badge.badge.id for user_badge in obj.badges.all() if user_badge.badge]
+            user_badges = obj.badges.select_related('badge').order_by('-earned_at')
+            return [ub.badge.id for ub in user_badges if getattr(ub, 'badge', None)]
         except (AttributeError, Exception):
             return []
     
@@ -1245,7 +1252,7 @@ class CommentSerializer(serializers.ModelSerializer):
     user_avatar_url = serializers.SerializerMethodField()
     user_karma_score = serializers.IntegerField(source='user.karma_score', read_only=True)
     user_badges = serializers.SerializerMethodField()
-    user_featured_achievement_id = serializers.CharField(source='user.featured_achievement_id', read_only=True, allow_null=True)
+    user_featured_achievement_id = serializers.SerializerMethodField()
     service_title = serializers.SerializerMethodField()
     reply_count = serializers.SerializerMethodField()
     parent_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
@@ -1282,13 +1289,22 @@ class CommentSerializer(serializers.ModelSerializer):
         """Return list of badge IDs for the comment author"""
         try:
             if hasattr(obj.user, '_prefetched_objects_cache') and 'badges' in obj.user._prefetched_objects_cache:
-                return [user_badge.badge.id for user_badge in obj.user._prefetched_objects_cache['badges']]
+                user_badges = [ub for ub in obj.user._prefetched_objects_cache['badges'] if getattr(ub, 'badge', None)]
+                user_badges.sort(key=lambda ub: ub.earned_at.timestamp() if getattr(ub, 'earned_at', None) else 0, reverse=True)
+                return [ub.badge.id for ub in user_badges]
         except (AttributeError, KeyError):
             pass
         try:
-            return [user_badge.badge.id for user_badge in obj.user.badges.all()]
+            user_badges = obj.user.badges.select_related('badge').order_by('-earned_at')
+            return [ub.badge.id for ub in user_badges if getattr(ub, 'badge', None)]
         except (AttributeError, Exception):
             return []
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_user_featured_achievement_id(self, obj):
+        """Backward-compatible field: now returns the author's latest earned achievement ID."""
+        badges = self.get_user_badges(obj)
+        return badges[0] if badges else None
     
     @extend_schema_field(OpenApiTypes.STR)
     def get_service_title(self, obj):
