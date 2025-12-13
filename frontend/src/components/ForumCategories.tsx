@@ -5,10 +5,11 @@ import {
 } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Button } from './ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { forumAPI } from '../lib/api';
-import type { ForumCategory, ForumCategoryColor } from '../lib/types';
+import type { ForumCategory, ForumCategoryColor, ForumRecentPost } from '../lib/types';
 import { useToast } from './Toast';
 import { logger } from '../lib/logger';
 
@@ -58,6 +59,21 @@ function formatLastActivity(timestamp: string | null): string {
   return `Active on ${date.toLocaleDateString()}`;
 }
 
+function formatTimeAgo(timestamp: string): string {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
 export function ForumCategories({ 
   onNavigate, 
   userBalance = 0, 
@@ -70,6 +86,9 @@ export function ForumCategories({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showGuidelinesModal, setShowGuidelinesModal] = useState(false);
+
+  const [recentPosts, setRecentPosts] = useState<ForumRecentPost[]>([]);
+  const [isLoadingRecentPosts, setIsLoadingRecentPosts] = useState(true);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -89,9 +108,23 @@ export function ForumCategories({
     fetchCategories();
   }, [fetchCategories]);
 
-  // Calculate totals from categories
-  const totalTopics = categories.reduce((sum, cat) => sum + cat.topic_count, 0);
-  const totalPosts = categories.reduce((sum, cat) => sum + cat.post_count, 0);
+  const fetchRecentPosts = useCallback(async () => {
+    try {
+      setIsLoadingRecentPosts(true);
+      const data = await forumAPI.getRecentPosts(8);
+      setRecentPosts(data.results || []);
+    } catch (err) {
+      logger.error('Failed to fetch recent forum posts', err instanceof Error ? err : new Error(String(err)));
+      // Non-blocking: forum categories page should still work without this.
+      setRecentPosts([]);
+    } finally {
+      setIsLoadingRecentPosts(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRecentPosts();
+  }, [fetchRecentPosts]);
 
   const handleCategoryClick = (category: ForumCategory) => {
     onNavigate('forum-category', { categorySlug: category.slug, categoryName: category.name });
@@ -148,28 +181,74 @@ export function ForumCategories({
       </div>
 
       <div className="max-w-[1440px] mx-auto px-8 py-12">
-        {/* Stats Bar */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
-          <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
-            <div className="text-3xl text-gray-900 mb-1">{totalTopics.toLocaleString()}</div>
-            <div className="text-sm text-gray-600">Total Topics</div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
-            <div className="text-3xl text-gray-900 mb-1">{totalPosts.toLocaleString()}</div>
-            <div className="text-sm text-gray-600">Total Posts</div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
-            <div className="text-3xl text-gray-900 mb-1">{categories.length}</div>
-            <div className="text-sm text-gray-600">Categories</div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
-            <div className="text-3xl text-gray-900 mb-1">
-              {categories.filter(c => c.last_activity && 
-                new Date(c.last_activity).getTime() > Date.now() - 24 * 60 * 60 * 1000
-              ).length}
+        {/* Recent Posts */}
+        <div className="mb-12">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-gray-900">Recent Posts</h2>
+              <p className="text-gray-600">Quick look at the latest activity across the forum</p>
             </div>
-            <div className="text-sm text-gray-600">Active Today</div>
+            <Button variant="outline" onClick={fetchRecentPosts} disabled={isLoadingRecentPosts}>
+              {isLoadingRecentPosts ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Refreshing
+                </>
+              ) : (
+                'Refresh'
+              )}
+            </Button>
           </div>
+
+          {isLoadingRecentPosts ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="flex items-center text-gray-600">
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                Loading recent posts...
+              </div>
+            </div>
+          ) : recentPosts.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-6 text-gray-600">
+              No recent posts yet.
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              {recentPosts.map((post) => (
+                <button
+                  key={post.id}
+                  onClick={() => onNavigate('forum-topic', { topicId: post.topic, topicTitle: post.topic_title })}
+                  className="w-full text-left px-6 py-5 hover:bg-amber-50/50 transition-colors border-b border-gray-100 last:border-b-0"
+                >
+                  <div className="flex items-start gap-4">
+                    <Avatar className="w-10 h-10">
+                      <AvatarImage src={post.author_avatar_url || undefined} />
+                      <AvatarFallback>
+                        {(post.author_name || 'U')
+                          .split(' ')
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .map((p) => p[0])
+                          .join('')
+                          .toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="text-gray-900 font-medium truncate">{post.topic_title}</div>
+                          <div className="text-sm text-gray-600 truncate">
+                            {post.author_name} · {post.category_name}
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-500 flex-shrink-0">{formatTimeAgo(post.created_at)}</div>
+                      </div>
+                      <div className="mt-2 text-sm text-gray-700 line-clamp-2">{post.body}</div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Categories Grid */}

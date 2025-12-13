@@ -767,6 +767,7 @@ import type {
   ForumCategory, 
   ForumTopic, 
   ForumPost, 
+  ForumRecentPost,
   CreateForumTopicData, 
   CreateForumPostData,
   CreateForumCategoryData 
@@ -855,5 +856,11 @@ export const forumAPI = {
 
   deletePost: async (id: string, signal?: AbortSignal): Promise<void> => {
     await apiClient.delete(`/forum/posts/${id}/`, { signal });
+  },
+
+  // Cross-forum feed
+  getRecentPosts: async (pageSize: number = 10, signal?: AbortSignal): Promise<PaginatedResponse<ForumRecentPost>> => {
+    const response = await apiClient.get('/forum/posts/recent/', { params: { page_size: pageSize }, signal });
+    return response.data;
   },
 };

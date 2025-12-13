@@ -229,6 +229,10 @@ forum_post_detail = ForumPostViewSet.as_view({
     'delete': 'destroy'
 })
 
+forum_post_recent = ForumPostViewSet.as_view({
+    'get': 'recent'
+})
+
 urlpatterns = [
     path('health/', health_check, name='health_check'),
     path('metrics/', metrics_endpoint, name='metrics'),
@@ -266,6 +270,7 @@ urlpatterns = [
     path('forum/topics/<uuid:pk>/lock/', forum_topic_lock, name='forum-topic-lock'),
     path('forum/topics/<uuid:topic_id>/posts/', forum_post_list_create, name='forum-post-list'),
     path('forum/posts/<uuid:pk>/', forum_post_detail, name='forum-post-detail'),
+    path('forum/posts/recent/', forum_post_recent, name='forum-post-recent'),
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
     path('docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),

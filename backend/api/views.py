@@ -3917,9 +3917,30 @@ class ForumPostViewSet(viewsets.ViewSet):
     pagination_class = StandardResultsSetPagination
     
     def get_permissions(self):
-        if self.action == 'list':
+        if self.action in ['list', 'recent']:
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
+
+    @track_performance
+    def recent(self, request):
+        """List most recent posts across all active categories/topics."""
+        from .serializers import ForumRecentPostSerializer
+
+        posts = (
+            ForumPost.objects.filter(is_deleted=False, topic__category__is_active=True)
+            .select_related('author', 'topic', 'topic__category')
+            .order_by('-created_at')
+        )
+
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(posts, request)
+
+        if page is not None:
+            serializer = ForumRecentPostSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+
+        serializer = ForumRecentPostSerializer(posts, many=True)
+        return Response(serializer.data)
     
     @track_performance
     def list(self, request, topic_id=None):

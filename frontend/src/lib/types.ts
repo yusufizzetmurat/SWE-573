@@ -270,6 +270,12 @@ export interface ForumPost {
   updated_at: string;
 }
 
+export interface ForumRecentPost extends ForumPost {
+  topic_title: string;
+  category_slug: string;
+  category_name: string;
+}
+
 export interface CreateForumTopicData {
   category: string;
   title: string;

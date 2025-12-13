@@ -1737,6 +1737,17 @@ class ForumPostSerializer(serializers.ModelSerializer):
         return cleaned
 
 
+class ForumRecentPostSerializer(ForumPostSerializer):
+    """Forum post serializer with topic/category context for 'recent posts' feeds."""
+
+    topic_title = serializers.CharField(source='topic.title', read_only=True)
+    category_slug = serializers.CharField(source='topic.category.slug', read_only=True)
+    category_name = serializers.CharField(source='topic.category.name', read_only=True)
+
+    class Meta(ForumPostSerializer.Meta):
+        fields = ForumPostSerializer.Meta.fields + ['topic_title', 'category_slug', 'category_name']
+
+
 class ForumTopicDetailSerializer(ForumTopicSerializer):
     """Extended serializer for topic detail view with posts"""
     posts = serializers.SerializerMethodField()
