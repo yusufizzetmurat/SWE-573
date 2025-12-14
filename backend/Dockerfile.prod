@@ -51,12 +51,19 @@ ENV C_INCLUDE_PATH=/usr/include/gdal
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash appuser
+
 # Copy application code
-COPY . /code/
+COPY --chown=appuser:appuser . /code/
 
 # Create logs and media directories, make entrypoint executable
 RUN mkdir -p /code/logs /code/media && \
+    chown -R appuser:appuser /code/logs /code/media && \
     chmod +x /code/entrypoint.sh
+
+# Switch to non-root user
+USER appuser
 
 # Expose port
 EXPOSE 8000
