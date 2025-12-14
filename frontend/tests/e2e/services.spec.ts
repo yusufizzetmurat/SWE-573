@@ -116,9 +116,7 @@ test.describe('Services', () => {
     await page.getByTestId('post-offer-title').fill(title)
     await page.getByTestId('post-offer-description').fill('E2E-created offer (online)')
     await page.getByTestId('post-offer-participants').fill('1')
-
-    await safeClick(page.getByTestId('post-offer-duration'))
-    await safeClick(page.getByRole('option', { name: /1 hour/i }))
+    await page.getByTestId('post-offer-duration').fill('1')
 
     const locationType = page.getByTestId('post-offer-location-type')
     await selectRadixOptionByName({ page, trigger: locationType, optionName: /^online$/i, timeout: 15000 })

@@ -2,44 +2,65 @@
 # Stage 1: Build dependencies
 FROM python:3.11-slim as builder
 
-WORKDIR /app
+WORKDIR /build
 
-# Install system dependencies
+# Install build dependencies including GDAL for PostGIS/GeoDjango
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
     libpq-dev \
+    gdal-bin \
+    libgdal-dev \
+    libgeos-dev \
+    libproj-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Set GDAL environment variables for pip install
+ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
+ENV C_INCLUDE_PATH=/usr/include/gdal
+
+# Copy requirements and install Python dependencies globally
 COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Production image
 FROM python:3.11-slim
 
-WORKDIR /app
+# Use /code for consistency with dev Dockerfile and settings.py
+WORKDIR /code
 
-# Install only runtime dependencies
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Install runtime dependencies including GDAL for GeoDjango
 RUN apt-get update && apt-get install -y \
     postgresql-client \
     libpq-dev \
     curl \
+    gdal-bin \
+    libgdal-dev \
+    libgeos-dev \
+    libproj-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python dependencies from builder
-COPY --from=builder /root/.local /root/.local
+# Set GDAL environment variables
+ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
+ENV C_INCLUDE_PATH=/usr/include/gdal
 
-# Make sure scripts in .local are usable
-ENV PATH=/root/.local/bin:$PATH
+# Copy Python dependencies from builder (installed globally in /usr/local)
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash appuser
 
 # Copy application code
-COPY . .
+COPY --chown=appuser:appuser . /code/
 
-# Create logs directory and non-root user for security
-RUN mkdir -p /app/logs && \
-    useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
+# Create logs and media directories, make entrypoint executable
+RUN mkdir -p /code/logs /code/media && \
+    chown -R appuser:appuser /code/logs /code/media && \
+    chmod +x /code/entrypoint.sh
 
 # Switch to non-root user
 USER appuser
@@ -48,11 +69,9 @@ USER appuser
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/api/health/ || exit 1
 
-# Run migrations and start server
-CMD python manage.py wait_for_db && \
-    python manage.py migrate --noinput && \
-    python manage.py collectstatic --noinput && \
-    daphne -b 0.0.0.0 -p 8000 hive_project.asgi:application
+# Use entrypoint to run migrations, then exec the command
+ENTRYPOINT ["/code/entrypoint.sh"]
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "hive_project.asgi:application"]

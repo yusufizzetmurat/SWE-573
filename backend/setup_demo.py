@@ -164,7 +164,7 @@ deniz = create_or_update_user(
 burak = create_or_update_user(
     'burak@demo.com', 'Burak', 'Kurt',
     'Chess player and music lover. Intermediate level chess player looking to improve and teach others. Also enjoy discussing music and sharing recommendations.',
-    Decimal('3.50'), 15, date_joined_offset_days=15
+    Decimal('4.50'), 15, date_joined_offset_days=15
 )
 
 all_users = [elif_user, cem, ayse, mehmet, zeynep, can, deniz, burak]
