@@ -177,6 +177,20 @@ class TestServiceViewSet:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data.get('code') == 'INVALID_STATE'
         assert Service.objects.filter(id=service.id).exists()
+
+    def test_delete_service_non_owner_does_not_leak_handshake_state(self):
+        """Non-owner should get 403 even if the service has handshakes."""
+        owner = UserFactory()
+        other_user = UserFactory()
+        service = ServiceFactory(user=owner)
+        HandshakeFactory(service=service)
+
+        client = AuthenticatedAPIClient()
+        client.authenticate_user(other_user)
+
+        response = client.delete(f'/api/services/{service.id}/')
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert Service.objects.filter(id=service.id).exists()
     
     def test_search_services(self):
         """Test service search"""

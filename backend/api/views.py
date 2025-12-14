@@ -834,6 +834,11 @@ class ServiceViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+
+        # Authorization must run before state checks to avoid leaking service state.
+        if instance.user != request.user and getattr(request.user, 'role', None) != 'admin':
+            raise PermissionDenied('Attempting to delete another user\'s service')
+
         if instance.handshakes.exists():
             return create_error_response(
                 'Cannot delete this service because it already has at least one handshake.',
