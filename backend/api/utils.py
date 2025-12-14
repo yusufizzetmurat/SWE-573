@@ -126,21 +126,33 @@ def complete_timebank_transfer(handshake: Handshake) -> bool:
 
         transaction.on_commit(invalidate_after_commit)
 
-        handshake.status = "completed"
-        handshake.save(update_fields=["status"])
-
         # Option B: One-Time services become Completed only when all participant handshakes are completed.
         service = Service.objects.select_for_update().get(id=handshake.service.id)
         if service.schedule_type == 'One-Time':
-            completed_count = Handshake.objects.filter(service=service, status='completed').count()
-            active_count = Handshake.objects.filter(
+            # Compute post-completion counts without depending on an in-transaction status flip.
+            completed_excluding_current = Handshake.objects.filter(
+                service=service,
+                status='completed',
+            ).exclude(id=handshake.id).count()
+
+            active_excluding_current = Handshake.objects.filter(
                 service=service,
                 status__in=['pending', 'accepted', 'reported', 'paused'],
-            ).count()
+            ).exclude(id=handshake.id).count()
 
-            if completed_count >= service.max_participants and active_count == 0 and service.status != 'Completed':
+            completed_count_after = completed_excluding_current + 1
+            active_count_after = active_excluding_current
+
+            if (
+                completed_count_after >= service.max_participants
+                and active_count_after == 0
+                and service.status != 'Completed'
+            ):
                 service.status = 'Completed'
                 service.save(update_fields=['status'])
+
+        handshake.status = "completed"
+        handshake.save(update_fields=["status"])
 
         return True
 
