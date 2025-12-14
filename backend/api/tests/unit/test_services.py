@@ -127,6 +127,52 @@ class HandshakeServiceTestCase(TestCase):
         is_valid, error = HandshakeService.can_express_interest(self.service_offer, self.user4)
         self.assertFalse(is_valid)
         self.assertIn('maximum capacity', error)
+
+    def test_one_time_capacity_counts_completed(self):
+        """One-Time services should count completed handshakes toward capacity."""
+        one_time_service = Service.objects.create(
+            user=self.user1,
+            title='One-time capacity test',
+            description='Test',
+            type='Offer',
+            duration=Decimal('1.00'),
+            location_type='Online',
+            max_participants=1,
+            schedule_type='One-Time',
+        )
+        Handshake.objects.create(
+            service=one_time_service,
+            requester=self.user2,
+            provisioned_hours=Decimal('1.00'),
+            status='completed',
+        )
+
+        is_valid, error = HandshakeService.can_express_interest(one_time_service, self.user3)
+        self.assertFalse(is_valid)
+        self.assertIn('maximum capacity', error)
+
+    def test_recurrent_capacity_does_not_count_completed(self):
+        """Recurrent services should not count completed handshakes toward capacity."""
+        recurrent_service = Service.objects.create(
+            user=self.user1,
+            title='Recurrent capacity test',
+            description='Test',
+            type='Offer',
+            duration=Decimal('1.00'),
+            location_type='Online',
+            max_participants=1,
+            schedule_type='Recurrent',
+        )
+        Handshake.objects.create(
+            service=recurrent_service,
+            requester=self.user2,
+            provisioned_hours=Decimal('1.00'),
+            status='completed',
+        )
+
+        is_valid, error = HandshakeService.can_express_interest(recurrent_service, self.user3)
+        self.assertTrue(is_valid)
+        self.assertIsNone(error)
     
     def test_express_interest_success_offer(self):
         """Test successful express_interest for Offer service."""

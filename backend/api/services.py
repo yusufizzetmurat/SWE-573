@@ -11,6 +11,15 @@ from .cache_utils import invalidate_conversations
 
 class HandshakeService:
     """Service class for handshake business logic, following Fat Utils pattern."""
+
+    @staticmethod
+    def _capacity_statuses(service: Service) -> list[str]:
+        """Handshake statuses that count toward max_participants capacity."""
+        if service.schedule_type == 'One-Time':
+            # For one-time services, a participant slot remains consumed even after completion
+            # (and during disputes) until the service lifecycle ends.
+            return ['pending', 'accepted', 'completed', 'reported', 'paused']
+        return ['pending', 'accepted']
     
     @staticmethod
     def can_express_interest(service: Service, user: User) -> tuple[bool, str | None]:
@@ -29,20 +38,21 @@ class HandshakeService:
             return False, 'Cannot express interest in your own service'
         
         # Check for existing handshake
-        existing = Handshake.objects.filter(
-            service=service,
-            requester=user,
-            status__in=['pending', 'accepted']
-        ).first()
+        # - One-Time: user shouldn't participate twice (completed/reported/paused still count as participation)
+        # - Recurrent: allow re-participation after completion/cancellation
+        existing_statuses = (
+            HandshakeService._capacity_statuses(service)
+            if service.schedule_type == 'One-Time'
+            else ['pending', 'accepted']
+        )
+        existing = Handshake.objects.filter(service=service, requester=user, status__in=existing_statuses).first()
         
         if existing:
             return False, 'You have already expressed interest'
         
         # Check max_participants
-        current_participants = Handshake.objects.filter(
-            service=service,
-            status__in=['pending', 'accepted']
-        ).count()
+        capacity_statuses = HandshakeService._capacity_statuses(service)
+        current_participants = Handshake.objects.filter(service=service, status__in=capacity_statuses).count()
         
         if current_participants >= service.max_participants:
             return False, f'Service has reached maximum capacity ({service.max_participants} participants)'
@@ -164,10 +174,8 @@ class HandshakeService:
     @staticmethod
     def _check_max_participants(service: Service) -> None:
         """Validates service hasn't reached max_participants."""
-        current_participants = Handshake.objects.filter(
-            service=service,
-            status__in=['pending', 'accepted']
-        ).count()
+        capacity_statuses = HandshakeService._capacity_statuses(service)
+        current_participants = Handshake.objects.filter(service=service, status__in=capacity_statuses).count()
         
         if current_participants >= service.max_participants:
             raise ValueError(
@@ -176,12 +184,13 @@ class HandshakeService:
     
     @staticmethod
     def _check_existing_handshake(service: Service, user: User) -> None:
-        """Checks for existing pending/accepted handshakes."""
-        existing = Handshake.objects.filter(
-            service=service,
-            requester=user,
-            status__in=['pending', 'accepted']
-        ).first()
+        """Checks for an existing handshake that should block re-interest."""
+        existing_statuses = (
+            HandshakeService._capacity_statuses(service)
+            if service.schedule_type == 'One-Time'
+            else ['pending', 'accepted']
+        )
+        existing = Handshake.objects.filter(service=service, requester=user, status__in=existing_statuses).first()
         
         if existing:
             raise ValueError('You have already expressed interest')

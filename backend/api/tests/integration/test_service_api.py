@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from decimal import Decimal
 
-from api.tests.helpers.factories import UserFactory, ServiceFactory, TagFactory
+from api.tests.helpers.factories import UserFactory, ServiceFactory, TagFactory, HandshakeFactory
 from api.tests.helpers.factories import AdminUserFactory
 from api.tests.helpers.test_client import AuthenticatedAPIClient
 from api.models import Service
@@ -163,6 +163,20 @@ class TestServiceViewSet:
         response = client.delete(f'/api/services/{service.id}/')
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert not Service.objects.filter(id=service.id).exists()
+
+    def test_delete_service_blocked_when_handshake_exists(self):
+        """Service cannot be deleted once any handshake exists."""
+        user = UserFactory()
+        service = ServiceFactory(user=user)
+        HandshakeFactory(service=service)
+
+        client = AuthenticatedAPIClient()
+        client.authenticate_user(user)
+
+        response = client.delete(f'/api/services/{service.id}/')
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data.get('code') == 'INVALID_STATE'
+        assert Service.objects.filter(id=service.id).exists()
     
     def test_search_services(self):
         """Test service search"""

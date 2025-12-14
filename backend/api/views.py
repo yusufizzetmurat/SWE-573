@@ -831,6 +831,18 @@ class ServiceViewSet(viewsets.ModelViewSet):
         super().perform_update(serializer)
         invalidate_service_lists()
         invalidate_user_services(str(service.user.id))
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.handshakes.exists():
+            return create_error_response(
+                'Cannot delete this service because it already has at least one handshake.',
+                code=ErrorCodes.INVALID_STATE,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
     
     def perform_destroy(self, instance):
         if instance.user != self.request.user and getattr(self.request.user, 'role', None) != 'admin':
@@ -2072,8 +2084,9 @@ class ChatViewSet(viewsets.ViewSet):
         
         paginator = self.pagination_class()
         has_pagination_params = request.query_params.get(paginator.page_query_param) or request.query_params.get(paginator.page_size_query_param)
+        force_refresh = str(request.query_params.get('force', '')).lower() in {'1', 'true', 'yes'}
         
-        if not has_pagination_params:
+        if not has_pagination_params and not force_refresh:
             cached_result = get_cached_conversations(str(user.id))
             if cached_result is not None:
                 if isinstance(cached_result, dict) and 'results' in cached_result:
@@ -2639,6 +2652,9 @@ class AdminReportViewSet(viewsets.ReadOnlyModelViewSet):
                 # - Receiver no-show: complete transfer (pay provider who showed up)
                 if noshow_user and noshow_user.id == receiver.id:
                     # Receiver was the no-show - pay the provider who showed up
+                    handshake.provider_confirmed_complete = True
+                    handshake.receiver_confirmed_complete = True
+                    handshake.save(update_fields=['provider_confirmed_complete', 'receiver_confirmed_complete', 'updated_at'])
                     complete_timebank_transfer(handshake)
                     financial_action = 'completed'
                     receiver_msg = f'A no-show report against you has been confirmed. {hours} hours have been transferred to the provider.'
@@ -2719,6 +2735,9 @@ class AdminReportViewSet(viewsets.ReadOnlyModelViewSet):
             
             with transaction.atomic():
                 # Complete transfer - pays provider
+                handshake.provider_confirmed_complete = True
+                handshake.receiver_confirmed_complete = True
+                handshake.save(update_fields=['provider_confirmed_complete', 'receiver_confirmed_complete', 'updated_at'])
                 complete_timebank_transfer(handshake)
                 
                 # Get provider and receiver for notifications
