@@ -16,6 +16,25 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const serializeUserForStorage = useCallback((u: User): User => ({
+    id: u.id,
+    email: u.email,
+    first_name: u.first_name,
+    last_name: u.last_name,
+    role: u.role,
+    timebank_balance: u.timebank_balance,
+    karma_score: u.karma_score,
+    bio: u.bio,
+    avatar_url: u.avatar_url,
+    banner_url: u.banner_url,
+    date_joined: u.date_joined,
+    featured_badge: u.featured_badge,
+    featured_achievement_id: u.featured_achievement_id,
+    show_history: u.show_history,
+    video_intro_url: u.video_intro_url,
+    video_intro_file_url: u.video_intro_file_url,
+  }), []);
+
   // Try to restore user from localStorage on mount
   const getStoredUser = (): User | null => {
     try {
@@ -39,11 +58,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const saveUser = useCallback((userData: User | null) => {
     setUser(userData);
     if (userData) {
-      localStorage.setItem('user_data', JSON.stringify(userData));
+      try {
+        localStorage.setItem('user_data', JSON.stringify(serializeUserForStorage(userData)));
+      } catch (e) {
+        logger.error('Failed to persist user data to localStorage', e instanceof Error ? e : new Error(String(e)));
+        try {
+          localStorage.removeItem('user_data');
+        } catch {
+          // ignore
+        }
+      }
     } else {
       localStorage.removeItem('user_data');
     }
-  }, []);
+  }, [serializeUserForStorage]);
 
   useEffect(() => {
     let isMounted = true;

@@ -3,6 +3,7 @@ from __future__ import annotations
 # Utility functions for TimeBank and business logic
 
 from decimal import Decimal
+from contextlib import nullcontext
 from django.db import transaction
 from django.db.models import F
 
@@ -80,47 +81,76 @@ def complete_timebank_transfer(handshake: Handshake) -> bool:
     
     Note: Caller must wrap in transaction.atomic() for atomicity.
     """
-    provider, receiver = get_provider_and_receiver(handshake)
-    provider = User.objects.select_for_update().get(id=provider.id)
-    hours = handshake.provisioned_hours
-    
-    # Use F() expression for atomic balance update
-    provider.timebank_balance = F("timebank_balance") + hours
-    provider.save(update_fields=["timebank_balance"])
-    
-    # Refresh to get the actual balance value after atomic update
-    provider.refresh_from_db(fields=["timebank_balance"])
-    
-    # Record transaction history
-    TransactionHistory.objects.create(
-        user=provider,
-        transaction_type='transfer',
-        amount=hours,  # Positive for credit
-        balance_after=provider.timebank_balance,
-        handshake=handshake,
-        description=f"Service completed: '{handshake.service.title}' ({hours} hours transferred)"
-    )
-    
-    # Award karma for completing handshake as provider (+5)
-    provider.karma_score = F("karma_score") + 5
-    provider.save(update_fields=["karma_score"])
-    provider.refresh_from_db(fields=["karma_score"])
-    
-    _, receiver = get_provider_and_receiver(handshake)
-    invalidate_conversations(str(provider.id))
-    invalidate_conversations(str(receiver.id))
-    invalidate_transactions(str(provider.id))
-    invalidate_transactions(str(receiver.id))
-    
-    handshake.status = "completed"
-    handshake.save(update_fields=["status"])
-    
-    # Mark service as completed if it's a one-time service
-    if handshake.service.schedule_type == 'One-Time':
-        handshake.service.status = 'Completed'
-        handshake.service.save(update_fields=['status'])
-    
-    return True
+    atomic_ctx = nullcontext() if transaction.get_connection().in_atomic_block else transaction.atomic()
+    with atomic_ctx:
+        handshake = Handshake.objects.select_for_update().select_related('service', 'service__user', 'requester').get(id=handshake.id)
+
+        # Idempotency: if already completed, avoid double-credit.
+        if handshake.status == 'completed':
+            return True
+
+        provider, receiver = get_provider_and_receiver(handshake)
+        provider = User.objects.select_for_update().get(id=provider.id)
+        hours = handshake.provisioned_hours
+
+        # Use F() expression for atomic balance update
+        provider.timebank_balance = F("timebank_balance") + hours
+        provider.save(update_fields=["timebank_balance"])
+
+        # Refresh to get the actual balance value after atomic update
+        provider.refresh_from_db(fields=["timebank_balance"])
+
+        # Record transaction history
+        TransactionHistory.objects.create(
+            user=provider,
+            transaction_type='transfer',
+            amount=hours,  # Positive for credit
+            balance_after=provider.timebank_balance,
+            handshake=handshake,
+            description=f"Service completed: '{handshake.service.title}' ({hours} hours transferred)"
+        )
+
+        # Award karma for completing handshake as provider (+5)
+        provider.karma_score = F("karma_score") + 5
+        provider.save(update_fields=["karma_score"])
+        provider.refresh_from_db(fields=["karma_score"])
+
+        receiver_id = str(receiver.id)
+        provider_id = str(provider.id)
+
+        def invalidate_after_commit() -> None:
+            invalidate_conversations(provider_id)
+            invalidate_conversations(receiver_id)
+            invalidate_transactions(provider_id)
+            invalidate_transactions(receiver_id)
+
+        transaction.on_commit(invalidate_after_commit)
+
+        # Option B: One-Time services become Completed only when all participant handshakes are completed.
+        service = Service.objects.select_for_update().get(id=handshake.service.id)
+        if service.schedule_type == 'One-Time':
+            # Compute post-completion counts without depending on an in-transaction status flip.
+            completed_excluding_current = Handshake.objects.filter(
+                service=service,
+                status='completed',
+            ).exclude(id=handshake.id).count()
+
+            active_excluding_current = Handshake.objects.filter(
+                service=service,
+                status__in=['pending', 'accepted', 'reported', 'paused'],
+            ).exclude(id=handshake.id).count()
+
+            completed_count_after = completed_excluding_current + 1
+            active_count_after = active_excluding_current
+
+            if active_count_after == 0 and completed_count_after > 0 and service.status != 'Completed':
+                service.status = 'Completed'
+                service.save(update_fields=['status'])
+
+        handshake.status = "completed"
+        handshake.save(update_fields=["status"])
+
+        return True
 
 
 def cancel_timebank_transfer(handshake: Handshake) -> bool:
