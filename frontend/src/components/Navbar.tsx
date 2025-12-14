@@ -3,6 +3,7 @@ import { Hexagon, Search, Plus, User, LogOut, MessageSquare, UserCircle, Bell, G
 import { formatTimebank } from '../lib/utils';
 import { Button } from './ui/button';
 import { useAuth } from '../lib/auth-context';
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -173,11 +174,16 @@ export function Navbar({
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
-                      className="flex items-center justify-center w-10 h-10 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+                      className="flex items-center justify-center w-10 h-10 rounded-full overflow-hidden hover:ring-2 hover:ring-amber-300 transition-all"
                       data-testid="navbar-user-menu"
                       aria-label="Open user menu"
                     >
-                      <User className="w-5 h-5" />
+                      <Avatar className="w-10 h-10">
+                        <AvatarImage src={user?.avatar_url || undefined} alt={displayName} />
+                        <AvatarFallback className="bg-amber-100 text-amber-700">
+                          {user?.first_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || <User className="w-5 h-5" />}
+                        </AvatarFallback>
+                      </Avatar>
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">

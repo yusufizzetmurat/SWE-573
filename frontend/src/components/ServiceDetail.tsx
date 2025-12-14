@@ -294,9 +294,9 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
           Back to Browse
         </Button>
 
-        <div className="grid grid-cols-[1fr_400px] gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
-          <div>
+          <div className="lg:col-span-2">
             <Tabs defaultValue="details" className="w-full">
               <TabsList className="mb-4">
                 <TabsTrigger value="details" className="flex items-center gap-2">
@@ -424,7 +424,7 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                       {service.media.some((m: any) => m.media_type === 'video') && (
                         <div className={service.media.some((m: any) => (m.media_type || 'image') === 'image') ? 'mt-6' : ''}>
                           <h3 className="text-gray-900 mb-3">Videos</h3>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-4">
                             {service.media
                               .filter((m: any) => m.media_type === 'video')
                               .map((mediaItem: any) => {
@@ -435,7 +435,10 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                                 return (
                                   <div key={mediaItem.id} className="rounded-lg overflow-hidden border border-gray-200 bg-black/90">
                                     {embedInfo ? (
-                                      <div className="aspect-video bg-black">
+                                      <div
+                                        className="bg-black"
+                                        style={{ height: 560, maxHeight: '70vh', minHeight: 360 }}
+                                      >
                                         <iframe
                                           src={embedInfo.embedUrl}
                                           title="Service video"
@@ -445,7 +448,12 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
                                         />
                                       </div>
                                     ) : looksDirect ? (
-                                      <video controls src={videoUrl} className="w-full h-full" />
+                                      <video
+                                        controls
+                                        src={videoUrl}
+                                        className="w-full"
+                                        style={{ height: 560, maxHeight: '70vh', minHeight: 360 }}
+                                      />
                                     ) : (
                                       <div className="p-4 bg-white">
                                         <div className="text-sm text-gray-700 mb-2">Video link:</div>
@@ -509,7 +517,7 @@ export function ServiceDetail({ onNavigate, serviceData, userBalance = 1, unread
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-6">
+          <div className="space-y-6 lg:col-span-1">
             {/* Provider Card */}
             <div 
               className="bg-white rounded-xl border border-gray-200 p-6 cursor-pointer hover:border-amber-300 hover:shadow-md transition-all"

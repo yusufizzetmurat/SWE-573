@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CheckCircle, Clock, User, AlertTriangle, X, Edit2 } from 'lucide-react';
+import { CheckCircle, Clock, User, AlertTriangle, X } from 'lucide-react';
 import { formatTimebank } from '../lib/utils';
 import { POLLING_INTERVALS } from '../lib/constants';
 import {
@@ -10,8 +10,6 @@ import {
   DialogTitle,
 } from './ui/dialog';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
 import { handshakeAPI, type Handshake } from '../lib/api';
 import { logger } from '../lib/logger';
 
@@ -42,14 +40,7 @@ export function ServiceConfirmationModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [handshake, setHandshake] = useState<Handshake | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [hours, setHours] = useState<string>('');
-  const [isEditingHours, setIsEditingHours] = useState(false);
-  const isEditingHoursRef = useRef(isEditingHours);
   const hasLoadedHandshakeRef = useRef(false);
-
-  useEffect(() => {
-    isEditingHoursRef.current = isEditingHours;
-  }, [isEditingHours]);
 
   useEffect(() => {
     if (open && handshakeId) {
@@ -71,9 +62,6 @@ export function ServiceConfirmationModal({
           if (!isActive) return;
           setHandshake(data);
           hasLoadedHandshakeRef.current = true;
-          if (!isEditingHoursRef.current) {
-            setHours(data.provisioned_hours.toString());
-          }
         } catch (error) {
           logger.error('Failed to fetch handshake', error instanceof Error ? error : new Error(String(error)), { handshakeId });
         } finally {
@@ -92,15 +80,13 @@ export function ServiceConfirmationModal({
         isActive = false;
         clearInterval(refreshInterval);
       };
-    } else if (open && initialDuration) {
-      setHours(initialDuration.toString());
     }
-  }, [open, handshakeId, initialDuration]);
+  }, [open, handshakeId]);
 
   const handleComplete = async () => {
     setIsSubmitting(true);
     try {
-      const hoursValue = parseFloat(hours) || (handshake?.provisioned_hours ?? initialDuration ?? 0);
+      const hoursValue = handshake?.provisioned_hours ?? initialDuration ?? 0;
       await onComplete(hoursValue);
       onClose();
     } catch (error) {
@@ -110,7 +96,7 @@ export function ServiceConfirmationModal({
     }
   };
 
-  const actualDuration = handshake?.provisioned_hours ?? (parseFloat(hours) || initialDuration || 0);
+  const actualDuration = handshake?.provisioned_hours ?? initialDuration ?? 0;
   const displayTitle = handshake?.service_title || serviceTitle || 'Service';
   const displayProviderName = handshake?.provider_name || providerName || 'Provider';
   const displayReceiverName = handshake?.requester_name || receiverName || 'Receiver';
@@ -174,55 +160,10 @@ export function ServiceConfirmationModal({
 
                   <div className="pt-2 border-t border-gray-200">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="hours-input" className="text-gray-600">Duration (TimeBank Hours)</Label>
-                      {isEditingHours ? (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            id="hours-input"
-                            type="number"
-                            step="0.5"
-                            min="0.5"
-                            max="24"
-                            value={hours}
-                            onChange={(e) => setHours(e.target.value)}
-                            className="w-20"
-                            autoFocus
-                          />
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setIsEditingHours(false);
-                              const parsed = parseFloat(hours);
-                              if (isNaN(parsed) || parsed <= 0) {
-                                setHours(actualDuration.toString());
-                              }
-                            }}
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-900 font-medium">
-                              {formatTimebank(actualDuration)} TimeBank {formatTimebank(actualDuration) === '1' ? 'Hour' : 'Hours'}
-                            </span>
-                            <button
-                              onClick={() => setIsEditingHours(true)}
-                              className="text-amber-600 hover:text-amber-700"
-                              title="Edit hours"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                          {handshake && (
-                            <p className="text-xs text-gray-500">
-                              Hours can be adjusted before both parties confirm
-                            </p>
-                          )}
-                        </div>
-                      )}
+                      <span className="text-gray-600">Duration (TimeBank Hours)</span>
+                      <span className="text-gray-900 font-medium">
+                        {formatTimebank(actualDuration)} TimeBank {formatTimebank(actualDuration) === '1' ? 'Hour' : 'Hours'}
+                      </span>
                     </div>
                   </div>
                 </>
