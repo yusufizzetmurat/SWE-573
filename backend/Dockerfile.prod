@@ -57,9 +57,9 @@ RUN useradd --create-home --shell /bin/bash appuser
 # Copy application code
 COPY --chown=appuser:appuser . /code/
 
-# Create logs and media directories, make entrypoint executable
-RUN mkdir -p /code/logs /code/media && \
-    chown -R appuser:appuser /code/logs /code/media && \
+# Create logs, media, and staticfiles directories with proper ownership
+RUN mkdir -p /code/logs /code/media /code/staticfiles && \
+    chown -R appuser:appuser /code/logs /code/media /code/staticfiles && \
     chmod +x /code/entrypoint.sh
 
 # Switch to non-root user
