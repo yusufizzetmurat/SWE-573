@@ -33,7 +33,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     show_history: u.show_history,
     video_intro_url: u.video_intro_url,
     video_intro_file_url: u.video_intro_file_url,
-    portfolio_images: u.portfolio_images,
   }), []);
 
   // Try to restore user from localStorage on mount
