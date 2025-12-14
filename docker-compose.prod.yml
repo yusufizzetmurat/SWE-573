@@ -3,8 +3,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
-    command: >
-      daphne -b 0.0.0.0 -p 8000 hive_project.asgi:application
     volumes:
       - media_data:/code/media
     ports:
